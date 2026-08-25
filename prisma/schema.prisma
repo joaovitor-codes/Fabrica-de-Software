@@ -1,0 +1,1092 @@
+// ============================================================
+// NUTRIFY - schema.prisma (v3 - arquitetura refatorada)
+//
+// Este arquivo aplica 5 refatorações arquiteturais sobre o modelo
+// anterior. Cada uma está documentada no bloco de comentário do(s)
+// model(s) que ela afeta. Resumo:
+//
+//   1. Separation of Concerns: Conta (autenticação) x Usuario (perfil/negócio)
+//   2. Normalização de contato/localização: Telefone e Endereco em 1:N
+//   3. Enums voláteis viram Lookup Tables: UnidadeMedida, TipoNotificacao
+//   4. Notificacao: polimorfismo leve trocado por Exclusive Arc (FKs reais)
+//   5. Índice extra em ReceitaVersao para consultas só por receitaId
+//
+// Requisitos:
+// - PostgreSQL 15+ (gen_random_uuid() nativo). Em versões anteriores,
+//   habilitar a extensão antes da primeira migration:
+//     CREATE EXTENSION IF NOT EXISTS pgcrypto;
+// - DATABASE_URL configurada no .env
+//
+// Observações que continuam valendo do modelo anterior:
+// - Soft delete (deletedAt) não é automático no Prisma — precisa de
+//   Client Extension interceptando delete/findMany.
+// - A consistência polimórfica de Usuario (tipoUsuario vs. existência de
+//   linha em Profissional/Paciente) precisa de trigger SQL manual.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+//
+// Refatoração 3 (Lookup Tables): removemos os enums UnidadeMedida e
+// TipoNotificacao daqui — viraram tabelas de domínio (ver seção
+// "LOOKUP TABLES" mais abaixo), porque são listas que crescem sem
+// mudança de regra de negócio (ex: adicionar "colher de sobremesa" ou
+// um novo tipo de notificação não deveria exigir migration + deploy).
+//
+// Os enums abaixo permanecem como enum nativo porque representam
+// domínios estritamente imutáveis: mudar um desses valores é, na
+// prática, mudar uma regra de negócio ou um fluxo de estados que já
+// exige alteração de código de qualquer forma (ex: um novo
+// status_receita exige nova lógica de aprovação, não é só um cadastro).
+// ============================================================
+
+enum TipoUsuario {
+  profissional
+  paciente
+  comum
+  admin
+
+  @@map("tipo_usuario_enum")
+}
+
+enum StatusAprovacao {
+  pendente
+  aprovado
+  rejeitado
+
+  @@map("status_aprovacao_enum")
+}
+
+enum TipoRestricao {
+  alergia
+  intolerancia
+  doenca_cronica
+  preferencia
+
+  @@map("tipo_restricao_enum")
+}
+
+enum Gravidade {
+  leve
+  moderada
+  grave
+
+  @@map("gravidade_enum")
+}
+
+enum NivelDificuldade {
+  facil
+  medio
+  dificil
+
+  @@map("nivel_dificuldade_enum")
+}
+
+enum StatusReceita {
+  pendente
+  aprovada
+  rejeitada
+
+  @@map("status_receita_enum")
+}
+
+enum TipoTransacaoPontos {
+  ganho_aprovacao
+  resgate_desconto
+  ajuste_manual
+
+  @@map("tipo_transacao_pontos_enum")
+}
+
+enum Periodicidade {
+  mensal
+  anual
+
+  @@map("periodicidade_enum")
+}
+
+enum StatusAssinatura {
+  trial
+  ativa
+  cancelada
+  expirada
+
+  @@map("status_assinatura_enum")
+}
+
+enum StatusPagamento {
+  pendente
+  pago
+  falhou
+  reembolsado
+
+  @@map("status_pagamento_enum")
+}
+
+enum DiaSemana {
+  segunda
+  terca
+  quarta
+  quinta
+  sexta
+  sabado
+  domingo
+
+  @@map("dia_semana_enum")
+}
+
+enum TipoRefeicao {
+  cafe_da_manha
+  lanche_manha
+  almoco
+  lanche_tarde
+  jantar
+  ceia
+
+  @@map("tipo_refeicao_enum")
+}
+
+enum TipoResposta {
+  texto
+  numero
+  escolha_unica
+  escolha_multipla
+  booleano
+
+  @@map("tipo_resposta_enum")
+}
+
+enum PorteClinica {
+  pequeno
+  medio
+  grande
+
+  @@map("porte_clinica_enum")
+}
+
+enum StatusIndicacao {
+  pendente
+  convertida
+  expirada
+
+  @@map("status_indicacao_enum")
+}
+
+enum TipoMidia {
+  capa
+  passo_a_passo
+  video
+
+  @@map("tipo_midia_enum")
+}
+
+enum TipoConsentimento {
+  termos_uso
+  dados_saude
+  marketing
+
+  @@map("tipo_consentimento_enum")
+}
+
+enum AcaoLog {
+  visualizacao
+  edicao
+  exportacao
+
+  @@map("acao_log_enum")
+}
+
+// Tipo de contato para Telefone (refatoração 2). Domínio pequeno e
+// estável — permanece enum, diferente de UnidadeMedida/TipoNotificacao.
+enum TipoContato {
+  celular
+  fixo
+  whatsapp
+
+  @@map("tipo_contato_enum")
+}
+
+// ============================================================
+// 1. AUTENTICAÇÃO (Conta) x IDENTIDADE/NEGÓCIO (Usuario)
+//
+// Refatoração 1 (Separation of Concerns):
+// A tabela Usuario antiga misturava credenciais de acesso (email,
+// senhaHash) com dados de perfil e todas as relações de negócio
+// (receitas criadas, favoritos, pontos, notificações...). Isso significa
+// que qualquer mudança em política de autenticação (ex: trocar de
+// senha+email para OAuth, adicionar 2FA) tocaria a mesma tabela que
+// concentra dezenas de relações de domínio — alto acoplamento.
+//
+// Agora:
+// - Conta cuida SÓ de acesso: email, senha, verificação, sessões,
+//   tokens, tentativas de login.
+// - Usuario cuida de identidade e é o ponto de relação com o resto do
+//   domínio (profissional, paciente, receitas, notificações etc.).
+// - Relação 1:1 entre elas via contaId.
+//
+// Isso também abre caminho pra, no futuro, uma Conta ter múltiplos
+// métodos de login (ex: tabela ContaProvedorOAuth) sem tocar em Usuario.
+// ============================================================
+
+model Conta {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email             String    @unique @db.VarChar(255)
+  senhaHash         String    @map("senha_hash") @db.VarChar(255)
+  emailVerificado   Boolean   @default(false) @map("email_verificado")
+  emailVerificadoEm DateTime? @map("email_verificado_em") @db.Timestamptz(6)
+  ativo             Boolean   @default(true)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  usuario                Usuario?                @relation("ContaUsuario")
+  tokensVerificacaoEmail TokenVerificacaoEmail[]
+  tokensResetSenha       TokenResetSenha[]
+  sessoes                Sessao[]
+  tentativasLogin        TentativaLogin[]
+
+  // Nenhum @@index([email]) aqui de propósito: @unique acima já cria
+  // um índice único, que serve tanto pra unicidade quanto pra busca.
+  // Um @@index([email]) adicional seria um segundo índice idêntico
+  // no mesmo campo — custo de escrita em dobro sem ganho de leitura.
+  @@map("contas")
+}
+
+model Usuario {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contaId        String    @unique @map("conta_id") @db.Uuid
+  nome           String    @db.VarChar(255)
+  tipoUsuario    TipoUsuario @map("tipo_usuario")
+  dataNascimento DateTime? @map("data_nascimento") @db.Date
+  fotoPerfilUrl  String?   @map("foto_perfil_url") @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  conta Conta @relation("ContaUsuario", fields: [contaId], references: [id])
+
+  // Refatoração 2: telefone/endereco deixam de ser colunas simples
+  telefones Telefone[]
+  enderecos Endereco[]
+
+  profissional            Profissional?           @relation("UsuarioProfissional")
+  paciente                Paciente?               @relation("UsuarioPaciente")
+  profissionaisAprovados  Profissional[]          @relation("ProfissionalAprovadoPor")
+  receitasCriadas         Receita[]               @relation("ReceitaCriadoPor")
+  receitaVersoesAlteradas ReceitaVersao[]         @relation("ReceitaVersaoAlteradoPor")
+  comentariosRefeicao     ComentarioRefeicao[]    @relation("ComentarioAutor")
+  favoritos               Favorito[]
+  notificacoes            Notificacao[]
+  consentimentosLgpd      ConsentimentoLgpd[]
+  logsAcessoRealizados    LogAcessoDadoSensivel[] @relation("LogAcessoUsuarioAcessante")
+  indicacoesFeitas        Indicacao[]             @relation("IndicacaoIndicador")
+  indicacoesRecebidas     Indicacao[]             @relation("IndicacaoIndicado")
+
+  @@index([tipoUsuario])
+  @@map("usuarios")
+
+  // NOTA (consistência polimórfica, ver documentação): nada aqui impede
+  // um Usuario tipoUsuario = "comum" de também ter linha em Profissional.
+  // Precisa de trigger SQL manual na migration, igual no modelo anterior.
+}
+
+// ============================================================
+// 2. NORMALIZAÇÃO DE CONTATO E LOCALIZAÇÃO
+//
+// Refatoração 2: telefone/endereco eram String? soltas em Usuario e
+// Clinica. Isso impedia múltiplos números (ex: celular + WhatsApp
+// comercial da clínica) e buscas estruturadas (ex: nutricionistas por
+// CEP/cidade para achar "profissionais perto de mim").
+//
+// Telefone e Endereco relacionam com Usuario OU Clinica (nunca os
+// dois ao mesmo tempo) via duas FKs opcionais — o mesmo padrão de
+// "exclusive arc" usado em Notificacao mais abaixo. Recomendação:
+// adicionar via SQL raw na migration:
+//
+//   ALTER TABLE telefones ADD CONSTRAINT chk_telefone_dono
+//     CHECK (num_nonnulls(usuario_id, clinica_id) = 1);
+//   ALTER TABLE enderecos ADD CONSTRAINT chk_endereco_dono
+//     CHECK (num_nonnulls(usuario_id, clinica_id) = 1);
+// ============================================================
+
+model Telefone {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ddi       String?     @db.VarChar(5)
+  numero    String      @db.VarChar(20)
+  tipo      TipoContato @default(celular)
+  principal Boolean     @default(false)
+  usuarioId String?     @map("usuario_id") @db.Uuid
+  clinicaId String?     @map("clinica_id") @db.Uuid
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // onDelete: Cascade: um telefone sem dono não tem razão de existir.
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  clinica Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([clinicaId])
+  @@map("telefones")
+}
+
+model Endereco {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cep         String?  @db.VarChar(9)
+  logradouro  String?  @db.VarChar(255)
+  numero      String?  @db.VarChar(20)
+  complemento String?  @db.VarChar(100)
+  bairro      String?  @db.VarChar(100)
+  cidade      String?  @db.VarChar(100)
+  estado      String?  @db.VarChar(2)
+  pais        String   @default("Brasil") @db.VarChar(100)
+  principal   Boolean  @default(false)
+  usuarioId   String?  @map("usuario_id") @db.Uuid
+  clinicaId   String?  @map("clinica_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // onDelete: Cascade: um endereço sem dono não tem razão de existir.
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  clinica Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([clinicaId])
+  @@index([cep])
+  @@map("enderecos")
+}
+
+// ============================================================
+// 3. PERFIS DE NEGÓCIO
+// ============================================================
+
+model Clinica {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome      String    @db.VarChar(255)
+  cnpj      String?   @unique @db.VarChar(20)
+  porte     PorteClinica @default(pequeno)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // telefone/endereco removidos daqui — ver Telefone/Endereco (refatoração 2)
+  telefones     Telefone[]
+  enderecos     Endereco[]
+  profissionais Profissional[]
+
+  @@map("clinicas")
+}
+
+model Profissional {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId            String    @unique @map("usuario_id") @db.Uuid
+  clinicaId            String?   @map("clinica_id") @db.Uuid
+  registroProfissional String    @map("registro_profissional") @db.VarChar(50)
+  especialidade        String?   @db.VarChar(255)
+  bio                  String?   @db.Text
+  pontosIncentivo      Int       @default(0) @map("pontos_incentivo")
+  statusAprovacao      StatusAprovacao @default(pendente) @map("status_aprovacao")
+  aprovadoPor          String?   @map("aprovado_por") @db.Uuid
+  aprovadoEm           DateTime? @map("aprovado_em") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  usuario            Usuario    @relation("UsuarioProfissional", fields: [usuarioId], references: [id])
+  clinica            Clinica?   @relation(fields: [clinicaId], references: [id])
+  aprovadoPorUsuario Usuario?   @relation("ProfissionalAprovadoPor", fields: [aprovadoPor], references: [id])
+  pacientes          Paciente[]
+  receitasAprovadas  Receita[]         @relation("ReceitaAprovador")
+  pontosTransacoes   PontosTransacao[]
+  planosAlimentares  PlanoAlimentar[]
+  anamneses          Anamnese[]
+  assinaturas        Assinatura[]
+
+  @@index([clinicaId])
+  @@index([statusAprovacao])
+  @@map("profissionais")
+}
+
+model Paciente {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId      String   @unique @map("usuario_id") @db.Uuid
+  profissionalId String?  @map("profissional_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  usuario              Usuario                 @relation("UsuarioPaciente", fields: [usuarioId], references: [id])
+  profissional         Profissional?           @relation(fields: [profissionalId], references: [id])
+  dadosSocioeconomicos DadoSocioeconomico?
+  restricoes           PacienteRestricao[]
+  planosAlimentares    PlanoAlimentar[]
+  checklistRefeicoes   ChecklistRefeicao[]
+  diarioSintomas       DiarioSintoma[]
+  anamneses            Anamnese[]
+  logsAcessoRecebidos  LogAcessoDadoSensivel[] @relation("LogAcessoPaciente")
+
+  @@index([profissionalId])
+  @@map("pacientes")
+}
+
+model DadoSocioeconomico {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pacienteId            String   @unique @map("paciente_id") @db.Uuid
+  rendaFamiliarMensal   Decimal? @map("renda_familiar_mensal") @db.Decimal(10, 2)
+  numIntegrantesFamilia Int?     @map("num_integrantes_familia")
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  paciente Paciente @relation(fields: [pacienteId], references: [id])
+
+  @@map("dados_socioeconomicos")
+}
+
+// ============================================================
+// 4. AUTENTICAÇÃO E SESSÃO (agora ligadas a Conta, não a Usuario)
+// ============================================================
+
+model TokenVerificacaoEmail {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contaId   String    @map("conta_id") @db.Uuid
+  token     String    @unique @db.VarChar(255)
+  expiraEm  DateTime  @map("expira_em") @db.Timestamptz(6)
+  usadoEm   DateTime? @map("usado_em") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conta Conta @relation(fields: [contaId], references: [id])
+
+  @@index([contaId])
+  @@map("tokens_verificacao_email")
+}
+
+model TokenResetSenha {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contaId   String    @map("conta_id") @db.Uuid
+  token     String    @unique @db.VarChar(255)
+  expiraEm  DateTime  @map("expira_em") @db.Timestamptz(6)
+  usadoEm   DateTime? @map("usado_em") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conta Conta @relation(fields: [contaId], references: [id])
+
+  @@index([contaId])
+  @@map("tokens_reset_senha")
+}
+
+model Sessao {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contaId          String    @map("conta_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(255)
+  userAgent        String?   @map("user_agent") @db.VarChar(500)
+  ipAddress        String?   @map("ip_address") @db.VarChar(45)
+  expiraEm         DateTime  @map("expira_em") @db.Timestamptz(6)
+  revogadoEm       DateTime? @map("revogado_em") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conta Conta @relation(fields: [contaId], references: [id])
+
+  @@index([contaId])
+  @@map("sessoes")
+}
+
+model TentativaLogin {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contaId      String?  @map("conta_id") @db.Uuid
+  emailTentado String   @map("email_tentado") @db.VarChar(255)
+  sucesso      Boolean
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conta Conta? @relation(fields: [contaId], references: [id])
+
+  @@index([emailTentado, createdAt])
+  @@map("tentativas_login")
+}
+
+// ============================================================
+// 5. RESTRIÇÕES ALIMENTARES E DADOS NUTRICIONAIS
+// ============================================================
+
+model RestricaoAlimentar {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome      String        @unique @db.VarChar(255)
+  tipo      TipoRestricao
+  descricao String?       @db.Text
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  pacientes              PacienteRestricao[]
+  ingredientes           IngredienteRestricao[]
+  campanhasPublicitarias CampanhaPublicitaria[]
+
+  @@map("restricoes_alimentares")
+}
+
+model PacienteRestricao {
+  pacienteId  String    @map("paciente_id") @db.Uuid
+  restricaoId String    @map("restricao_id") @db.Uuid
+  gravidade   Gravidade @default(moderada)
+  observacao  String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  paciente  Paciente           @relation(fields: [pacienteId], references: [id])
+  restricao RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
+
+  @@id([pacienteId, restricaoId])
+  @@map("paciente_restricoes")
+}
+
+model Ingrediente {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome          String   @db.VarChar(255)
+  fonteDados    String?  @map("fonte_dados") @db.VarChar(100)
+  caloriasKcal  Decimal? @map("calorias_kcal") @db.Decimal(8, 2)
+  proteinasG    Decimal? @map("proteinas_g") @db.Decimal(8, 2)
+  carboidratosG Decimal? @map("carboidratos_g") @db.Decimal(8, 2)
+  gordurasG     Decimal? @map("gorduras_g") @db.Decimal(8, 2)
+  fibrasG       Decimal? @map("fibras_g") @db.Decimal(8, 2)
+  sodioMg       Decimal? @map("sodio_mg") @db.Decimal(8, 2)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restricoes IngredienteRestricao[]
+  receitas   ReceitaIngrediente[]
+
+  @@index([nome])
+  @@map("ingredientes")
+}
+
+model IngredienteRestricao {
+  ingredienteId String @map("ingrediente_id") @db.Uuid
+  restricaoId   String @map("restricao_id") @db.Uuid
+
+  ingrediente Ingrediente        @relation(fields: [ingredienteId], references: [id])
+  restricao   RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
+
+  @@id([ingredienteId, restricaoId])
+  @@map("ingrediente_restricoes")
+}
+
+// ============================================================
+// LOOKUP TABLES (Refatoração 3 — domínios dinâmicos)
+//
+// UnidadeMedida e TipoNotificacao deixaram de ser enum nativo do
+// Postgres. Motivo: adicionar um valor a um enum do Postgres via
+// Prisma exige `ALTER TYPE ... ADD VALUE` numa nova migration + deploy
+// — inviável para listas que crescem por decisão operacional (ex: a
+// equipe de curadoria quer cadastrar "colher de chá rasa" ou um novo
+// tipo de notificação de produto sem esperar um deploy de backend).
+//
+// Trade-off: perdemos a validação de tipo em tempo de compilação que
+// o enum dava; ganhamos flexibilidade de cadastro via INSERT simples.
+// A validação de "código é válido" passa a ser responsabilidade de a
+// aplicação consultar a tabela (ou cachear os códigos ativos).
+// ============================================================
+
+model UnidadeMedida {
+  id     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo String  @unique @db.VarChar(20) // g, kg, ml, l, unidade, colher_sopa...
+  nome   String  @db.VarChar(50)
+  ativo  Boolean @default(true)
+
+  receitaIngredientes ReceitaIngrediente[]
+
+  @@map("unidades_medida")
+}
+
+model TipoNotificacao {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo    String  @unique @db.VarChar(50) // aprovacao_receita, checklist_pendente...
+  nome      String  @db.VarChar(100)
+  descricao String? @db.Text
+  ativo     Boolean @default(true)
+
+  notificacoes Notificacao[]
+
+  @@map("tipos_notificacao")
+}
+
+// ============================================================
+// 6. RECEITAS, CURADORIA E VERSIONAMENTO
+// ============================================================
+
+model Receita {
+  id                       String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                     String           @db.VarChar(255)
+  descricao                String?          @db.Text
+  modoPreparo              String?          @map("modo_preparo") @db.Text
+  tempoPreparoMin          Int?             @map("tempo_preparo_min")
+  porcoes                  Int?
+  nivelDificuldade         NivelDificuldade @default(medio) @map("nivel_dificuldade")
+  avisoContaminacaoCruzada Boolean          @default(false) @map("aviso_contaminacao_cruzada")
+  criadoPor                String           @map("criado_por") @db.Uuid
+  status                   StatusReceita    @default(pendente)
+  profissionalAprovadorId  String?          @map("profissional_aprovador_id") @db.Uuid
+  dataAprovacao            DateTime?        @map("data_aprovacao") @db.Timestamptz(6)
+  versaoAtual              Int              @default(1) @map("versao_atual")
+  createdAt                DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime?        @map("deleted_at") @db.Timestamptz(6)
+
+  criador               Usuario              @relation("ReceitaCriadoPor", fields: [criadoPor], references: [id])
+  profissionalAprovador Profissional?        @relation("ReceitaAprovador", fields: [profissionalAprovadorId], references: [id])
+  versoes               ReceitaVersao[]
+  midias                ReceitaMidia[]
+  ingredientes          ReceitaIngrediente[]
+  pontosTransacoes      PontosTransacao[]
+  favoritos              Favorito[]
+  planoAlimentarItens    PlanoAlimentarItem[]
+  notificacoes           Notificacao[]
+
+  @@index([status])
+  @@index([criadoPor])
+  @@map("receitas")
+}
+
+model ReceitaVersao {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receitaId       String   @map("receita_id") @db.Uuid
+  versao          Int
+  nome            String   @db.VarChar(255)
+  descricao       String?  @db.Text
+  modoPreparo     String?  @map("modo_preparo") @db.Text
+  alteradoPor     String   @map("alterado_por") @db.Uuid
+  motivoAlteracao String?  @map("motivo_alteracao") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  receita        Receita @relation(fields: [receitaId], references: [id])
+  autorAlteracao Usuario @relation("ReceitaVersaoAlteradoPor", fields: [alteradoPor], references: [id])
+
+  // Refatoração 5: @@unique já cria índice em (receitaId, versao), mas
+  // uma consulta que filtra só por receitaId (ex: "listar histórico
+  // completo dessa receita") não usa esse índice composto de forma
+  // eficiente sem o versaoo estar no predicado. Um índice dedicado em
+  // receitaId sozinho serve exatamente essa consulta mais comum.
+  @@unique([receitaId, versao])
+  @@index([receitaId])
+  @@map("receita_versoes")
+}
+
+model ReceitaMidia {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receitaId String    @map("receita_id") @db.Uuid
+  url       String    @db.VarChar(500)
+  tipo      TipoMidia @default(capa)
+  ordem     Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  receita Receita @relation(fields: [receitaId], references: [id])
+
+  @@index([receitaId])
+  @@map("receita_midias")
+}
+
+model ReceitaIngrediente {
+  receitaId       String  @map("receita_id") @db.Uuid
+  ingredienteId   String  @map("ingrediente_id") @db.Uuid
+  quantidade      Decimal @db.Decimal(8, 2)
+  unidadeMedidaId String  @map("unidade_medida_id") @db.Uuid
+
+  receita       Receita       @relation(fields: [receitaId], references: [id])
+  ingrediente   Ingrediente   @relation(fields: [ingredienteId], references: [id])
+  unidadeMedida UnidadeMedida @relation(fields: [unidadeMedidaId], references: [id])
+
+  @@id([receitaId, ingredienteId])
+  @@map("receita_ingredientes")
+}
+
+model PontosTransacao {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profissionalId String              @map("profissional_id") @db.Uuid
+  receitaId      String?             @map("receita_id") @db.Uuid
+  pontos         Int
+  tipo           TipoTransacaoPontos
+  descricao      String?             @db.VarChar(500)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profissional Profissional @relation(fields: [profissionalId], references: [id])
+  receita      Receita?     @relation(fields: [receitaId], references: [id])
+
+  @@index([profissionalId])
+  @@map("pontos_transacoes")
+}
+
+model Favorito {
+  usuarioId String   @map("usuario_id") @db.Uuid
+  receitaId String   @map("receita_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  receita Receita @relation(fields: [receitaId], references: [id])
+
+  @@id([usuarioId, receitaId])
+  @@map("favoritos")
+}
+
+// ============================================================
+// 7. PLANO ALIMENTAR (tabela semanal estilo Mfit)
+// ============================================================
+
+model PlanoAlimentar {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pacienteId     String    @map("paciente_id") @db.Uuid
+  profissionalId String    @map("profissional_id") @db.Uuid
+  nome           String    @db.VarChar(255)
+  dataInicio     DateTime  @map("data_inicio") @db.Date
+  dataFim        DateTime? @map("data_fim") @db.Date
+  ativo          Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  paciente     Paciente             @relation(fields: [pacienteId], references: [id])
+  profissional Profissional         @relation(fields: [profissionalId], references: [id])
+  itens        PlanoAlimentarItem[]
+
+  @@index([pacienteId])
+  @@map("planos_alimentares")
+}
+
+model PlanoAlimentarItem {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planoAlimentarId String       @map("plano_alimentar_id") @db.Uuid
+  receitaId        String       @map("receita_id") @db.Uuid
+  diaSemana        DiaSemana    @map("dia_semana")
+  tipoRefeicao     TipoRefeicao @map("tipo_refeicao")
+  horarioSugerido  DateTime?    @map("horario_sugerido") @db.Time(6)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  planoAlimentar     PlanoAlimentar       @relation(fields: [planoAlimentarId], references: [id])
+  receita            Receita              @relation(fields: [receitaId], references: [id])
+  checklistRefeicoes ChecklistRefeicao[]
+  comentarios        ComentarioRefeicao[]
+  notificacoes       Notificacao[]
+
+  @@index([planoAlimentarId, diaSemana, tipoRefeicao])
+  @@map("plano_alimentar_itens")
+}
+
+model ChecklistRefeicao {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planoAlimentarItemId String    @map("plano_alimentar_item_id") @db.Uuid
+  pacienteId           String    @map("paciente_id") @db.Uuid
+  dataReferencia       DateTime  @map("data_referencia") @db.Date
+  concluido            Boolean   @default(false)
+  concluidoEm          DateTime? @map("concluido_em") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  planoAlimentarItem PlanoAlimentarItem @relation(fields: [planoAlimentarItemId], references: [id])
+  paciente           Paciente           @relation(fields: [pacienteId], references: [id])
+  diarioSintomas     DiarioSintoma[]
+
+  @@unique([planoAlimentarItemId, dataReferencia])
+  @@index([pacienteId])
+  @@map("checklist_refeicoes")
+}
+
+model ComentarioRefeicao {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planoAlimentarItemId String   @map("plano_alimentar_item_id") @db.Uuid
+  autorId              String   @map("autor_id") @db.Uuid
+  comentario           String   @db.Text
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  planoAlimentarItem PlanoAlimentarItem @relation(fields: [planoAlimentarItemId], references: [id])
+  autor              Usuario            @relation("ComentarioAutor", fields: [autorId], references: [id])
+
+  @@index([planoAlimentarItemId])
+  @@map("comentarios_refeicao")
+}
+
+// ============================================================
+// 8. DIÁRIO DE SINTOMAS
+// ============================================================
+
+model TagSintoma {
+  id   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome String @unique @db.VarChar(255)
+
+  diarioSintomas DiarioSintomaTag[]
+
+  @@map("tags_sintomas")
+}
+
+model DiarioSintoma {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pacienteId          String   @map("paciente_id") @db.Uuid
+  checklistRefeicaoId String?  @map("checklist_refeicao_id") @db.Uuid
+  dataRegistro        DateTime @default(now()) @map("data_registro") @db.Timestamptz(6)
+  observacao          String?  @db.Text
+
+  paciente          Paciente           @relation(fields: [pacienteId], references: [id])
+  checklistRefeicao ChecklistRefeicao? @relation(fields: [checklistRefeicaoId], references: [id])
+  tags              DiarioSintomaTag[]
+
+  @@index([pacienteId])
+  @@map("diario_sintomas")
+}
+
+model DiarioSintomaTag {
+  diarioSintomasId String @map("diario_sintomas_id") @db.Uuid
+  tagId            String @map("tag_id") @db.Uuid
+
+  diarioSintomas DiarioSintoma @relation(fields: [diarioSintomasId], references: [id])
+  tag            TagSintoma    @relation(fields: [tagId], references: [id])
+
+  @@id([diarioSintomasId, tagId])
+  @@map("diario_sintomas_tags")
+}
+
+// ============================================================
+// 9. ANAMNESE DIGITAL
+// ============================================================
+
+model AnamnesePergunta {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  texto        String       @db.VarChar(500)
+  tipoResposta TipoResposta @map("tipo_resposta")
+  categoria    String?      @db.VarChar(100)
+  ordem        Int          @default(0)
+  ativa        Boolean      @default(true)
+
+  opcoes    AnamneseOpcao[]
+  respostas AnamneseResposta[]
+
+  @@map("anamnese_perguntas")
+}
+
+model AnamneseOpcao {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  perguntaId String @map("pergunta_id") @db.Uuid
+  textoOpcao String @map("texto_opcao") @db.VarChar(255)
+
+  pergunta  AnamnesePergunta   @relation(fields: [perguntaId], references: [id])
+  respostas AnamneseResposta[]
+
+  @@map("anamnese_opcoes")
+}
+
+model Anamnese {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pacienteId        String   @map("paciente_id") @db.Uuid
+  profissionalId    String   @map("profissional_id") @db.Uuid
+  dataPreenchimento DateTime @default(now()) @map("data_preenchimento") @db.Timestamptz(6)
+  observacoesGerais String?  @map("observacoes_gerais") @db.Text
+
+  paciente     Paciente           @relation(fields: [pacienteId], references: [id])
+  profissional Profissional       @relation(fields: [profissionalId], references: [id])
+  respostas    AnamneseResposta[]
+  notificacoes Notificacao[]
+
+  @@index([pacienteId])
+  @@map("anamneses")
+}
+
+model AnamneseResposta {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  anamneseId     String   @map("anamnese_id") @db.Uuid
+  perguntaId     String   @map("pergunta_id") @db.Uuid
+  respostaTexto  String?  @map("resposta_texto") @db.Text
+  respostaNumero Decimal? @map("resposta_numero") @db.Decimal(10, 2)
+  opcaoId        String?  @map("opcao_id") @db.Uuid
+
+  anamnese Anamnese         @relation(fields: [anamneseId], references: [id])
+  pergunta AnamnesePergunta @relation(fields: [perguntaId], references: [id])
+  opcao    AnamneseOpcao?   @relation(fields: [opcaoId], references: [id])
+
+  @@index([anamneseId])
+  @@map("anamnese_respostas")
+}
+
+// ============================================================
+// 10. MONETIZAÇÃO: PLANOS, ASSINATURAS, PAGAMENTOS, ADS
+// ============================================================
+
+model Plano {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome          String        @db.VarChar(255)
+  preco         Decimal       @db.Decimal(10, 2)
+  periodicidade Periodicidade
+  descricao     String?       @db.Text
+  ativo         Boolean       @default(true)
+
+  assinaturas Assinatura[]
+
+  @@map("planos")
+}
+
+model Assinatura {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profissionalId   String           @map("profissional_id") @db.Uuid
+  planoId          String           @map("plano_id") @db.Uuid
+  dataInicio       DateTime         @map("data_inicio") @db.Date
+  dataFim          DateTime?        @map("data_fim") @db.Date
+  status           StatusAssinatura @default(trial)
+  descontoAplicado Decimal?         @default(0) @map("desconto_aplicado") @db.Decimal(5, 2)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profissional Profissional  @relation(fields: [profissionalId], references: [id])
+  plano        Plano         @relation(fields: [planoId], references: [id])
+  pagamentos   Pagamento[]
+  notificacoes Notificacao[]
+
+  @@index([profissionalId])
+  @@index([status])
+  @@map("assinaturas")
+}
+
+model Pagamento {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assinaturaId    String          @map("assinatura_id") @db.Uuid
+  valor           Decimal         @db.Decimal(10, 2)
+  statusPagamento StatusPagamento @default(pendente) @map("status_pagamento")
+  metodoPagamento String?         @map("metodo_pagamento") @db.VarChar(100)
+  dataPagamento   DateTime?       @map("data_pagamento") @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  assinatura Assinatura @relation(fields: [assinaturaId], references: [id])
+
+  @@index([assinaturaId])
+  @@map("pagamentos")
+}
+
+model Indicacao {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioIndicadorId String          @map("usuario_indicador_id") @db.Uuid
+  usuarioIndicadoId  String?         @map("usuario_indicado_id") @db.Uuid
+  status             StatusIndicacao @default(pendente)
+  recompensaAplicada Boolean         @default(false) @map("recompensa_aplicada")
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  usuarioIndicador Usuario       @relation("IndicacaoIndicador", fields: [usuarioIndicadorId], references: [id])
+  usuarioIndicado  Usuario?      @relation("IndicacaoIndicado", fields: [usuarioIndicadoId], references: [id])
+  notificacoes     Notificacao[]
+
+  @@index([usuarioIndicadorId])
+  @@map("indicacoes")
+}
+
+model Anunciante {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nomeMarca String   @map("nome_marca") @db.VarChar(255)
+  contato   String?  @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  campanhas CampanhaPublicitaria[]
+
+  @@map("anunciantes")
+}
+
+model CampanhaPublicitaria {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  anuncianteId    String    @map("anunciante_id") @db.Uuid
+  restricaoAlvoId String?   @map("restricao_alvo_id") @db.Uuid
+  titulo          String    @db.VarChar(255)
+  dataInicio      DateTime  @map("data_inicio") @db.Date
+  dataFim         DateTime? @map("data_fim") @db.Date
+  ativa           Boolean   @default(true)
+
+  anunciante    Anunciante          @relation(fields: [anuncianteId], references: [id])
+  restricaoAlvo RestricaoAlimentar? @relation(fields: [restricaoAlvoId], references: [id])
+
+  @@index([anuncianteId])
+  @@map("campanhas_publicitarias")
+}
+
+// ============================================================
+// 11. NOTIFICAÇÕES
+//
+// Refatoração 4 (Exclusive Arc): a versão anterior usava
+// referenciaId + referenciaTipo (String livre) para apontar pra
+// qualquer tabela, sem FK de verdade — o banco não impedia um
+// referenciaId órfão. Trocamos por FKs opcionais reais, uma por tipo
+// de entidade que pode gerar notificação. O Prisma não expressa "XOR"
+// (exatamente uma preenchida) nativamente, então isso precisa de uma
+// CHECK constraint adicionada via SQL raw na migration:
+//
+//   ALTER TABLE notificacoes ADD CONSTRAINT chk_notificacao_exclusive_arc
+//     CHECK (
+//       num_nonnulls(receita_id, assinatura_id, plano_alimentar_item_id,
+//                     indicacao_id, anamnese_id) = 1
+//     );
+//
+// Cobertura por tipoNotificacao.codigo:
+//   aprovacao_receita / rejeicao_receita  -> receitaId
+//   assinatura_vencendo / pagamento_falhou -> assinaturaId
+//   checklist_pendente / comentario_novo   -> planoAlimentarItemId
+//   indicacao_convertida                   -> indicacaoId
+//   anamnese_pendente                      -> anamneseId
+// ============================================================
+
+model Notificacao {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId         String  @map("usuario_id") @db.Uuid
+  tipoNotificacaoId String  @map("tipo_notificacao_id") @db.Uuid
+
+  // Exclusive arc — ver nota da CHECK constraint acima
+  receitaId            String? @map("receita_id") @db.Uuid
+  assinaturaId          String? @map("assinatura_id") @db.Uuid
+  planoAlimentarItemId  String? @map("plano_alimentar_item_id") @db.Uuid
+  indicacaoId           String? @map("indicacao_id") @db.Uuid
+  anamneseId            String? @map("anamnese_id") @db.Uuid
+
+  titulo    String    @db.VarChar(255)
+  mensagem  String?   @db.Text
+  lida      Boolean   @default(false)
+  lidaEm    DateTime? @map("lida_em") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  usuario         Usuario         @relation(fields: [usuarioId], references: [id])
+  tipoNotificacao TipoNotificacao @relation(fields: [tipoNotificacaoId], references: [id])
+
+  // onDelete: Cascade nas 5 abaixo (Exclusive Arc): se a entidade de
+  // origem for excluída de verdade, a notificação perdeu sua única
+  // razão de existir e deve ser removida junto — nunca deve sobrar
+  // uma linha com as 5 colunas nulas, isso violaria a CHECK
+  // constraint chk_notificacao_exclusive_arc (ver migration).
+  receita            Receita?            @relation(fields: [receitaId], references: [id], onDelete: Cascade)
+  assinatura         Assinatura?         @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
+  planoAlimentarItem PlanoAlimentarItem? @relation(fields: [planoAlimentarItemId], references: [id], onDelete: Cascade)
+  indicacao          Indicacao?          @relation(fields: [indicacaoId], references: [id], onDelete: Cascade)
+  anamnese           Anamnese?           @relation(fields: [anamneseId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, lida])
+  @@map("notificacoes")
+}
+
+// ============================================================
+// 12. LGPD E AUDITORIA
+// ============================================================
+
+model ConsentimentoLgpd {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId         String            @map("usuario_id") @db.Uuid
+  tipoConsentimento TipoConsentimento @map("tipo_consentimento")
+  aceito            Boolean
+  versaoDocumento   String            @map("versao_documento") @db.VarChar(50)
+  ipAddress         String?           @map("ip_address") @db.VarChar(45)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId, tipoConsentimento])
+  @@map("consentimentos_lgpd")
+}
+
+model LogAcessoDadoSensivel {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioAcessanteId String   @map("usuario_acessante_id") @db.Uuid
+  pacienteId         String   @map("paciente_id") @db.Uuid
+  tipoDadoAcessado   String   @map("tipo_dado_acessado") @db.VarChar(100)
+  acao               AcaoLog
+  ipAddress          String?  @map("ip_address") @db.VarChar(45)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  usuarioAcessante Usuario  @relation("LogAcessoUsuarioAcessante", fields: [usuarioAcessanteId], references: [id])
+  paciente         Paciente @relation("LogAcessoPaciente", fields: [pacienteId], references: [id])
+
+  @@index([pacienteId])
+  @@index([usuarioAcessanteId])
+  @@map("log_acessos_dados_sensiveis")
+}
