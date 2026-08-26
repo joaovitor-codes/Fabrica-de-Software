@@ -3,22 +3,18 @@ import { NivelDificuldade, StatusAprovacao, Usuario, Profissional,
     ReceitaVersao, ReceitaMidia, ReceitaIngrediente, PontosTransacao, 
     Favorito, PlanoAlimentarItem, Notificacao} from "@prisma/client";
 
-export class ReceitaDto  {
-    @IsNotEmpty()
+export class UpdateReceitaDto  {
     nome!: string;
     descricao!: string;
     modoPreparo!: string;
     tempoPreparoMin!: number;
     porcoes!: number;
-    @IsNotEmpty()
     nivelDificuldade!: NivelDificuldade;
-    @IsNotEmpty()
     avisoContaminacaoCruzada!: boolean;
     criadoPor!: string;
     status!: StatusAprovacao;
     profissionalAprovadorId!: string;
     dataAprovacao!: Date;
-    @IsNotEmpty()
     versaoAtual!: number;
 
     criador!: Usuario;

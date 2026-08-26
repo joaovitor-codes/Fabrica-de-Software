@@ -6,23 +6,32 @@ import {
   Patch,
   Param,
   Delete,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import { ReceitaService } from './receita.service';
 import { ReceitaDto } from './dto/receita';
-import { get } from 'http';
+import { AuthGuard } from '../auth/auth.guard';
+import { UpdateReceitaDto } from './dto/update.receita';
 
 @Controller('api/receita')
 export class ReceitaController {
   constructor(private readonly receitaService: ReceitaService) {}
 
+  @UseGuards(AuthGuard)
   @Post()
-  create(@Body() receita: ReceitaDto) {
-    return this.receitaService.create(receita);
+  create(@Body() receita: ReceitaDto, @Request() req) {
+    return this.receitaService.create(receita, req.user.sub);
   }
 
   @Get('all')
   findAll() {
     return this.receitaService.findAll();
+  }
+  
+  @Get('sugestoes')
+  findSuggestions() {
+    return this.receitaService.findSuggestions();
   }
 
   @Get(':id')
@@ -30,32 +39,28 @@ export class ReceitaController {
     return this.receitaService.findOne(id);
   }
 
-  @Get(':name')
-  findByName(@Param('name') name: string) {
-    return this.receitaService.findByName(name);
+  @Get('/nome/:nome')
+  findByName(@Param('nome') nome: string) {
+    return this.receitaService.findByName(nome);
   }
 
-  @Get(':id/ingredients')
+  @Get(':id/ingredientes')
   findIngredients(@Param('id') id: string) {
     return this.receitaService.findIngredients(id);
   }
 
-  @Get(':id/ingredients/replacement')
+  @Get(':id/ingredientes/substituicao')
   findReplacementFor(@Param('id') id: string) {
     return this.receitaService.findReplacementFor(id);
   }
 
-  @Get(':id/alerts')
+  @Get(':id/alertas')
   findAlerts(@Param('id') id: string) {
     return this.receitaService.findAlerts(id);
   }
 
-  @Get('suggestions')
-  findSuggestions() {
-    return this.receitaService.findSuggestions();
-  }
 
-  @Get('validated')
+  @Get('validadas')
   findValidated() {
     return this.receitaService.findValidated();
   }
@@ -66,7 +71,7 @@ export class ReceitaController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() receita: ReceitaDto) {
+  update(@Param('id') id: string, @Body() receita: UpdateReceitaDto) {
     return this.receitaService.update(id, receita);
   }
 

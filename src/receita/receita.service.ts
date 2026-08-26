@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ReceitaDto } from './dto/receita';
 import { PrismaService } from '../prisma/prisma.service';
+import { UpdateReceitaDto } from './dto/update.receita';
 
 @Injectable()
 export class ReceitaService {
   constructor(private prismaService: PrismaService){}
-  async create(data: ReceitaDto) {
-    await this.prismaService.receita.create({
+  async create(data: ReceitaDto, userId: string) {
+    const user = await this.prismaService.receita.create({
       data: {
         nome: data.nome,
         descricao: data.descricao,
@@ -15,10 +16,10 @@ export class ReceitaService {
         porcoes: data.porcoes,
         nivelDificuldade: data.nivelDificuldade,
         avisoContaminacaoCruzada: data.avisoContaminacaoCruzada,
-        criadoPor: data.criadoPor,
+        criadoPor: userId,
       }
     });
-    return "usuario criado com sucesso"
+    return user;
   }
 
   async findAll() {
@@ -39,9 +40,9 @@ export class ReceitaService {
     return receita;
   }
 
-  async findByName(name: string) {
-    const receita = await this.prismaService.receita.findFirst({
-      where: { nome: name }
+  async findByName(nome: string) {
+    const receita = await this.prismaService.receita.findMany({
+      where: { nome: { contains: nome , mode: 'insensitive' } }
     });
     if (!receita) {
       return { error: 'Receita não encontrada',}
@@ -79,6 +80,10 @@ export class ReceitaService {
       OR: [{ nivelDificuldade: 'facil' }, 
         { nivelDificuldade: 'medio' }]},
     });
+    if (!receitas || receitas.length === 0) {
+      return { error: 'Nenhuma receita encontrada',}
+    }
+
     return receitas;
   }
 
@@ -86,23 +91,26 @@ export class ReceitaService {
     const receitas = await this.prismaService.receita.findMany({
       where: { status: 'aprovada' },
     });
+    if (!receitas || receitas.length === 0) {
+      return { error: 'Nenhuma receita encontrada',}
+    }
+
     return receitas;
   }
 
   async findFeedbacks() {} // TODO: Implementar o método de encontrar feedbacks para uma receita
 
-  async update(id: string, updateReceita: ReceitaDto) {
+  async update(id: string, updateReceita: UpdateReceitaDto) {
     const receita = await this.prismaService.receita.update({
       where: { id },
       data: {
-        nome: updateReceita.nome,
-        descricao: updateReceita.descricao,
-        modoPreparo: updateReceita.modoPreparo,
-        tempoPreparoMin: updateReceita.tempoPreparoMin,
-        porcoes: updateReceita.porcoes,
-        nivelDificuldade: updateReceita.nivelDificuldade,
-        avisoContaminacaoCruzada: updateReceita.avisoContaminacaoCruzada,
-        criadoPor: updateReceita.criadoPor,
+        nome: updateReceita?.nome,
+        descricao: updateReceita?.descricao,
+        modoPreparo: updateReceita?.modoPreparo,
+        tempoPreparoMin: updateReceita?.tempoPreparoMin,
+        porcoes: updateReceita?.porcoes,
+        nivelDificuldade: updateReceita?.nivelDificuldade,
+        avisoContaminacaoCruzada: updateReceita?.avisoContaminacaoCruzada,
       }
     });
     if (!receita) {
