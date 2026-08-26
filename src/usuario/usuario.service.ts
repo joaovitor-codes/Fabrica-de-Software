@@ -1,10 +1,37 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { UpdateUsuarioDto } from './dtos/usuario';
+import { CreateUsuarioDto, UpdateUsuarioDto } from './dtos/usuario';
+import * as bcrypt from 'bcrypt';
+import { TipoUsuario } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class UsuarioService {
-    constructor(private prismaService: PrismaService){}
+    constructor(private prismaService: PrismaService, private jwtService: JwtService){}
+
+    async create(data: CreateUsuarioDto){
+        const hashedPassword = await bcrypt.hash(data.password, 10);
+        
+        const user = await this.prismaService.usuario.create({
+            data:{
+                nome: data.name,
+                tipoUsuario: TipoUsuario.comum,
+                dataNascimento: data.dataNascimento ? new Date(data.dataNascimento) : undefined,
+                fotoPerfilUrl: data.fotoPerfilUrl,
+                conta: {
+                    create: {
+                        email: data.email,
+                        senhaHash: hashedPassword
+                        },
+                    },
+                },
+                include: {
+                    conta: true
+                },
+            }) 
+            return this.gerarToken(user);
+    }
+
 
     async findAll(page: number = 1, limit: number = 10){
         const skip = ( page -1 ) * limit;
@@ -144,6 +171,14 @@ export class UsuarioService {
         }
 
         return usuario.conta.ativo;
+    }
+
+    private gerarToken(usuario: {id: string; tipoUsuario: TipoUsuario }, conta?: { id: string}){
+        const payload = {
+            sub: usuario.id,
+            tipoUsuario: usuario.tipoUsuario,
+        };
+        return { accessToken: this.jwtService.sign(payload) }
     }
 }
 

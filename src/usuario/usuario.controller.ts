@@ -2,7 +2,7 @@ import { Body, Controller, UseGuards, Patch, Request, Get, Param, Delete, Post, 
 import { UsuarioService } from './usuario.service';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiOkResponse } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
-import { UpdateUsuarioDto } from './dtos/usuario';
+import { CreateUsuarioDto, UpdateUsuarioDto } from './dtos/usuario';
 import { Roles } from '../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 import { RolesGuard } from '../auth/roles.guard';
@@ -67,5 +67,13 @@ export class UsuarioController {
     @Post('ativar/:id')
     async ativar(@Param('id') id: string){
         return this.usuarioService.ativar(id);
+    }
+
+    @ApiOperation({ summary: 'Cria um novo usuário' })
+    @ApiOkResponse({ description: "Usuario criado com sucesso."})
+    @Roles(TipoUsuario.admin)
+    @Post()
+    async create(@Body() createUsuarioDto: CreateUsuarioDto) {
+        return this.usuarioService.create(createUsuarioDto);
     }
 }
