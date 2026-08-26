@@ -3,6 +3,7 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaService } from './prisma/prisma.service';
 import { envValidationSchema } from './config/env.validation';
 import { ConfigModule } from '@nestjs/config';
+import { UsuarioModule } from './usuario/usuario.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { ConfigModule } from '@nestjs/config';
       },
     }),
     AuthModule,
+    UsuarioModule,
   ],
   controllers: [],
   providers: [PrismaService],
