@@ -4,6 +4,7 @@ import { PrismaService } from './prisma/prisma.service';
 import { envValidationSchema } from './config/env.validation';
 import { ConfigModule } from '@nestjs/config';
 import { UsuarioModule } from './usuario/usuario.module';
+import { PacientesModule } from './pacientes/pacientes.module';
 import { ReceitaModule } from './receita/receita.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { ReceitaModule } from './receita/receita.module';
     }),
     AuthModule,
     UsuarioModule,
+    PacientesModule,
     ReceitaModule,
   ],
   controllers: [],
