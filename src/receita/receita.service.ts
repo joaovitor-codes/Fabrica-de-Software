@@ -5,9 +5,9 @@ import { UpdateReceitaDto } from './dto/update.receita';
 
 @Injectable()
 export class ReceitaService {
-  constructor(private prismaService: PrismaService){}
+  constructor(private prismaService: PrismaService) {}
   async create(data: ReceitaDto, userId: string) {
-    const user = await this.prismaService.receita.create({
+    const receita = await this.prismaService.receita.create({
       data: {
         nome: data.nome,
         descricao: data.descricao,
@@ -17,35 +17,35 @@ export class ReceitaService {
         nivelDificuldade: data.nivelDificuldade,
         avisoContaminacaoCruzada: data.avisoContaminacaoCruzada,
         criadoPor: userId,
-      }
+      },
     });
-    return user;
+    return receita;
   }
 
   async findAll() {
     const receitas = await this.prismaService.receita.findMany();
     if (!receitas || receitas.length === 0) {
-      return { error: 'Nenhuma receita encontrada',}
+      return { error: 'Nenhuma receita encontrada' };
     }
     return receitas;
   }
 
   async findOne(id: string) {
     const receita = await this.prismaService.receita.findUnique({
-      where: { id }
+      where: { id },
     });
     if (!receita) {
-      return { error: 'Receita não encontrada',}
+      return { error: 'Receita não encontrada' };
     }
     return receita;
   }
 
   async findByName(nome: string) {
     const receita = await this.prismaService.receita.findMany({
-      where: { nome: { contains: nome , mode: 'insensitive' } }
+      where: { nome: { contains: nome, mode: 'insensitive' } },
     });
     if (!receita) {
-      return { error: 'Receita não encontrada',}
+      return { error: 'Receita não encontrada' };
     }
     return receita;
   }
@@ -53,35 +53,36 @@ export class ReceitaService {
   async findIngredients(id: string) {
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
-      include: { ingredientes: true }
+      include: { ingredientes: true },
     });
     if (!receita) {
-      return { error: 'Receita não encontrada',}
+      return { error: 'Receita não encontrada' };
     }
     return receita.ingredientes;
   }
 
-  async findReplacementFor(id: string) { } // TODO: Implementar o método de encontrar substitutos para os ingredientes de uma receita
+  async findReplacementFor(id: string) {} // TODO: Implementar o método de encontrar substitutos para os ingredientes de uma receita
 
   async findAlerts(id: string) {
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
-      include: { pontosTransacoes: true }
+      include: { pontosTransacoes: true },
     });
     if (!receita) {
-      return { error: 'Receita não encontrada',}
+      return { error: 'Receita não encontrada' };
     }
     return receita.pontosTransacoes;
   }
 
   async findSuggestions() {
     const receitas = await this.prismaService.receita.findMany({
-      where: { status: 'aprovada', 
-      OR: [{ nivelDificuldade: 'facil' }, 
-        { nivelDificuldade: 'medio' }]},
+      where: {
+        status: 'aprovada',
+        OR: [{ nivelDificuldade: 'facil' }, { nivelDificuldade: 'medio' }],
+      },
     });
     if (!receitas || receitas.length === 0) {
-      return { error: 'Nenhuma receita encontrada',}
+      return { error: 'Nenhuma receita encontrada' };
     }
 
     return receitas;
@@ -92,7 +93,7 @@ export class ReceitaService {
       where: { status: 'aprovada' },
     });
     if (!receitas || receitas.length === 0) {
-      return { error: 'Nenhuma receita encontrada',}
+      return { error: 'Nenhuma receita encontrada' };
     }
 
     return receitas;
@@ -111,20 +112,20 @@ export class ReceitaService {
         porcoes: updateReceita?.porcoes,
         nivelDificuldade: updateReceita?.nivelDificuldade,
         avisoContaminacaoCruzada: updateReceita?.avisoContaminacaoCruzada,
-      }
+      },
     });
     if (!receita) {
-      return { error: 'Receita não encontrada',}
+      return { error: 'Receita não encontrada' };
     }
     return receita;
   }
 
   async remove(id: string) {
     const receita = await this.prismaService.receita.delete({
-      where: { id } 
+      where: { id },
     });
     if (!receita) {
-      return { error: 'Receita não encontrada',}
+      return { error: 'Receita não encontrada' };
     }
   }
 }
