@@ -3,6 +3,12 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaService } from './prisma/prisma.service';
 import { envValidationSchema } from './config/env.validation';
 import { ConfigModule } from '@nestjs/config';
+import { UsuarioModule } from './usuario/usuario.module';
+import { PacientesModule } from './pacientes/pacientes.module';
+import { ReceitaModule } from './receita/receita.module';
+import { ProfissionalModule } from './profissional/profissional.module';
+import { IngredienteModule } from './ingrediente/ingrediente.module';
+import { UnidadeMedidaModule } from './unidade-medida/unidade-medida.module';
 
 @Module({
   imports: [
@@ -14,6 +20,12 @@ import { ConfigModule } from '@nestjs/config';
       },
     }),
     AuthModule,
+    UsuarioModule,
+    PacientesModule,
+    ReceitaModule,
+    ProfissionalModule,
+    IngredienteModule,
+    UnidadeMedidaModule,
   ],
   controllers: [],
   providers: [PrismaService],
