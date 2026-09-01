@@ -10,7 +10,7 @@ import { TipoUsuario } from '@prisma/client';
 @ApiTags('Pacientes')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, RolesGuard)
-@Controller('pacientes')
+@Controller('api/pacientes')
 export class PacientesController {
     constructor(private pacientesService: PacientesService) {}
 
