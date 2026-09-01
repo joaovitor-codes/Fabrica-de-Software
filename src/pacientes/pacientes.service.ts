@@ -9,6 +9,11 @@ export class PacientesService {
     constructor(private prismaService: PrismaService) {}
 
     async createPaciente(CreatePacienteDto: CreatePacienteDto) {
+        await this.prismaService.usuario.update({
+            where: { id: CreatePacienteDto.userId },
+            data: { tipoUsuario: TipoUsuario.paciente },
+        });
+
         const paciente = await this.prismaService.paciente.create({
             data: {
                 usuarioId: CreatePacienteDto.userId,
@@ -17,14 +22,13 @@ export class PacientesService {
         });
 
         if (!paciente) {
+            await this.prismaService.usuario.update({
+                where: { id: CreatePacienteDto.userId },
+                data: { tipoUsuario: TipoUsuario.comum },
+            });
             throw new NotFoundException('Erro ao criar paciente');
         }
 
-        await this.prismaService.usuario.update({
-            where: { id: CreatePacienteDto.userId },
-            data: { tipoUsuario: TipoUsuario.paciente },
-        });
-        
         return paciente;
     }
 
