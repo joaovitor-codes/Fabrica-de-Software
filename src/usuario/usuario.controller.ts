@@ -10,7 +10,7 @@ import { RolesGuard } from '../auth/roles.guard';
 @ApiTags('Usuários')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, RolesGuard)
-@Controller('usuarios')
+@Controller('api/usuarios')
 export class UsuarioController {
     constructor(private usuarioService: UsuarioService) {}
 

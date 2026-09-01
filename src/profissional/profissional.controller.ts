@@ -11,7 +11,7 @@ import { CreateUsuarioDto } from '../usuario/dtos/usuario';
 @ApiTags('Profissionais')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, RolesGuard)
-@Controller('profissionais')
+@Controller('api/profissionais')
 export class ProfissionalController {
   constructor(private profissionalService: ProfissionalService) {}
 
