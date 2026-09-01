@@ -6,6 +6,7 @@ import { ConfigModule } from '@nestjs/config';
 import { UsuarioModule } from './usuario/usuario.module';
 import { PacientesModule } from './pacientes/pacientes.module';
 import { ReceitaModule } from './receita/receita.module';
+import { ProfissionalModule } from './profissional/profissional.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ReceitaModule } from './receita/receita.module';
     UsuarioModule,
     PacientesModule,
     ReceitaModule,
+    ProfissionalModule,
   ],
   controllers: [],
   providers: [PrismaService],
