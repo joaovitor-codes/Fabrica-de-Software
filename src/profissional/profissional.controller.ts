@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards, Request, Query, Param } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiCreatedResponse } from '@nestjs/swagger';
 import { RolesGuard } from '../auth/roles.guard';
 import { AuthGuard } from '../auth/auth.guard';
 import { ProfissionalService } from './profissional.service';
@@ -25,7 +25,7 @@ export class ProfissionalController {
   }
 
   @ApiOperation({ summary: 'Solicitar cadastro como profissional' })
-  @ApiResponse({ description: 'Solicitação de cadastro profissional criada com sucesso, aguardando aprovação.' })
+  @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional criada com sucesso, aguardando aprovação.' })
   @Roles(TipoUsuario.comum)
   @Post('solicitar')
   async solicitarCadastro(@Request() request, @Body() dto: createProfissionalDto) {
@@ -41,7 +41,7 @@ export class ProfissionalController {
   }
 
   @ApiOperation({ summary: 'Aprovar solicitação de cadastro profissional' })
-  @ApiResponse({ description: 'Solicitação de cadastro profissional aprovada com sucesso.' })
+  @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional aprovada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':id/aprovar')
   async aprovar(@Request() request, @Param('id') id: string) {
@@ -49,7 +49,7 @@ export class ProfissionalController {
   }
 
   @ApiOperation({ summary: 'Rejeitar solicitação de cadastro profissional' })
-  @ApiResponse({ description: 'Solicitação de cadastro profissional rejeitada com sucesso.' })
+  @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional rejeitada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':id/rejeitar')
   async rejeitar(@Request() request, @Param('id') id: string) {
@@ -57,7 +57,7 @@ export class ProfissionalController {
   }
 
   @ApiOperation({ summary: 'Criar um novo paciente associado ao profissional autenticado' })
-  @ApiResponse({ description: 'Paciente criado com sucesso e associado ao profissional.' })
+  @ApiCreatedResponse({ description: 'Paciente criado com sucesso e associado ao profissional.' })
   @Roles(TipoUsuario.profissional)
   @Post('paciente')
   async criarPaciente(@Request() request, @Body() dto: CreateUsuarioDto) {
@@ -66,7 +66,7 @@ export class ProfissionalController {
   }
 
   @ApiOperation({ summary: 'Vincular um paciente já existente ao profissional autenticado' })
-  @ApiResponse({ description: 'Paciente vinculado ao profissional com sucesso.' })
+  @ApiCreatedResponse({ description: 'Paciente vinculado ao profissional com sucesso.' })
   @Roles(TipoUsuario.profissional)
   @Post('paciente/:pacienteId/associar')
   async associarPaciente(@Request() request, @Param('pacienteId') pacienteId: string) {
