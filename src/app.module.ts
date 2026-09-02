@@ -9,6 +9,8 @@ import { ReceitaModule } from './receita/receita.module';
 import { ProfissionalModule } from './profissional/profissional.module';
 import { IngredienteModule } from './ingrediente/ingrediente.module';
 import { UnidadeMedidaModule } from './unidade-medida/unidade-medida.module';
+import { ClinicasModule } from './clinicas/clinicas.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { UnidadeMedidaModule } from './unidade-medida/unidade-medida.module';
     ProfissionalModule,
     IngredienteModule,
     UnidadeMedidaModule,
+    ClinicasModule,
+    PrismaModule,
   ],
   controllers: [],
   providers: [PrismaService],
