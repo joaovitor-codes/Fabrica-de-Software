@@ -194,6 +194,7 @@ export class ProfissionalService {
           bio: data.bio,
           clinicaId: data.clinicaId,
         },
+        include: { clinica: true },
       });
     } catch (error: any) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
