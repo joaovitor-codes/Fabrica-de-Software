@@ -107,6 +107,9 @@ export class ClinicasService {
             this.prismaService.clinica.findMany({
                 skip,
                 take: limit,
+                include: {
+                    enderecos: true,
+                },
             }),
             this.prismaService.clinica.count(),
         ]);
@@ -129,4 +132,33 @@ export class ClinicasService {
             where: { id },
         });
     }
+
+    async findProfissionais (id: string, page: number = 1, limit: number = 10){
+        const skip = (page - 1) * limit;
+        
+        const [data, total] = await Promise.all([
+            this.prismaService.profissional.findMany({
+                where: { clinicaId: id },
+                skip,
+                take: limit,
+                include: {
+                    usuario: true,
+                },
+            }),
+            this.prismaService.profissional.count({
+                where: { clinicaId: id },
+            }),
+        ]);
+        
+        return {
+            data,
+            meta: {
+                total,
+                page,
+                last_page: Math.ceil(total / limit),
+                limit,
+            },
+        };
+    }
+
 }

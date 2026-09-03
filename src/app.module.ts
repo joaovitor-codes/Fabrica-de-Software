@@ -11,6 +11,7 @@ import { IngredienteModule } from './ingrediente/ingrediente.module';
 import { UnidadeMedidaModule } from './unidade-medida/unidade-medida.module';
 import { ClinicasModule } from './clinicas/clinicas.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { EnderecoModule } from './endereco/endereco.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PrismaModule } from './prisma/prisma.module';
     UnidadeMedidaModule,
     ClinicasModule,
     PrismaModule,
+    EnderecoModule,
   ],
   controllers: [],
   providers: [PrismaService],

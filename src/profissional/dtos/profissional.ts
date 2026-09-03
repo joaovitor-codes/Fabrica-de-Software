@@ -34,7 +34,7 @@ export class createProfissionalDto {
     description: 'ID da clínica associada ao profissional',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  clinicaId?: string; 
+  clinicaId?: string;
 }
 
 export class UpdateProfissionalDto {
@@ -58,8 +58,9 @@ export class UpdateProfissionalDto {
   @IsOptional()
   @IsUUID()
   @ApiPropertyOptional({
-    description: 'ID da clínica associada ao profissional',
+    description: 'ID da clínica associada ao profissional. Envie null para desassociar.',
     example: '123e4567-e89b-12d3-a456-426614174000',
+    nullable: true,
   })
-  clinicaId?: string; 
+  clinicaId?: string | null;
 }

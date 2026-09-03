@@ -1,6 +1,7 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { PorteClinica } from '@prisma/client';
 import { IsEnum, IsNotEmpty, IsOptional, IsString, Length } from 'class-validator';
+import { CreateEnderecoDto } from '../../endereco/dtos/endereco';
 
 export class CreateClinicaDto {
   @ApiProperty({ example: 'Clínica Nutrir Bem' })
@@ -37,3 +38,8 @@ export class UpdateClinicaDto {
   @IsEnum(PorteClinica)
   porte?: PorteClinica;
 }
+
+export class CreateClinicaEnderecoDto extends OmitType(CreateEnderecoDto, [
+  'usuarioId',
+  'clinicaId',
+] as const) {}
