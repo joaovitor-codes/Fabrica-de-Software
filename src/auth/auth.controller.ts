@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
-import { RefreshTokenDto, SignInDto, SignUpDto } from './dtos/auth';
+import { ConfirmPasswordResetDto, RefreshTokenDto, RequestPasswordResetDto, SignInDto, SignUpDto } from './dtos/auth';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -27,6 +27,7 @@ export class AuthController {
     async me(@Request() request){
         return this.authService.me(request.user.sub);
     }
+
 
     @ApiOperation({ summary: 'Endpoint para atualizar o token de acesso'})
     @ApiResponse({ status: 200, description: 'Token atualizado com sucesso' })

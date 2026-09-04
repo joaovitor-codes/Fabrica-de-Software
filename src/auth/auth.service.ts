@@ -4,13 +4,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { TipoUsuario } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 type SessionMetadata = {
     userAgent?: string;
     ipAddress?: string;
 };
+import { MailerService } from '@nestjs-modules/mailer';
+import { TipoUsuario } from '@prisma/client';
+import { createHash, randomBytes } from 'node:crypto';
 
 @Injectable()
 export class AuthService {
@@ -18,6 +20,7 @@ export class AuthService {
         private prismaService: PrismaService,
         private jwtService: JwtService,
         private configService: ConfigService,
+        private mailerService: MailerService,
     ){}
 
     private userAlreadyExist(email: string){

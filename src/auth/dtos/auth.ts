@@ -21,3 +21,22 @@ export class RefreshTokenDto {
     @IsNotEmpty()
     refreshToken!: string;
 }
+
+export class ResetPasswordDto {
+    @IsNotEmpty()
+    currentPassword!: string;
+    @IsNotEmpty()
+    newPassword!: string;
+}
+
+export class RequestPasswordResetDto {
+    @IsEmail()
+    email!: string;
+}
+
+export class ConfirmPasswordResetDto {
+    @IsNotEmpty()
+    token!: string;
+    @IsNotEmpty()
+    newPassword!: string;
+}
