@@ -13,6 +13,7 @@ import { ClinicasModule } from './clinicas/clinicas.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { EnderecoModule } from './endereco/endereco.module';
 import { TelefoneModule } from './telefone/telefone.module';
+import { MailerModuleEmail } from './lib/mailer.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { TelefoneModule } from './telefone/telefone.module';
     PrismaModule,
     EnderecoModule,
     TelefoneModule,
+    MailerModuleEmail
   ],
   controllers: [],
   providers: [PrismaService],
