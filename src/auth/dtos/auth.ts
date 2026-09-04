@@ -1,4 +1,8 @@
-import { IsEmail, IsNotEmpty } from "class-validator";
+<<<<<<< HEAD
+import { IsEmail, IsNotEmpty, IsString } from "class-validator";
+=======
+import { IsEmail, IsNotEmpty, IsString } from "class-validator";
+>>>>>>> feat/refresh-token
 
 export class SignUpDto {
     @IsNotEmpty()
@@ -16,21 +20,8 @@ export class SignInDto {
     password!: string;
 }
 
-export class ResetPasswordDto {
+export class RefreshTokenDto {
+    @IsString()
     @IsNotEmpty()
-    currentPassword!: string;
-    @IsNotEmpty()
-    newPassword!: string;
-}
-
-export class RequestPasswordResetDto {
-    @IsEmail()
-    email!: string;
-}
-
-export class ConfirmPasswordResetDto {
-    @IsNotEmpty()
-    token!: string;
-    @IsNotEmpty()
-    newPassword!: string;
+    refreshToken!: string;
 }

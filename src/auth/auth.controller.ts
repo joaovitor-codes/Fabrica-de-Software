@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
+<<<<<<< HEAD
 import {
     ConfirmPasswordResetDto,
     RequestPasswordResetDto,
     SignInDto,
     SignUpDto,
 } from './dtos/auth';
+=======
+import { RefreshTokenDto, SignInDto, SignUpDto } from './dtos/auth';
+>>>>>>> feat/refresh-token
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -22,8 +26,8 @@ export class AuthController {
     
     @ApiOperation({ summary: 'Endpoint para fazer login' })
     @Post('signin')
-    async signin(@Body() body: SignInDto){
-        return this.authService.signIn(body);
+    async signin(@Body() body: SignInDto, @Request() request){
+        return this.authService.signIn(body, this.sessionMetadata(request));
     }
 
     @ApiOperation({ summary: 'Gera um token para recuperação de senha' })
@@ -47,4 +51,20 @@ export class AuthController {
         return this.authService.me(request.user.sub);
     }
 
+<<<<<<< HEAD
+=======
+    @ApiOperation({ summary: 'Endpoint para atualizar o token de acesso'})
+    @ApiResponse({ status: 200, description: 'Token atualizado com sucesso' })
+    @Post('refresh')
+    async refresh(@Body() body: RefreshTokenDto, @Request() request){
+        return this.authService.refreshToken(body.refreshToken, this.sessionMetadata(request));
+    }
+
+    private sessionMetadata(request: any){
+        return {
+            userAgent: request.headers['user-agent'],
+            ipAddress: request.ip,
+        };
+    }
+>>>>>>> feat/refresh-token
 }
