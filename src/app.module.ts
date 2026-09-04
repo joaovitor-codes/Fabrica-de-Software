@@ -13,6 +13,7 @@ import { ClinicasModule } from './clinicas/clinicas.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { EnderecoModule } from './endereco/endereco.module';
 import { TelefoneModule } from './telefone/telefone.module';
+import { MailerModuleEmail } from './lib/mailer.module';
 import { RestricaoAlimentarModule } from './restricao-alimentar/restricao-alimentar.module';
 
 @Module({
@@ -35,6 +36,7 @@ import { RestricaoAlimentarModule } from './restricao-alimentar/restricao-alimen
     PrismaModule,
     EnderecoModule,
     TelefoneModule,
+    MailerModuleEmail,
     RestricaoAlimentarModule,
   ],
   controllers: [],
