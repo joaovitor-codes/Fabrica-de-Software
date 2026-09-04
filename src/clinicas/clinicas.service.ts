@@ -109,6 +109,7 @@ export class ClinicasService {
                 take: limit,
                 include: {
                     enderecos: true,
+                    telefones: true,
                 },
             }),
             this.prismaService.clinica.count(),

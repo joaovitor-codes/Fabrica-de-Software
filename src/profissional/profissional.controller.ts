@@ -127,6 +127,7 @@ export class ProfissionalController {
     if (profissional.clinicaId) {
       throw new BadRequestException('O profissional já está associado a uma clínica. Desassocie a clínica atual antes de associar uma nova.');
     }
+    
     const clinica = await this.clinicaService.findOne(id);
 
     return this.profissionalService.update(profissional.id, { clinicaId: clinica.id });
