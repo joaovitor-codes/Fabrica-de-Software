@@ -8,6 +8,8 @@ import { TipoUsuario } from '@prisma/client';
 import { RolesGuard } from '../auth/roles.guard';
 import { EnderecoService } from '../endereco/endereco.service';
 import { UpdateEnderecoDto } from '../endereco/dtos/endereco';
+import { CreateTelefoneDto, UpdateTelefoneDto } from '../telefone/dtos/telefone';
+import { TelefoneService } from '../telefone/telefone.service';
 
 @ApiTags('Usuários')
 @ApiBearerAuth()
@@ -15,8 +17,9 @@ import { UpdateEnderecoDto } from '../endereco/dtos/endereco';
 @Controller('api/usuarios')
 export class UsuarioController {
     constructor(
-        private usuarioService: UsuarioService,
+        private readonly usuarioService: UsuarioService,
         private readonly enderecoService: EnderecoService,
+        private readonly telefoneService: TelefoneService,
     ) {}
 
     @ApiOperation({ summary: 'Cria um novo usuário' })
@@ -30,7 +33,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Cria um endereço vinculado ao usuário autenticado' })
     @ApiCreatedResponse({ description: 'Endereço do usuário criado com sucesso.' })
     @Post('me/endereco')
-    async createEnderecoMe(@Request() request, @Body() createUsuarioEnderecoDto: CreateUsuarioEnderecoDto) {
+    async adicionarMeuEndereco(@Request() request, @Body() createUsuarioEnderecoDto: CreateUsuarioEnderecoDto) {
         const userId = request.user.sub;
 
         return this.enderecoService.create({
@@ -60,6 +63,26 @@ export class UsuarioController {
     @Post('desativar')
     async desativar(@Request() request){
         return this.usuarioService.desativar(request.user.sub);
+    }
+
+    @ApiOperation({ summary:'Lista todos os telefones do usuario autenticado.'})
+    @ApiOkResponse({ description: 'Telefones listados com sucesso.'})
+    @Get('me/telefone')
+    async listarMeusTelefones(@Request() request){
+        const userId = request.user.sub;
+        return await this.telefoneService.listarTelefones(userId);
+    }
+
+    @ApiOperation({ summary: 'Adiciona um telefone ao usuario autenticado.' })
+    @ApiCreatedResponse({ description: 'Novo telefone adicionado com sucesso.' })
+    @Post('me/telefone')
+    async adicionarMeuTelefone(@Request() request, @Body() createTelefoneDto: CreateTelefoneDto){
+        const userId = request.user.sub;
+
+        return await this.telefoneService.create({
+            ...createTelefoneDto,
+            usuarioId: userId
+        })
     }
 
     @ApiOperation({ summary: 'Atualiza as informações de um usuário específico' })
@@ -129,4 +152,33 @@ export class UsuarioController {
 
         return this.enderecoService.update(enderecoId, updateEnderecoDto);
     }
+
+    @ApiOperation({ summary: 'Remove um telefone do usuario autenticado.' })
+    @ApiOkResponse({ description: 'Telefone removido com sucesso.' })
+    @Delete('me/telefone/remover/:telefoneId')
+    async removerMeuTelefone(@Request() request, @Param('telefoneId') telefoneId: string){
+        const userId = request.user.sub;
+        const telefone = await this.telefoneService.findOne(telefoneId);
+
+        if (telefone.usuarioId !== userId) {
+            throw new UnauthorizedException('Você não tem permissão para remover este telefone.');
+        }
+
+        return await this.telefoneService.remove(telefoneId);
+    }
+
+    @ApiOperation({ summary:'Edita um telefone do usuario autenticado' })
+    @ApiOkResponse({ description:'Telefone editado com sucesso' })
+    @Patch('me/telefone/atualizar/:telefoneId')
+    async editarMeuTelefone(@Request() request, @Param('telefoneId') telefoneId: string, @Body() updateTelefoneDto: UpdateTelefoneDto){
+        const userId = request.user.sub;
+        const telefone = await this.telefoneService.findOne(telefoneId);
+
+        if (telefone.usuarioId !== userId) {
+            throw new UnauthorizedException('Você não tem permissão para editar este telefone.');
+        }
+
+        return await this.telefoneService.update(telefoneId, updateTelefoneDto);
+    }
+
 }

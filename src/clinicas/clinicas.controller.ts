@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClinicasService } from './clinicas.service';
 import { CreateClinicaDto, CreateClinicaEnderecoDto, UpdateClinicaDto } from './dtos/clinicas';
@@ -7,6 +7,8 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 import { EnderecoService } from '../endereco/endereco.service';
+import { TelefoneService } from '../telefone/telefone.service';
+import { CreateTelefoneDto, UpdateTelefoneDto } from '../telefone/dtos/telefone';
 
 @ApiTags('Clínicas')
 @ApiBearerAuth()
@@ -16,6 +18,7 @@ export class ClinicasController {
   constructor(
     private readonly clinicasService: ClinicasService,
     private readonly enderecoService: EnderecoService,
+    private readonly telefoneService: TelefoneService,
   ) {}
 
   @ApiOperation({ summary: 'Cria uma nova clínica' })
@@ -91,4 +94,41 @@ export class ClinicasController {
     return this.enderecoService.findByClinica(id);
   }
 
+  @ApiOperation({ summary: 'Adicionar telefone a uma clinica especifica.' })
+  @ApiCreatedResponse({ description: 'Telefone adicionado com sucesso.' })
+  @Roles(TipoUsuario.admin)
+  @Post(':clinicaId/telefone')
+  async adicionarTelefone(@Param('clinicaId') clinicaId: string, @Body() telefoneDto: CreateTelefoneDto) {
+    await this.clinicasService.findOne(clinicaId);
+    return await this.telefoneService.create({
+      ...telefoneDto,
+      clinicaId,
+    });
+  }
+
+  @ApiOperation({ summary: 'Remover um telefone especifico de uma clinica especifica' })
+  @ApiOkResponse({ description: 'Telefone removido com sucesso.'})
+  @Roles(TipoUsuario.admin)
+  @Delete(':clinicaId/telefone/remover/:telefoneId')
+  async removerTelefone(@Param('clinicaId') clinicaId: string, @Param('telefoneId') telefoneId: string){
+    const telefones = await this.telefoneService.findByClinica(clinicaId, telefoneId);
+    if(telefones.length === 0){
+      throw new BadRequestException('Não existe telefone associado a esta clinica')
+    }
+
+    return this.telefoneService.remove(telefoneId);
+  }
+
+  @ApiOperation({ summary: 'Remover um telefone especifico de uma clinica especifica' })
+  @ApiOkResponse({ description: 'Telefone removido com sucesso.'})
+  @Roles(TipoUsuario.admin)
+  @Patch(':clinicaId/telefone/atualizar/:telefoneId')
+  async updateTelefone(@Param('clinicaId') clinicaId: string,@Param('telefoneId') telefoneId: string,@Body() updateTelefoneDto: UpdateTelefoneDto){
+    const telefones = await this.telefoneService.findByClinica(clinicaId, telefoneId);
+    if(telefones.length === 0){
+      throw new BadRequestException('Não existe telefone associado a esta clinica')
+    }
+
+    return this.telefoneService.update(telefoneId, updateTelefoneDto)
+  }
 }
