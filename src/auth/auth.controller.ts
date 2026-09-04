@@ -29,7 +29,7 @@ export class AuthController {
     }
 
     @ApiOperation({ summary: 'Altera a senha usando um token de recuperação' })
-    @ApiResponse({ description: 'Senha alterada com sucesso' })
+    @ApiResponse({ description: 'Senha alterada com sucesso.' })
     @Post('resetar-senha')
     async confirmPasswordReset(@Body() body: ConfirmPasswordResetDto){
         return this.authService.confirmPasswordReset(body);
