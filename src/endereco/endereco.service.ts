@@ -109,11 +109,17 @@ export class EnderecoService {
         });
     }
 
-    async remove(id: string) {
+    async remove(id: string): Promise<void> {
         await this.findOne(id);
 
-        return this.prismaService.endereco.delete({
+        await this.prismaService.endereco.delete({
             where: { id },
+        });
+    }
+
+    async findByUserId(usuarioId: string) {
+        return this.prismaService.endereco.findMany({
+            where: { usuarioId },
         });
     }
 }

@@ -40,6 +40,9 @@ export class UsuarioService {
             this.prismaService.usuario.findMany({
                 skip,
                 take: limit,
+                include: {
+                    enderecos: true,
+                }
             }),
             this.prismaService.usuario.count(),
         ]);
@@ -57,7 +60,10 @@ export class UsuarioService {
 
     async findOne(id: string){
         const usuario = await this.prismaService.usuario.findUnique({
-            where: { id }
+            where: { id },
+            include: {
+                enderecos: true,
+            }
         });
         
         if(!usuario){

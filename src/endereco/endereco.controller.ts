@@ -9,7 +9,7 @@ import { AuthGuard } from '../auth/auth.guard';
 export class EnderecoController {
   constructor(private readonly enderecoService: EnderecoService) {}
 
-  @ApiOperation({ summary: 'Cria um novo endereço' })
+  @ApiOperation({ summary: 'Cria um novo endereço a um usuario ou clinica' })
   @ApiCreatedResponse({ description: 'Endereço criado com sucesso.' })
   @UseGuards(AuthGuard)
   @Post()

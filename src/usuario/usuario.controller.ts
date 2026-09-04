@@ -1,18 +1,51 @@
-import { Body, Controller, UseGuards, Patch, Request, Get, Param, Delete, Post, ParseIntPipe } from '@nestjs/common';
+import { Body, Controller, UseGuards, Patch, Request, Get, Param, Delete, Post, ParseIntPipe, UnauthorizedException } from '@nestjs/common';
 import { UsuarioService } from './usuario.service';
-import { ApiBearerAuth, ApiOperation, ApiTags, ApiOkResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags, ApiOkResponse } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
-import { CreateUsuarioDto, UpdateUsuarioDto } from './dtos/usuario';
+import { CreateUsuarioDto, CreateUsuarioEnderecoDto, UpdateUsuarioDto } from './dtos/usuario';
 import { Roles } from '../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 import { RolesGuard } from '../auth/roles.guard';
+import { EnderecoService } from '../endereco/endereco.service';
+import { UpdateEnderecoDto } from '../endereco/dtos/endereco';
 
 @ApiTags('Usuários')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, RolesGuard)
 @Controller('api/usuarios')
 export class UsuarioController {
-    constructor(private usuarioService: UsuarioService) {}
+    constructor(
+        private usuarioService: UsuarioService,
+        private readonly enderecoService: EnderecoService,
+    ) {}
+
+    @ApiOperation({ summary: 'Cria um novo usuário' })
+    @ApiOkResponse({ description: "Usuario criado com sucesso."})
+    @Roles(TipoUsuario.admin)
+    @Post()
+    async create(@Body() createUsuarioDto: CreateUsuarioDto) {
+        return this.usuarioService.create(createUsuarioDto);
+    }
+
+    @ApiOperation({ summary: 'Cria um endereço vinculado ao usuário autenticado' })
+    @ApiCreatedResponse({ description: 'Endereço do usuário criado com sucesso.' })
+    @Post('me/endereco')
+    async createEnderecoMe(@Request() request, @Body() createUsuarioEnderecoDto: CreateUsuarioEnderecoDto) {
+        const userId = request.user.sub;
+
+        return this.enderecoService.create({
+            ...createUsuarioEnderecoDto,
+            usuarioId: userId,
+        });
+    }
+
+    @ApiOperation({ summary: 'Obtém os endereços do usuário autenticado' })
+    @ApiOkResponse({ description: 'Endereços do usuário.' })
+    @Get('me/enderecos')
+    async meusEnderecos(@Request() request) {
+        const userId = request.user.sub;
+        return this.enderecoService.findByUserId(userId);
+    }
 
     @ApiOperation({ summary: 'Atualiza as informações do usuário autenticado' })
     @ApiOkResponse({ description: 'Usuário atualizado com sucesso.' })
@@ -20,6 +53,13 @@ export class UsuarioController {
     async updateMe(@Request() request, @Body() updateUsuarioDto: UpdateUsuarioDto) {
         const userId = request.user.sub; 
         return this.usuarioService.update(userId, updateUsuarioDto);
+    }
+
+    @ApiOperation({ summary: 'Desativa um usuário específico' })
+    @ApiOkResponse({ description: 'Usuário desativado com sucesso.' })
+    @Post('desativar')
+    async desativar(@Request() request){
+        return this.usuarioService.desativar(request.user.sub);
     }
 
     @ApiOperation({ summary: 'Atualiza as informações de um usuário específico' })
@@ -54,13 +94,6 @@ export class UsuarioController {
         return this.usuarioService.remove(id);
     }
 
-    @ApiOperation({ summary: 'Desativa um usuário específico' })
-    @ApiOkResponse({ description: 'Usuário desativado com sucesso.' })
-    @Post('desativar')
-    async desativar(@Request() request){
-        return this.usuarioService.desativar(request.user.sub);
-    }
-
     @ApiOperation({ summary: 'Ativa um usuário específico' })
     @ApiOkResponse({ description: 'Usuário ativado com sucesso.' })
     @Roles(TipoUsuario.admin)
@@ -69,11 +102,31 @@ export class UsuarioController {
         return this.usuarioService.ativar(id);
     }
 
-    @ApiOperation({ summary: 'Cria um novo usuário' })
-    @ApiOkResponse({ description: "Usuario criado com sucesso."})
-    @Roles(TipoUsuario.admin)
-    @Post()
-    async create(@Body() createUsuarioDto: CreateUsuarioDto) {
-        return this.usuarioService.create(createUsuarioDto);
+    @ApiOperation({ summary: 'Remove um endereço específico do usuário autenticado' })
+    @ApiOkResponse({ description: 'Endereço removido com sucesso.'})
+    @Delete('me/endereco/:enderecoId')
+    async removerMeuEndereco(@Request() request, @Param('enderecoId') enderecoId: string) {
+        const userId = request.user.sub;
+        const endereco = await this.enderecoService.findOne(enderecoId);
+
+        if (endereco.usuarioId !== userId) {
+            throw new UnauthorizedException('Você não tem permissão para remover este endereço.');
+        }
+
+        return this.enderecoService.remove(enderecoId);
+    }
+
+    @ApiOperation({ summary: 'Edita um endereço específico do usuário autenticado' })
+    @ApiOkResponse({ description: 'Endereço editado com sucesso.'})
+    @Patch('me/endereco/:enderecoId')
+    async editarMeuEndereco(@Request() request, @Param('enderecoId') enderecoId: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
+        const userId = request.user.sub;
+        const endereco = await this.enderecoService.findOne(enderecoId);
+        
+        if (endereco.usuarioId !== userId) {
+            throw new UnauthorizedException('Você não tem permissão para editar este endereço.');
+        }
+
+        return this.enderecoService.update(enderecoId, updateEnderecoDto);
     }
 }

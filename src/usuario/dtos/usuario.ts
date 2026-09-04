@@ -1,6 +1,7 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional, OmitType } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import { IsDate, IsEmail, IsNotEmpty, IsOptional, IsUrl } from "class-validator";
+import { CreateEnderecoDto } from "../../endereco/dtos/endereco";
 
 export class UpdateUsuarioDto {
     @ApiPropertyOptional({
@@ -50,3 +51,8 @@ export class CreateUsuarioDto {
     @IsNotEmpty()
     password!: string;
 }
+
+export class CreateUsuarioEnderecoDto extends OmitType(CreateEnderecoDto, [
+    'usuarioId',
+    'clinicaId',
+] as const) {}
