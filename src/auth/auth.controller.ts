@@ -7,7 +7,7 @@ import {
 } from './dtos/auth';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -27,12 +27,14 @@ export class AuthController {
     }
 
     @ApiOperation({ summary: 'Gera um token para recuperação de senha' })
+    @ApiResponse({ description: 'Token de recuperação de senha gerado com sucesso' })
     @Post('esqueci-senha')
     async requestPasswordReset(@Body() body: RequestPasswordResetDto){
         return this.authService.requestPasswordReset(body);
     }
 
     @ApiOperation({ summary: 'Altera a senha usando um token de recuperação' })
+    @ApiResponse({ description: 'Senha alterada com sucesso' })
     @Post('resetar-senha')
     async confirmPasswordReset(@Body() body: ConfirmPasswordResetDto){
         return this.authService.confirmPasswordReset(body);
