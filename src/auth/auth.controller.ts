@@ -1,14 +1,5 @@
 import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
-<<<<<<< HEAD
-import {
-    ConfirmPasswordResetDto,
-    RequestPasswordResetDto,
-    SignInDto,
-    SignUpDto,
-} from './dtos/auth';
-=======
 import { RefreshTokenDto, SignInDto, SignUpDto } from './dtos/auth';
->>>>>>> feat/refresh-token
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -51,8 +42,6 @@ export class AuthController {
         return this.authService.me(request.user.sub);
     }
 
-<<<<<<< HEAD
-=======
     @ApiOperation({ summary: 'Endpoint para atualizar o token de acesso'})
     @ApiResponse({ status: 200, description: 'Token atualizado com sucesso' })
     @Post('refresh')
@@ -66,5 +55,4 @@ export class AuthController {
             ipAddress: request.ip,
         };
     }
->>>>>>> feat/refresh-token
 }
