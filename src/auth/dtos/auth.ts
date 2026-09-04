@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import { IsEmail, IsNotEmpty, IsString } from "class-validator";
-=======
-import { IsEmail, IsNotEmpty, IsString } from "class-validator";
->>>>>>> feat/refresh-token
 
 export class SignUpDto {
     @IsNotEmpty()
