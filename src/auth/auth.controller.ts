@@ -1,5 +1,10 @@
 import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
-import { SignInDto, SignUpDto } from './dtos/auth';
+import {
+    ConfirmPasswordResetDto,
+    RequestPasswordResetDto,
+    SignInDto,
+    SignUpDto,
+} from './dtos/auth';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -21,10 +26,23 @@ export class AuthController {
         return this.authService.signIn(body);
     }
 
+    @ApiOperation({ summary: 'Gera um token para recuperação de senha' })
+    @Post('esqueci-senha')
+    async requestPasswordReset(@Body() body: RequestPasswordResetDto){
+        return this.authService.requestPasswordReset(body);
+    }
+
+    @ApiOperation({ summary: 'Altera a senha usando um token de recuperação' })
+    @Post('resetar-senha')
+    async confirmPasswordReset(@Body() body: ConfirmPasswordResetDto){
+        return this.authService.confirmPasswordReset(body);
+    }
+
     @ApiOperation({ summary: 'Endpoint para obter informações do usuário autenticado' })
     @UseGuards(AuthGuard)
     @Get('me')
     async me(@Request() request){
         return this.authService.me(request.user.sub);
     }
+
 }
