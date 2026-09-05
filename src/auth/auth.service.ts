@@ -2,9 +2,11 @@ import { HttpException, HttpStatus, Injectable, ServiceUnavailableException, Una
 import {
     ConfirmPasswordResetDto,
     RequestPasswordResetDto,
+    ResendEmailVerificationDto,
     ResetPasswordDto,
     SignInDto,
     SignUpDto,
+    VerifyEmailDto,
 } from './dtos/auth';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
@@ -18,7 +20,7 @@ type SessionMetadata = {
 };
 import { MailerService } from '@nestjs-modules/mailer';
 import { TipoUsuario } from '@prisma/client';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 
 @Injectable()
 export class AuthService {
@@ -61,9 +63,17 @@ export class AuthService {
             include: {
                 conta: true
             },
-        }) 
+        })
+
+        try {
+            await this.sendVerificationCode(user.conta);
+        } catch {
+            // Não bloqueia o cadastro caso o envio do e-mail de verificação falhe.
+            // O usuário pode solicitar um novo código pelo endpoint de reenvio.
+        }
+
         return this.gerarTokens(user, user.conta);
-    }    
+    }
 
     async signIn(data: SignInDto, metadata: SessionMetadata = {}){
         const lockoutStartedAt = new Date(
@@ -211,6 +221,136 @@ export class AuthService {
         });
 
         return { message: 'Password updated successfully' };
+    }
+
+    async verifyEmail(data: VerifyEmailDto){
+        const conta = await this.prismaService.conta.findUnique({
+            where: { email: data.email },
+        });
+
+        if(!conta){
+            throw new UnauthorizedException('Código de verificação inválido ou expirado');
+        }
+
+        if(conta.emailVerificado){
+            return { message: 'E-mail já verificado' };
+        }
+
+        const codeHash = createHash('sha256').update(data.code).digest('hex');
+
+        const verificationToken = await this.prismaService.tokenVerificacaoEmail.findFirst({
+            where: {
+                contaId: conta.id,
+                token: codeHash,
+                usadoEm: null,
+                expiraEm: { gt: new Date() },
+            },
+        });
+
+        if(!verificationToken){
+            throw new UnauthorizedException('Código de verificação inválido ou expirado');
+        }
+
+        const usadoEm = new Date();
+
+        await this.prismaService.$transaction(async (transaction) => {
+            const updatedToken = await transaction.tokenVerificacaoEmail.updateMany({
+                where: {
+                    id: verificationToken.id,
+                    usadoEm: null,
+                },
+                data: { usadoEm },
+            });
+
+            if(updatedToken.count !== 1){
+                throw new UnauthorizedException('Código de verificação inválido ou expirado');
+            }
+
+            await transaction.conta.update({
+                where: { id: conta.id },
+                data: { emailVerificado: true, emailVerificadoEm: usadoEm },
+            });
+        });
+
+        return { message: 'E-mail verificado com sucesso' };
+    }
+
+    async resendEmailVerification(data: ResendEmailVerificationDto){
+        const conta = await this.prismaService.conta.findUnique({
+            where: { email: data.email },
+        });
+
+        if(!conta){
+            throw new UnauthorizedException('Conta não encontrada');
+        }
+
+        if(conta.emailVerificado){
+            return { message: 'E-mail já verificado' };
+        }
+
+        const windowStartedAt = new Date(
+            Date.now() - this.emailVerificationResendWindowMinutes() * 60 * 1000,
+        );
+        const recentCodes = await this.prismaService.tokenVerificacaoEmail.count({
+            where: { contaId: conta.id, createdAt: { gte: windowStartedAt } },
+        });
+
+        if(recentCodes >= this.emailVerificationMaxResendAttempts()){
+            throw new HttpException(
+                'Muitas tentativas de reenvio. Tente novamente mais tarde.',
+                HttpStatus.TOO_MANY_REQUESTS,
+            );
+        }
+
+        await this.sendVerificationCode(conta);
+
+        return { message: 'Código de verificação reenviado com sucesso' };
+    }
+
+    private generateVerificationCode(){
+        return randomInt(0, 1_000_000).toString().padStart(6, '0');
+    }
+
+    private async sendVerificationCode(conta: { id: string; email: string }){
+        const code = this.generateVerificationCode();
+        const codeHash = createHash('sha256').update(code).digest('hex');
+        const expiraEm = new Date(
+            Date.now() + this.emailVerificationCodeExpiresMinutes() * 60 * 1000,
+        );
+
+        await this.prismaService.tokenVerificacaoEmail.create({
+            data: {
+                contaId: conta.id,
+                token: codeHash,
+                expiraEm,
+            },
+        });
+
+        try {
+            await this.mailerService.sendMail({
+                to: conta.email,
+                subject: 'Verificação de e-mail - Nutrify',
+                text: `Seu código de verificação é: ${code}. Ele expira em ${this.emailVerificationCodeExpiresMinutes()} minutos.`,
+                html: `<p>Seu código de verificação é:</p><p><strong>${code}</strong></p><p>Ele expira em ${this.emailVerificationCodeExpiresMinutes()} minutos.</p>`,
+            });
+        } catch {
+            await this.prismaService.tokenVerificacaoEmail.deleteMany({
+                where: { token: codeHash, usadoEm: null },
+            });
+            throw new ServiceUnavailableException('Não foi possível enviar o e-mail de verificação');
+        }
+    }
+
+    private emailVerificationCodeExpiresMinutes(){
+        return this.configService.get<number>('EMAIL_VERIFICATION_CODE_EXPIRES_MINUTES', 15);
+    }
+
+    private emailVerificationMaxResendAttempts(){
+        return this.configService.get<number>('EMAIL_VERIFICATION_MAX_RESEND_ATTEMPTS', 3);
+    }
+
+    private emailVerificationResendWindowMinutes(){
+        return this.configService.get<number>('EMAIL_VERIFICATION_RESEND_WINDOW_MINUTES', 15);
     }
 
     async me(userId: string){
