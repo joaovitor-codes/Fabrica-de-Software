@@ -74,7 +74,7 @@ export class AuthService {
         }
 
         if(!conta.ativo){
-            throw new UnauthorizedException("User is not active");
+            throw new UnauthorizedException("User is not active.");
         }
 
         const passwordMatch = await bcrypt.compare(data.password, conta.senhaHash);
