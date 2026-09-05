@@ -9,6 +9,8 @@ export const envValidationSchema = Joi.object({
     JWT_SECRET: Joi.string().min(32).required(),
     JWT_EXPIRES_IN: Joi.string().default('1h'),
     JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+    LOGIN_MAX_FAILED_ATTEMPTS: Joi.number().integer().min(1).default(5),
+    LOGIN_LOCKOUT_MINUTES: Joi.number().integer().min(1).default(15),
     SMTP_HOST: Joi.string().required(),
     SMTP_PORT: Joi.number().default(587),
     SMTP_SECURE: Joi.boolean().default(false),
