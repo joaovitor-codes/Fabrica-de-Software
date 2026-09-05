@@ -265,6 +265,39 @@ export class AuthService {
         return this.gerarTokens(session.conta.usuario, session.conta, metadata, session.id);
     }
 
+    async logout(refreshToken: string){
+        let payload: { sid?: string; tokenType?: string };
+        try {
+            payload = await this.jwtService.verifyAsync(refreshToken, {
+                secret: this.configService.get<string>('JWT_SECRET'),
+            });
+        } catch {
+            throw new UnauthorizedException('Refresh token inválido');
+        }
+
+        if (payload?.tokenType !== 'refresh' || !payload.sid) {
+            throw new UnauthorizedException('Refresh token inválido');
+        }
+
+        const session = await this.prismaService.sessao.findUnique({
+            where: { id: payload.sid },
+        });
+
+        if (!session || !(await bcrypt.compare(refreshToken, session.refreshTokenHash))) {
+            throw new UnauthorizedException('Refresh token inválido');
+        }
+
+        await this.prismaService.sessao.updateMany({
+            where: {
+                id: session.id,
+                revogadoEm: null,
+            },
+            data: { revogadoEm: new Date() },
+        });
+
+        return { message: 'Logout realizado com sucesso' };
+    }
+
     async resetPassword(userId: string, data: ResetPasswordDto){
         const user = await this.prismaService.usuario.findUnique({
             where: {

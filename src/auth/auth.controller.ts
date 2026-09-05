@@ -50,6 +50,13 @@ export class AuthController {
         return this.authService.refreshToken(body.refreshToken, this.sessionMetadata(request));
     }
 
+    @ApiOperation({ summary: 'Revoga a sessão associada ao refresh token' })
+    @ApiResponse({ status: 200, description: 'Sessão revogada com sucesso' })
+    @Post('logout')
+    async logout(@Body() body: RefreshTokenDto){
+        return this.authService.logout(body.refreshToken);
+    }
+
     private sessionMetadata(request: any){
         return {
             userAgent: request.headers['user-agent'],
