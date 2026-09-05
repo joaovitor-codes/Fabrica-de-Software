@@ -1,5 +1,13 @@
 import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
-import { ConfirmPasswordResetDto, RefreshTokenDto, RequestPasswordResetDto, SignInDto, SignUpDto } from './dtos/auth';
+import {
+    ConfirmPasswordResetDto,
+    RefreshTokenDto,
+    RequestPasswordResetDto,
+    ResendEmailVerificationDto,
+    SignInDto,
+    SignUpDto,
+    VerifyEmailDto,
+} from './dtos/auth';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -33,6 +41,20 @@ export class AuthController {
     @Post('resetar-senha')
     async confirmPasswordReset(@Body() body: ConfirmPasswordResetDto){
         return this.authService.confirmPasswordReset(body);
+    }
+
+    @ApiOperation({ summary: 'Confirma o e-mail do usuário usando o código de 6 dígitos enviado' })
+    @ApiResponse({ status: 200, description: 'E-mail verificado com sucesso' })
+    @Post('verificar-email')
+    async verifyEmail(@Body() body: VerifyEmailDto){
+        return this.authService.verifyEmail(body);
+    }
+
+    @ApiOperation({ summary: 'Reenvia o código de verificação de e-mail' })
+    @ApiResponse({ status: 200, description: 'Código de verificação reenviado com sucesso' })
+    @Post('reenviar-verificacao')
+    async resendEmailVerification(@Body() body: ResendEmailVerificationDto){
+        return this.authService.resendEmailVerification(body);
     }
 
     @ApiOperation({ summary: 'Endpoint para obter informações do usuário autenticado' })
