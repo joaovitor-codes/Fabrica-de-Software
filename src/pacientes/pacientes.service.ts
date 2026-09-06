@@ -38,6 +38,7 @@ export class PacientesService {
             include: {
                 usuario: true,
                 profissional: true,
+                restricoes: true,
             },
         });
         
@@ -58,6 +59,7 @@ export class PacientesService {
                 include: {
                     usuario: true,
                     profissional: true,
+                    restricoes:true,
                 },
             }),
             this.prismaService.paciente.count(),
@@ -106,4 +108,20 @@ export class PacientesService {
         }
     }
 
+    async findOne(pacienteId: string){
+        const paciente = await this.prismaService.paciente.findUnique({
+            where: {id: pacienteId},
+            include: {
+                usuario: true,
+                profissional: true,
+                restricoes: true,
+            }
+        })
+
+        if(!paciente){
+            throw new NotFoundException("Paciente não encontrado");
+        }
+
+        return paciente;
+    }
 }
