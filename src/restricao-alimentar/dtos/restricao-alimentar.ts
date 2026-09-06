@@ -6,11 +6,11 @@ export class CreateRestricaoAlimentarDto {
   @ApiProperty({ example: 'Lactose' })
   @IsString()
   @MaxLength(255)
-  nome: string;
+  nome!: string;
 
   @ApiProperty({ enum: TipoRestricao, example: TipoRestricao.intolerancia })
   @IsEnum(TipoRestricao)
-  tipo: TipoRestricao;
+  tipo!: TipoRestricao;
 
   @ApiPropertyOptional({ example: 'Intolerância à lactose presente em laticínios' })
   @IsOptional()
