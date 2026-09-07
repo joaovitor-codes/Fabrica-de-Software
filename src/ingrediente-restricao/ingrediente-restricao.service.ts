@@ -65,4 +65,8 @@ export class IngredienteRestricaoService {
       throw error;
     }
   }
+  
+  async regraDiabete(ingredienteId: string){
+    
+  }
 }

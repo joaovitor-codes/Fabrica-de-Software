@@ -2,10 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { IngredienteDTO } from './dto/ingrediente';
 import { UpdateIngredienteDto } from './dto/update-ingrediente.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { RegraNutricionalService } from '../ingrediente-restricao/regra-nutricional.service';
 
 @Injectable()
 export class IngredienteService {
-  constructor(private prismaService: PrismaService) {}
+  constructor(
+    private prismaService: PrismaService,
+    private readonly regraNutricionalService: RegraNutricionalService,
+  ) {}
 
   async alreadyExists(id: string) {
     const ingrediente = await this.prismaService.ingrediente.findUnique({
@@ -26,6 +30,8 @@ export class IngredienteService {
         fonteDados: data.fonteDados,
       },
     });
+
+    await this.regraNutricionalService.avaliarIngrediente(ingrediente.id);
 
     return { success: 'Ingrediente criado com sucesso.', data: ingrediente };
   }
@@ -58,6 +64,9 @@ export class IngredienteService {
       where: { id },
       data: updateIngredienteDto,
     });
+
+    await this.regraNutricionalService.avaliarIngrediente(id);
+
     return {
       success: 'Ingrediente atualizado com sucesso.',
       data: ingredienteUpdated,
