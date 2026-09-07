@@ -112,6 +112,30 @@ enum OrigemVinculoRestricao {
   @@map("origem_vinculo_restricao_enum")
 }
 
+// Campo nutricional de Ingrediente sobre o qual uma RestricaoRegraNutricional
+// pode operar. Fechado (não é domínio dinâmico) porque cada valor só faz
+// sentido se existir a coluna Decimal correspondente em Ingrediente — um
+// valor novo aqui sempre exige migration de qualquer forma.
+enum CampoNutricionalRegra {
+  calorias_kcal
+  proteinas_g
+  carboidratos_g
+  gorduras_g
+  fibras_g
+  sodio_mg
+
+  @@map("campo_nutricional_regra_enum")
+}
+
+enum OperadorRegraNutricional {
+  maior_que
+  maior_igual
+  menor_que
+  menor_igual
+
+  @@map("operador_regra_nutricional_enum")
+}
+
 enum NivelDificuldade {
   facil
   medio
@@ -291,15 +315,15 @@ model Conta {
 }
 
 model Usuario {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  contaId        String    @unique @map("conta_id") @db.Uuid
-  nome           String    @db.VarChar(255)
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contaId        String      @unique @map("conta_id") @db.Uuid
+  nome           String      @db.VarChar(255)
   tipoUsuario    TipoUsuario @map("tipo_usuario")
-  dataNascimento DateTime? @map("data_nascimento") @db.Date
-  fotoPerfilUrl  String?   @map("foto_perfil_url") @db.VarChar(500)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+  dataNascimento DateTime?   @map("data_nascimento") @db.Date
+  fotoPerfilUrl  String?     @map("foto_perfil_url") @db.VarChar(500)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz(6)
 
   conta Conta @relation("ContaUsuario", fields: [contaId], references: [id])
 
@@ -320,12 +344,12 @@ model Usuario {
   indicacoesFeitas        Indicacao[]             @relation("IndicacaoIndicador")
   indicacoesRecebidas     Indicacao[]             @relation("IndicacaoIndicado")
 
-  @@index([tipoUsuario])
-  @@map("usuarios")
-
   // NOTA (consistência polimórfica, ver documentação): nada aqui impede
   // um Usuario tipoUsuario = "comum" de também ter linha em Profissional.
   // Precisa de trigger SQL manual na migration, igual no modelo anterior.
+
+  @@index([tipoUsuario])
+  @@map("usuarios")
 }
 
 // ============================================================
@@ -396,13 +420,13 @@ model Endereco {
 // ============================================================
 
 model Clinica {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nome      String    @db.VarChar(255)
-  cnpj      String?   @unique @db.VarChar(20)
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome      String       @db.VarChar(255)
+  cnpj      String?      @unique @db.VarChar(20)
   porte     PorteClinica @default(pequeno)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
   // telefone/endereco removidos daqui — ver Telefone/Endereco (refatoração 2)
   telefones     Telefone[]
@@ -413,22 +437,22 @@ model Clinica {
 }
 
 model Profissional {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuarioId            String    @unique @map("usuario_id") @db.Uuid
-  clinicaId            String?   @map("clinica_id") @db.Uuid
-  registroProfissional String    @map("registro_profissional") @db.VarChar(50)
-  especialidade        String?   @db.VarChar(255)
-  bio                  String?   @db.Text
-  pontosIncentivo      Int       @default(0) @map("pontos_incentivo")
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId            String          @unique @map("usuario_id") @db.Uuid
+  clinicaId            String?         @map("clinica_id") @db.Uuid
+  registroProfissional String          @map("registro_profissional") @db.VarChar(50)
+  especialidade        String?         @db.VarChar(255)
+  bio                  String?         @db.Text
+  pontosIncentivo      Int             @default(0) @map("pontos_incentivo")
   statusAprovacao      StatusAprovacao @default(pendente) @map("status_aprovacao")
-  aprovadoPor          String?   @map("aprovado_por") @db.Uuid
-  aprovadoEm           DateTime? @map("aprovado_em") @db.Timestamptz(6)
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  aprovadoPor          String?         @map("aprovado_por") @db.Uuid
+  aprovadoEm           DateTime?       @map("aprovado_em") @db.Timestamptz(6)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  usuario            Usuario    @relation("UsuarioProfissional", fields: [usuarioId], references: [id])
-  clinica            Clinica?   @relation(fields: [clinicaId], references: [id])
-  aprovadoPorUsuario Usuario?   @relation("ProfissionalAprovadoPor", fields: [aprovadoPor], references: [id])
+  usuario            Usuario           @relation("UsuarioProfissional", fields: [usuarioId], references: [id])
+  clinica            Clinica?          @relation(fields: [clinicaId], references: [id])
+  aprovadoPorUsuario Usuario?          @relation("ProfissionalAprovadoPor", fields: [aprovadoPor], references: [id])
   pacientes          Paciente[]
   receitasAprovadas  Receita[]         @relation("ReceitaAprovador")
   pontosTransacoes   PontosTransacao[]
@@ -578,17 +602,17 @@ model PacienteRestricao {
 }
 
 model Ingrediente {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nome                String   @db.VarChar(255)
-  fonteDados          String?  @map("fonte_dados") @db.VarChar(100)
-  codigoFonteExterno  String?  @unique @map("codigo_fonte_externo") @db.VarChar(50)
-  caloriasKcal        Decimal? @map("calorias_kcal") @db.Decimal(8, 2)
-  proteinasG          Decimal? @map("proteinas_g") @db.Decimal(8, 2)
-  carboidratosG       Decimal? @map("carboidratos_g") @db.Decimal(8, 2)
-  gordurasG           Decimal? @map("gorduras_g") @db.Decimal(8, 2)
-  fibrasG             Decimal? @map("fibras_g") @db.Decimal(8, 2)
-  sodioMg             Decimal? @map("sodio_mg") @db.Decimal(8, 2)
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome               String   @db.VarChar(255)
+  fonteDados         String?  @map("fonte_dados") @db.VarChar(100)
+  codigoFonteExterno String?  @unique @map("codigo_fonte_externo") @db.VarChar(50)
+  caloriasKcal       Decimal? @map("calorias_kcal") @db.Decimal(8, 2)
+  proteinasG         Decimal? @map("proteinas_g") @db.Decimal(8, 2)
+  carboidratosG      Decimal? @map("carboidratos_g") @db.Decimal(8, 2)
+  gordurasG          Decimal? @map("gorduras_g") @db.Decimal(8, 2)
+  fibrasG            Decimal? @map("fibras_g") @db.Decimal(8, 2)
+  sodioMg            Decimal? @map("sodio_mg") @db.Decimal(8, 2)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   restricoes IngredienteRestricao[]
   receitas   ReceitaIngrediente[]
@@ -635,13 +659,13 @@ model IngredienteRestricao {
 // automação. Nenhum job deve gerar vínculo automático a partir de
 // uma regra com valorLimite null.
 model RestricaoRegraNutricional {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  restricaoId       String   @map("restricao_id") @db.Uuid
-  campoNutricional  String   @map("campo_nutricional") @db.VarChar(50)
-  operador          String   @db.VarChar(2)
-  valorLimite       Decimal? @map("valor_limite") @db.Decimal(8, 2)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restricaoId      String                   @map("restricao_id") @db.Uuid
+  campoNutricional CampoNutricionalRegra    @map("campo_nutricional")
+  operador         OperadorRegraNutricional
+  valorLimite      Decimal?                 @map("valor_limite") @db.Decimal(8, 2)
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restricao RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
 
@@ -716,9 +740,9 @@ model Receita {
   midias                ReceitaMidia[]
   ingredientes          ReceitaIngrediente[]
   pontosTransacoes      PontosTransacao[]
-  favoritos              Favorito[]
-  planoAlimentarItens    PlanoAlimentarItem[]
-  notificacoes           Notificacao[]
+  favoritos             Favorito[]
+  planoAlimentarItens   PlanoAlimentarItem[]
+  notificacoes          Notificacao[]
 
   @@index([status])
   @@index([criadoPor])
@@ -1100,16 +1124,16 @@ model CampanhaPublicitaria {
 // ============================================================
 
 model Notificacao {
-  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuarioId         String  @map("usuario_id") @db.Uuid
-  tipoNotificacaoId String  @map("tipo_notificacao_id") @db.Uuid
+  id                String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId         String @map("usuario_id") @db.Uuid
+  tipoNotificacaoId String @map("tipo_notificacao_id") @db.Uuid
 
   // Exclusive arc — ver nota da CHECK constraint acima
   receitaId            String? @map("receita_id") @db.Uuid
-  assinaturaId          String? @map("assinatura_id") @db.Uuid
-  planoAlimentarItemId  String? @map("plano_alimentar_item_id") @db.Uuid
-  indicacaoId           String? @map("indicacao_id") @db.Uuid
-  anamneseId            String? @map("anamnese_id") @db.Uuid
+  assinaturaId         String? @map("assinatura_id") @db.Uuid
+  planoAlimentarItemId String? @map("plano_alimentar_item_id") @db.Uuid
+  indicacaoId          String? @map("indicacao_id") @db.Uuid
+  anamneseId           String? @map("anamnese_id") @db.Uuid
 
   titulo    String    @db.VarChar(255)
   mensagem  String?   @db.Text
