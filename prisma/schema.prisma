@@ -1,27 +1,45 @@
 // ============================================================
-// NUTRIFY - schema.prisma (v3 - arquitetura refatorada)
+// NUTRIFY - schema.prisma (v4 - vínculo ingrediente x restrição)
 //
-// Este arquivo aplica 5 refatorações arquiteturais sobre o modelo
-// anterior. Cada uma está documentada no bloco de comentário do(s)
-// model(s) que ela afeta. Resumo:
+// Este arquivo aplica, sobre a v3, as decisões da discussão sobre
+// curadoria de vínculo Ingrediente x RestricaoAlimentar:
 //
-//   1. Separation of Concerns: Conta (autenticação) x Usuario (perfil/negócio)
-//   2. Normalização de contato/localização: Telefone e Endereco em 1:N
-//   3. Enums voláteis viram Lookup Tables: UnidadeMedida, TipoNotificacao
-//   4. Notificacao: polimorfismo leve trocado por Exclusive Arc (FKs reais)
-//   5. Índice extra em ReceitaVersao para consultas só por receitaId
+//   1. IngredienteRestricao ganha o campo `origem`, pra distinguir
+//      vínculo curado manualmente de vínculo gerado por regra
+//      nutricional automática. Sem isso, uma recomputação de regra
+//      (ex: ajuste no limiar de sódio da hipertensão) poderia
+//      sobrescrever silenciosamente uma decisão manual de curador.
+//   2. Nova tabela RestricaoRegraNutricional: guarda o limiar
+//      numérico de doenças crônicas cujo vínculo é derivável de campo
+//      nutricional já existente em Ingrediente (ex: hipertensão via
+//      sodioMg). Fica ligada à RestricaoAlimentar, não ao Ingrediente
+//      nem ao IngredienteRestricao — o limiar é uma propriedade da
+//      restrição em si, não de cada vínculo individual, então não
+//      duplica por ingrediente e pode ser ajustado num lugar só.
+//   3. Fora do schema, por decisão explícita: sem tabela de staging
+//      de candidatos e sem tabela de dicionário de palavras-chave.
+//      A importação da TACO e a geração inicial de vínculos por
+//      palavra-chave/regra nutricional rodam como script único
+//      (bootstrap), não como feature em produção. O único endpoint
+//      de manutenção necessário é o CRUD individual já previsto
+//      (POST/GET/DELETE em /api/ingrediente/:id/restricoes).
 //
-// Requisitos:
-// - PostgreSQL 15+ (gen_random_uuid() nativo). Em versões anteriores,
-//   habilitar a extensão antes da primeira migration:
-//     CREATE EXTENSION IF NOT EXISTS pgcrypto;
-// - DATABASE_URL configurada no .env
+// Decisões de conteúdo (não de schema) tomadas na mesma discussão,
+// registradas aqui só como referência, sem afetar a modelagem:
+//   - Fonte da TACO: PDF oficial NEPA/UNICAMP, 4ª edição (2011),
+//     ~597 alimentos, espelhado pelo CFN.
+//   - Tratamento de valores especiais da TACO na importação:
+//     "NA" e "*" (não analisado/não disponível) -> null;
+//     "Tr" (traço) -> 0. Regra de limiar nunca trata sódio/carboidrato
+//     null como "abaixo do limiar" — cai em revisão humana.
+//   - Limiar de sódio (hipertensão): 600mg/100g, RDC 429/2020 ANVISA.
+//   - Limiar de carboidrato (diabetes): em aberto, depende de
+//     validação clínica/nutricionista — RestricaoRegraNutricional já
+//     suporta a linha, só falta preencher valorLimite quando decidido.
+//   - Doenças renais/gota: fora de escopo por enquanto, faltam campos
+//     nutricionais (potássio, fósforo, purinas) em Ingrediente.
 //
-// Observações que continuam valendo do modelo anterior:
-// - Soft delete (deletedAt) não é automático no Prisma — precisa de
-//   Client Extension interceptando delete/findMany.
-// - A consistência polimórfica de Usuario (tipoUsuario vs. existência de
-//   linha em Profissional/Paciente) precisa de trigger SQL manual.
+// Tudo mais abaixo é idêntico à v3.
 // ============================================================
 
 generator client {
@@ -81,6 +99,17 @@ enum Gravidade {
   grave
 
   @@map("gravidade_enum")
+}
+
+// Origem do vínculo Ingrediente x RestricaoAlimentar. Necessário pra
+// automação de doença crônica (via RestricaoRegraNutricional) nunca
+// sobrescrever silenciosamente uma decisão de curadoria manual.
+enum OrigemVinculoRestricao {
+  manual
+  automatico_regra_nutricional
+  automatico_confirmado_curadoria
+
+  @@map("origem_vinculo_restricao_enum")
 }
 
 enum NivelDificuldade {
@@ -509,6 +538,14 @@ model TentativaLogin {
 
 // ============================================================
 // 5. RESTRIÇÕES ALIMENTARES E DADOS NUTRICIONAIS
+//
+// Vínculo Ingrediente x RestricaoAlimentar (v4): a TACO não carrega
+// classificação de alergênico/restrição — é curadoria humana, sempre.
+// Doença crônica com regra numérica (ex: hipertensão via sódio) é a
+// única exceção onde o vínculo pode ser gerado automaticamente, e só
+// quando o dado nutricional de origem não é nulo (ver
+// RestricaoRegraNutricional abaixo e o campo `origem` em
+// IngredienteRestricao).
 // ============================================================
 
 model RestricaoAlimentar {
@@ -521,6 +558,7 @@ model RestricaoAlimentar {
   pacientes              PacienteRestricao[]
   ingredientes           IngredienteRestricao[]
   campanhasPublicitarias CampanhaPublicitaria[]
+  regrasNutricionais     RestricaoRegraNutricional[]
 
   @@map("restricoes_alimentares")
 }
@@ -540,16 +578,17 @@ model PacienteRestricao {
 }
 
 model Ingrediente {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nome          String   @db.VarChar(255)
-  fonteDados    String?  @map("fonte_dados") @db.VarChar(100)
-  caloriasKcal  Decimal? @map("calorias_kcal") @db.Decimal(8, 2)
-  proteinasG    Decimal? @map("proteinas_g") @db.Decimal(8, 2)
-  carboidratosG Decimal? @map("carboidratos_g") @db.Decimal(8, 2)
-  gordurasG     Decimal? @map("gorduras_g") @db.Decimal(8, 2)
-  fibrasG       Decimal? @map("fibras_g") @db.Decimal(8, 2)
-  sodioMg       Decimal? @map("sodio_mg") @db.Decimal(8, 2)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                String   @db.VarChar(255)
+  fonteDados          String?  @map("fonte_dados") @db.VarChar(100)
+  codigoFonteExterno  String?  @unique @map("codigo_fonte_externo") @db.VarChar(50)
+  caloriasKcal        Decimal? @map("calorias_kcal") @db.Decimal(8, 2)
+  proteinasG          Decimal? @map("proteinas_g") @db.Decimal(8, 2)
+  carboidratosG       Decimal? @map("carboidratos_g") @db.Decimal(8, 2)
+  gordurasG           Decimal? @map("gorduras_g") @db.Decimal(8, 2)
+  fibrasG             Decimal? @map("fibras_g") @db.Decimal(8, 2)
+  sodioMg             Decimal? @map("sodio_mg") @db.Decimal(8, 2)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   restricoes IngredienteRestricao[]
   receitas   ReceitaIngrediente[]
@@ -559,14 +598,55 @@ model Ingrediente {
 }
 
 model IngredienteRestricao {
-  ingredienteId String @map("ingrediente_id") @db.Uuid
-  restricaoId   String @map("restricao_id") @db.Uuid
+  ingredienteId String                 @map("ingrediente_id") @db.Uuid
+  restricaoId   String                 @map("restricao_id") @db.Uuid
+  // v4: distingue vínculo curado manualmente de vínculo gerado por
+  // RestricaoRegraNutricional. Sem isso, recomputar uma regra (ex:
+  // ajustar o limiar de sódio) poderia sobrescrever uma decisão manual
+  // de curador sem ninguém perceber. Default `manual` porque todo
+  // vínculo pré-v4 e todo vínculo criado via API (POST individual) é
+  // curadoria humana; só o script de bootstrap grava os outros dois
+  // valores explicitamente.
+  origem        OrigemVinculoRestricao @default(manual)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
 
   ingrediente Ingrediente        @relation(fields: [ingredienteId], references: [id])
   restricao   RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
 
   @@id([ingredienteId, restricaoId])
   @@map("ingrediente_restricoes")
+}
+
+// v4: limiar numérico de doença crônica, ligado à restrição — não ao
+// ingrediente nem ao vínculo. Uma linha por regra (ex: hipertensão x
+// sódio). Ajustar o limiar é um UPDATE aqui, não uma reescrita de
+// centenas de linhas de IngredienteRestricao.
+//
+// campoNutricional referencia um campo de Ingrediente pelo nome
+// (ex: "sodioMg") ou uma expressão derivada conhecida pela aplicação
+// (ex: "carboidratoLiquido" = carboidratosG - fibrasG, usado por
+// diabetes). Validação de que o campo existe é responsabilidade da
+// aplicação, não do banco — mesmo padrão de trade-off já aceito nas
+// lookup tables (UnidadeMedida/TipoNotificacao) mais abaixo.
+//
+// valorLimite pode ficar null: a linha existe (a restrição já está
+// marcada como "tem regra baseada em nutriente"), mas o número em si
+// aguarda validação clínica/nutricionista antes de ativar a
+// automação. Nenhum job deve gerar vínculo automático a partir de
+// uma regra com valorLimite null.
+model RestricaoRegraNutricional {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restricaoId       String   @map("restricao_id") @db.Uuid
+  campoNutricional  String   @map("campo_nutricional") @db.VarChar(50)
+  operador          String   @db.VarChar(2)
+  valorLimite       Decimal? @map("valor_limite") @db.Decimal(8, 2)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restricao RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
+
+  @@index([restricaoId])
+  @@map("restricao_regras_nutricionais")
 }
 
 // ============================================================

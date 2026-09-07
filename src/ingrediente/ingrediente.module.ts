@@ -5,5 +5,6 @@ import { IngredienteController } from './ingrediente.controller';
 @Module({
   controllers: [IngredienteController],
   providers: [IngredienteService],
+  exports: [IngredienteService]
 })
 export class IngredienteModule {}
