@@ -15,6 +15,8 @@ import { EnderecoModule } from './endereco/endereco.module';
 import { TelefoneModule } from './telefone/telefone.module';
 import { MailerModuleEmail } from './lib/mailer.module';
 import { RestricaoAlimentarModule } from './restricao-alimentar/restricao-alimentar.module';
+import { PacienteRestricaoModule } from './paciente-restricao/paciente-restricao.module';
+import { IngredienteRestricaoModule } from './ingrediente-restricao/ingrediente-restricao.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { RestricaoAlimentarModule } from './restricao-alimentar/restricao-alimen
     TelefoneModule,
     MailerModuleEmail,
     RestricaoAlimentarModule,
+    PacienteRestricaoModule,
+    IngredienteRestricaoModule,
   ],
   controllers: [],
   providers: [PrismaService],

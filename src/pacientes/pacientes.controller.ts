@@ -27,7 +27,15 @@ export class PacientesController {
     @Roles(TipoUsuario.admin)
     @Get(':id')
     async findOne(@Param('id') id: string) {
-        return this.pacientesService.getPacienteByUserId(id);
+        return this.pacientesService.findOne(id);
+    }
+
+    @ApiOperation({ summary: 'Obtém as informações de um paciente específico pelo Id do Usuario' })
+    @ApiOkResponse({ description: 'Informações de um paciente.' })
+    @Roles(TipoUsuario.admin)
+    @Get(':userId')
+    async findByUserId(@Param('userId') userId: string) {
+        return this.pacientesService.getPacienteByUserId(userId);
     }
 
     @ApiOperation({ summary: 'Obtém uma lista paginada de pacientes' })
