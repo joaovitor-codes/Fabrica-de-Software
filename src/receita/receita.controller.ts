@@ -158,6 +158,14 @@ export class ReceitaController {
     return await this.receitaService.update(id, receita);
   }
 
+  @ApiOperation({ summary: 'Aprova uma receita pelo ID' })
+  @ApiOkResponse({ description: 'Receita aprovada com sucesso.' })
+  @UseGuards(AuthGuard)
+  @Patch(':id/aprovar')
+  async aprovarReceita(@Param('id') id: string, @Request() request) {
+    return await this.receitaService.aprovarReceita(id, request.user.sub);
+  }
+
   @ApiOperation({ summary: 'Remove uma receita pelo ID' })
   @ApiOkResponse({ description: 'Receita removida com sucesso.' })
   @UseGuards(AuthGuard)

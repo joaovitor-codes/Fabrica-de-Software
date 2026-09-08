@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { unlink } from 'fs/promises';
-import { TipoMidia } from '@prisma/client';
+import { StatusAprovacao, TipoMidia, TipoTransacaoPontos } from '@prisma/client';
 import { ReceitaDto } from './dto/receita';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateReceitaDto } from './dto/update.receita';
@@ -235,6 +237,55 @@ export class ReceitaService {
       },
     });
     return { success: 'Receita atualizada com sucesso.', data: receita };
+  }
+
+  async aprovarReceita(id: string, usuarioId: string) {
+    const profissional = await this.prismaService.profissional.findUnique({
+      where: { usuarioId },
+    });
+
+    if (!profissional) {
+      throw new NotFoundException('Você ainda não possui cadastro profissional');
+    }
+
+    if (profissional.statusAprovacao !== StatusAprovacao.aprovado) {
+      throw new UnauthorizedException(
+        'Apenas profissionais aprovados podem realizar esta ação',
+      );
+    }
+
+    return this.prismaService.$transaction(async (tx) => {
+      const receita = await tx.receita.findUnique({ where: { id } });
+
+      if (!receita) {
+        throw new NotFoundException('Receita não encontrada');
+      }
+
+      if (receita.status === 'aprovada') {
+        throw new ConflictException('A receita já foi aprovada');
+      }
+
+      const receitaAprovada = await tx.receita.update({
+        where: { id },
+        data: {
+          status: 'aprovada',
+          profissionalAprovadorId: profissional.id,
+          dataAprovacao: new Date(),
+        },
+      });
+
+      await tx.pontosTransacao.create({
+        data: {
+          profissionalId: profissional.id,
+          receitaId: receita.id,
+          pontos: 10,
+          tipo: TipoTransacaoPontos.ganho_aprovacao,
+          descricao: 'Pontos por aprovação de receita',
+        },
+      });
+
+      return { success: 'Receita aprovada com sucesso.', data: receitaAprovada };
+    });
   }
 
   async remove(id: string) {
