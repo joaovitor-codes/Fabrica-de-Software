@@ -1,10 +1,46 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Request, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Delete,
+  Body,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Request,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { join } from 'path';
+import { randomUUID } from 'crypto';
+import { mkdirSync } from 'fs';
 import { ReceitaService } from './receita.service';
 import { ReceitaDto } from './dto/receita';
 import { AuthGuard } from '../auth/auth.guard';
 import { UpdateReceitaDto } from './dto/update.receita';
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
 import { IngredienteDTO } from '../ingrediente/dto/ingrediente';
+import { TipoMidia } from '@prisma/client';
+
+const uploadDirectory = join(process.cwd(), 'uploads', 'receitas');
+const receitaStorage = diskStorage({
+  destination: (_req, file, callback) => {
+    const subdirectory = file.fieldname === 'image' ? 'images' : 'videos';
+    const destination = join(uploadDirectory, subdirectory);
+    mkdirSync(destination, { recursive: true });
+    callback(null, destination);
+  },
+  filename: (_req, file, callback) => {
+    callback(null, `${randomUUID()}-${Date.now()}-${file.originalname}`);
+  },
+});
 
 @Controller('api/receita')
 export class ReceitaController {
@@ -20,6 +56,31 @@ export class ReceitaController {
     @Body('ingredientes') ingredientes: IngredienteDTO[],
   ) {
     return await this.receitaService.create(receita, req.user.sub);
+  }
+
+  @ApiOperation({ summary: 'Envia uma mídia para uma receita' })
+  @ApiCreatedResponse({ description: 'Mídia enviada com sucesso.' })
+  @UseGuards(AuthGuard)
+  @Post(':id/midias')
+  @UseInterceptors(FileFieldsInterceptor(
+    [
+      { name: 'image', maxCount: 1 },
+      { name: 'video', maxCount: 1 },
+    ],
+    { storage: receitaStorage },
+  ))
+  async uploadMedia(
+    @Param('id') id: string,
+    @UploadedFiles()
+    files: { image?: Express.Multer.File[], video?: Express.Multer.File[] },
+    @Body('tipo') tipo: TipoMidia,
+    @Body('ordem') ordem = 0,
+  ) {
+    const file = files.image?.[0] ?? files.video?.[0];
+    if(!file) {
+      throw new BadRequestException('file is required');
+    }
+    return await this.receitaService.uploadMedia(id, file, tipo, Number(ordem));
   }
 
   @ApiOperation({ summary: 'Retorna todas as receitas' })

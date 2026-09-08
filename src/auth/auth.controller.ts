@@ -11,6 +11,7 @@ import {
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -23,6 +24,7 @@ export class AuthController {
         return this.authService.signUp(body);
     }
     
+    @Throttle({ default: { ttl: 900_000, limit: 5 } })
     @ApiOperation({ summary: 'Endpoint para fazer login' })
     @Post('signin')
     async signin(@Body() body: SignInDto, @Request() request){

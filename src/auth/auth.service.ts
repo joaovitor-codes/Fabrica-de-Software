@@ -76,21 +76,6 @@ export class AuthService {
     }
 
     async signIn(data: SignInDto, metadata: SessionMetadata = {}){
-        const lockoutStartedAt = new Date(
-            Date.now() - this.loginLockoutMinutes() * 60 * 1000,
-        );
-        const failedAttempts = await this.prismaService.tentativaLogin.count({
-            where: {
-                emailTentado: data.email,
-                sucesso: false,
-                createdAt: { gte: lockoutStartedAt },
-            },
-        });
-
-        if (failedAttempts >= this.loginMaxFailedAttempts()) {
-            throw new HttpException('Login temporariamente bloqueado', HttpStatus.TOO_MANY_REQUESTS);
-        }
-
         const conta = await this.prismaService.conta.findUnique({
             where: {
                 email: data.email
@@ -101,50 +86,22 @@ export class AuthService {
         });
 
         if(!conta || !conta.usuario){
-            await this.registrarTentativaLogin(data.email, false, metadata);
             throw new UnauthorizedException("credentials are not valid");
         }
 
         if(!conta.ativo){
-            await this.registrarTentativaLogin(data.email, false, metadata, conta.id);
             throw new UnauthorizedException("User is not active.");
         }
 
         const passwordMatch = await bcrypt.compare(data.password, conta.senhaHash);
 
         if(!passwordMatch){
-            await this.registrarTentativaLogin(data.email, false, metadata, conta.id);
             throw new UnauthorizedException("credentials are not valid");
         }
 
-        await this.registrarTentativaLogin(data.email, true, metadata, conta.id);
         return this.gerarTokens(conta.usuario, conta, metadata);
     }
-
-    private loginMaxFailedAttempts(){
-        return this.configService.get<number>('LOGIN_MAX_FAILED_ATTEMPTS', 5);
-    }
-
-    private loginLockoutMinutes(){
-        return this.configService.get<number>('LOGIN_LOCKOUT_MINUTES', 15);
-    }
-
-    private registrarTentativaLogin(
-        email: string,
-        sucesso: boolean,
-        metadata: SessionMetadata,
-        contaId?: string,
-    ){
-        return this.prismaService.tentativaLogin.create({
-            data: {
-                emailTentado: email,
-                sucesso,
-                ipAddress: metadata.ipAddress,
-                contaId,
-            },
-        });
-    }
-
+    
     async requestPasswordReset(data: RequestPasswordResetDto){
         const conta = await this.prismaService.conta.findUnique({
             where: { email: data.email },
