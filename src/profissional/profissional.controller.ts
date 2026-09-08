@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards, Request, Query, Param, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards, Request, Query, Param, BadRequestException, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiCreatedResponse } from '@nestjs/swagger';
 import { RolesGuard } from '../auth/roles.guard';
 import { AuthGuard } from '../auth/auth.guard';
@@ -56,7 +56,7 @@ export class ProfissionalController {
   @ApiResponse({ description: 'Retorna a lista de solicitações pendentes de profissionais.' })
   @Roles(TipoUsuario.admin)
   @Get('pendentes')
-  async listarPendentes(@Query('page') page = 1, @Query('limit') limit = 10) {
+  async listarPendentes(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number, @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number) {
     return this.profissionalService.listarProfissionaisPendentes(page, limit);
   }
 

@@ -51,6 +51,9 @@ export class IngredienteService {
     }
     const ingrediente = await this.prismaService.ingrediente.findUnique({
       where: { id },
+      include: {
+        restricoes: true
+      }
     });
     return ingrediente;
   }
