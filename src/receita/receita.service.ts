@@ -1,4 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { unlink } from 'fs/promises';
+import { TipoMidia } from '@prisma/client';
 import { ReceitaDto } from './dto/receita';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateReceitaDto } from './dto/update.receita';
@@ -46,6 +52,77 @@ export class ReceitaService {
     return { success: 'Receita criada com sucesso.', data: receita };
   }
 
+  async uploadMedia(
+  id: string,
+  file: Express.Multer.File,
+  tipo: TipoMidia,
+  ordem: number,
+) {
+  if (!file) {
+    throw new BadRequestException('file is required');
+  }
+
+  const allowedMimeTypes = [
+    'image/jpeg',
+    'image/png',
+    'video/mp4',
+  ];
+
+  if (!allowedMimeTypes.includes(file.mimetype)) {
+    await unlink(file.path).catch(() => undefined);
+
+    throw new BadRequestException('invalid file type');
+  }
+
+  const maxSize = 5 * 1024 * 1024;
+
+  if (file.size > maxSize) {
+    await unlink(file.path).catch(() => undefined);
+
+    throw new BadRequestException('file is too large!');
+  }
+
+  const receitaExists = await this.alreadyExists(id);
+
+  if (!receitaExists) {
+    await unlink(file.path).catch(() => undefined);
+
+    throw new NotFoundException('Receita não encontrada');
+  }
+
+  let folder: string;
+
+  if (file.fieldname === 'image') {
+    folder = 'images';
+  } else if (file.fieldname === 'video') {
+    folder = 'videos';
+  } else {
+    await unlink(file.path).catch(() => undefined);
+
+    throw new BadRequestException('Invalid file field');
+  }
+
+  try {
+    const midia = await this.prismaService.receitaMidia.create({
+      data: {
+        receitaId: id,
+        url: `/uploads/receitas/${folder}/${file.filename}`,
+        tipo,
+        ordem,
+      },
+    });
+
+    return {
+      success: 'Mídia enviada com sucesso.',
+      data: midia,
+    };
+  } catch (error) {
+    await unlink(file.path).catch(() => undefined);
+
+    throw error;
+  }
+}
+
   async findAll() {
     const receitas = await this.prismaService.receita.findMany({});
     if (!receitas || receitas.length === 0) {
@@ -69,6 +146,7 @@ export class ReceitaService {
             unidadeMedida: true,
           },
         },
+        midias: true,
       },
     });
     return receita;
