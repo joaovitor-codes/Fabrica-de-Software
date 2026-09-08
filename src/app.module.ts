@@ -17,9 +17,18 @@ import { MailerModuleEmail } from './lib/mailer.module';
 import { RestricaoAlimentarModule } from './restricao-alimentar/restricao-alimentar.module';
 import { PacienteRestricaoModule } from './paciente-restricao/paciente-restricao.module';
 import { IngredienteRestricaoModule } from './ingrediente-restricao/ingrediente-restricao.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot({
+      throttlers: [{
+        name: 'default',
+        ttl: 60_000,
+        limit: 10,
+      }]
+    }),
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: envValidationSchema,
@@ -44,6 +53,9 @@ import { IngredienteRestricaoModule } from './ingrediente-restricao/ingrediente-
     IngredienteRestricaoModule,
   ],
   controllers: [],
-  providers: [PrismaService],
+  providers: [PrismaService, {
+    provide: APP_GUARD,
+    useClass: ThrottlerGuard,
+  }],
 })
 export class AppModule {}
