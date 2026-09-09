@@ -288,6 +288,37 @@ export class ReceitaService {
     });
   }
 
+  async rejeitarReceita(id: string, usuarioId: string) {
+    const profissional = await this.prismaService.profissional.findUnique({
+      where: { usuarioId },
+    });
+    
+    if (!profissional) {
+      throw new NotFoundException('Você ainda não possui cadastro profissional');
+    }
+
+    return this.prismaService.$transaction(async (tx) => {
+      const receita = await tx.receita.findUnique({ where: { id } });
+
+      if (!receita) {
+        throw new NotFoundException('Receita não encontrada');
+      }
+
+      if (receita.status === 'rejeitada') {
+        throw new ConflictException('A receita já foi rejeitada');
+      }
+
+      const receitaRejeitada = await tx.receita.update({
+        where: { id },
+        data: {
+          status: 'rejeitada',
+        },
+      });
+
+      return { success: 'Receita rejeitada com sucesso.', data: receitaRejeitada };
+    });
+  }
+
   async remove(id: string) {
     const receitaExists = await this.alreadyExists(id);
     if (!receitaExists) {
