@@ -4,10 +4,15 @@ import { CreateUsuarioDto, UpdateUsuarioDto } from './dtos/usuario';
 import * as bcrypt from 'bcrypt';
 import { TipoUsuario } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
+import { CacheService } from '../cache/cache.service';
 
 @Injectable()
 export class UsuarioService {
-    constructor(private prismaService: PrismaService, private jwtService: JwtService){}
+    constructor(
+        private prismaService: PrismaService,
+        private jwtService: JwtService,
+        private cacheService: CacheService
+    ){}
 
     async create(data: CreateUsuarioDto){
         const hashedPassword = await bcrypt.hash(data.password, 10);
@@ -85,7 +90,7 @@ export class UsuarioService {
             throw new UnauthorizedException('Usuario está desativado');
         }
 
-        return this.prismaService.usuario.update({
+        const updatedUser = await this.prismaService.usuario.update({
             where: { id },
             data: {
                 ...updateUsuarioDto,
@@ -94,6 +99,9 @@ export class UsuarioService {
                     : undefined,
             }
         });
+
+        await this.cacheService.del(`auth:me:${id}`);
+        return updatedUser;
     }
 
     async updateByAdmin(id: string, updateUsuarioDto: UpdateUsuarioDto){
@@ -105,7 +113,7 @@ export class UsuarioService {
             throw new NotFoundException('Usuario não encontrado');
         }
         
-        return this.prismaService.usuario.update({
+        const updatedUser = await this.prismaService.usuario.update({
             where: { id },
             data: {
                 ...updateUsuarioDto,
@@ -114,6 +122,9 @@ export class UsuarioService {
                     : undefined,
             }
         });
+
+        await this.cacheService.del(`auth:me:${id}`);
+        return updatedUser;
     }
 
     async remove(id: string){
@@ -125,9 +136,12 @@ export class UsuarioService {
             throw new NotFoundException('Usuario não encontrado');
         }
 
-        return this.prismaService.usuario.delete({
+        const deletedUser = await this.prismaService.usuario.delete({
             where: { id }
         });
+
+        await this.cacheService.del(`auth:me:${id}`);
+        return deletedUser;
     }
 
     async desativar(id: string){
@@ -139,12 +153,15 @@ export class UsuarioService {
             throw new NotFoundException('Usuario não encontrado');
         }
         
-        return this.prismaService.conta.update({
+        const updatedAccount = await this.prismaService.conta.update({
             where: { id: usuario.contaId },
             data: {
                 ativo: false
             }
         });
+
+        await this.cacheService.del(`auth:me:${id}`);
+        return updatedAccount;
     }
 
     async ativar(id: string){
@@ -156,12 +173,15 @@ export class UsuarioService {
             throw new NotFoundException('Usuario não encontrado');
         }
         
-        return this.prismaService.conta.update({
+        const updatedAccount = await this.prismaService.conta.update({
             where: { id: usuario.contaId },
             data: {
                 ativo: true
             }
         });
+
+        await this.cacheService.del(`auth:me:${id}`);
+        return updatedAccount;
     }
 
     async isAtivo(id: string): Promise<boolean> {

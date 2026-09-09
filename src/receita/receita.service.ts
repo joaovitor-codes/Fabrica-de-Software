@@ -6,14 +6,17 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { unlink } from 'fs/promises';
-import { StatusAprovacao, TipoMidia, TipoTransacaoPontos } from '@prisma/client';
+import { Receita, StatusAprovacao, TipoMidia, TipoTransacaoPontos } from '@prisma/client';
 import { ReceitaDto } from './dto/receita';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateReceitaDto } from './dto/update.receita';
+import { CacheService } from '../cache/cache.service';
 
 @Injectable()
 export class ReceitaService {
-  constructor(private prismaService: PrismaService) {}
+  constructor(private prismaService: PrismaService,
+    private cacheService: CacheService,
+  ) {}
 
   async alreadyExists(id: string) {
     const receita = await this.prismaService.receita.findUnique({
@@ -23,6 +26,7 @@ export class ReceitaService {
   }
 
   async create(data: ReceitaDto, userId: string) {
+    await this.cacheService.del('receitas:all');
     const receita = await this.prismaService.receita.create({
       data: {
         nome: data.nome,
@@ -126,12 +130,33 @@ export class ReceitaService {
 }
 
   async findAll() {
-    const receitas = await this.prismaService.receita.findMany({});
-    if (!receitas || receitas.length === 0) {
-      return { error: 'Nenhuma receita encontrada' };
-    }
-    return receitas;
+  const cacheKey = 'receitas:all';
+
+  const cachedReceitas =
+    await this.cacheService.get<Receita[]>(cacheKey);
+
+  console.log('Cached receitas:', cachedReceitas);
+
+  if (cachedReceitas) {
+    console.log('Retornando receitas do cache');
+
+    return cachedReceitas;
   }
+
+  console.log('Cache vazio. Buscando no banco...');
+
+  const receitas = await this.prismaService.receita.findMany({});
+
+  if (!receitas || receitas.length === 0) {
+    return { error: 'Nenhuma receita encontrada' };
+  }
+
+  await this.cacheService.set(cacheKey, receitas, 300_000);
+
+  console.log('Receitas salvas no cache');
+
+  return receitas;
+}
 
   async findOne(id: string) {
     const receitaExists = await this.alreadyExists(id);

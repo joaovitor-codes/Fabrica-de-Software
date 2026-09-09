@@ -20,7 +20,7 @@ Certifique-se de ter o Docker instalado e rodando na sua máquina.
 \`\`\`bash
 docker compose up -d
 \`\`\`
-*(Isso vai subir um container PostgreSQL na porta 5454).*
+*(Isso vai subir os containers PostgreSQL na porta 5454 e Redis na porta 6379).* 
 
 **4. Sincronize o Banco de Dados (Prisma)**
 Este comando cria as tabelas e injeta as regras de segurança nativas (Triggers/Constraints).
