@@ -1,4 +1,4 @@
-import { BadRequestException, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { PrismaService } from './prisma/prisma.service';
 import { envValidationSchema } from './config/env.validation';
@@ -17,69 +17,14 @@ import { MailerModuleEmail } from './lib/mailer.module';
 import { RestricaoAlimentarModule } from './restricao-alimentar/restricao-alimentar.module';
 import { PacienteRestricaoModule } from './paciente-restricao/paciente-restricao.module';
 import { IngredienteRestricaoModule } from './ingrediente-restricao/ingrediente-restricao.module';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-import { MulterModule } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { randomUUID } from 'crypto';
-import { join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { CacheModule } from './cache/cache.module';
+import { Multer } from './multer/multer.module';
+import { ThrottlerModul } from './throttler/throttler.module';
 
 @Module({
   imports: [
-    MulterModule.register({
-  storage: diskStorage({
-    destination: (req, file, callback) => {
-      let destination: string;
-
-      if (file.fieldname === 'image') {
-        destination = join(
-          process.cwd(),
-          'uploads',
-          'receitas',
-          'images',
-        );
-      } else if (file.fieldname === 'video') {
-        destination = join(
-          process.cwd(),
-          'uploads',
-          'receitas',
-          'videos',
-        );
-      } else if (file.fieldname === 'avatar') {
-        destination = join(
-          process.cwd(),
-          'uploads',
-          'avatars',
-        );
-      } else {
-        return callback(
-          new BadRequestException('Invalid file field'),
-          '',
-        );
-      }
-
-      if (!existsSync(destination)) {
-        mkdirSync(destination, { recursive: true });
-      }
-
-      callback(null, destination);
-    },
-
-    filename: (_req, file, callback) => {
-      const filename = `${randomUUID()}-${Date.now()}-${file.originalname.toLowerCase()}`;
-
-      callback(null, filename);
-    },
-  }),
-}),
-    ThrottlerModule.forRoot({
-      throttlers: [{
-        name: 'default',
-        ttl: 60_000,
-        limit: 10,
-      }]
-    }),
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: envValidationSchema,
@@ -87,6 +32,9 @@ import { existsSync, mkdirSync } from 'fs';
         abortEarly: false, 
       },
     }),
+    ThrottlerModul,
+    Multer,
+    CacheModule,
     AuthModule,
     UsuarioModule,
     PacientesModule,
