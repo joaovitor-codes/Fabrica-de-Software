@@ -21,6 +21,9 @@ type SessionMetadata = {
 import { MailerService } from '@nestjs-modules/mailer';
 import { TipoUsuario } from '@prisma/client';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { CacheService } from '../cache/cache.service';
+
+const AUTH_ME_CACHE_TTL = 60_000;
 
 @Injectable()
 export class AuthService {
@@ -29,6 +32,7 @@ export class AuthService {
         private jwtService: JwtService,
         private configService: ConfigService,
         private mailerService: MailerService,
+        private cacheManager: CacheService
     ){}
 
     private userAlreadyExist(email: string){
@@ -183,6 +187,7 @@ export class AuthService {
     async verifyEmail(data: VerifyEmailDto){
         const conta = await this.prismaService.conta.findUnique({
             where: { email: data.email },
+            include: { usuario: true },
         });
 
         if(!conta){
@@ -228,6 +233,10 @@ export class AuthService {
                 data: { emailVerificado: true, emailVerificadoEm: usadoEm },
             });
         });
+
+        if (conta.usuario) {
+            await this.cacheManager.del(`auth:me:${conta.usuario.id}`);
+        }
 
         return { message: 'E-mail verificado com sucesso' };
     }
@@ -311,6 +320,12 @@ export class AuthService {
     }
 
     async me(userId: string){
+        const cacheKey = `auth:me:${userId}`;
+        const cachedUser = await this.cacheManager.get(cacheKey);
+        if (cachedUser) {
+            return cachedUser;
+        }
+
         const user = await this.prismaService.usuario.findUnique({
             where: {
                 id: userId
@@ -326,10 +341,14 @@ export class AuthService {
 
         const { senhaHash, ...userWithoutPassword } = user.conta;
 
-        return {
+        const userWithoutPasswordResult = {
             ...user,
             conta: userWithoutPassword
         };
+
+        await this.cacheManager.set(cacheKey, userWithoutPasswordResult, AUTH_ME_CACHE_TTL);
+
+        return userWithoutPasswordResult;
     }
 
     private async gerarTokens(
