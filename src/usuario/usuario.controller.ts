@@ -1,4 +1,4 @@
-import { Body, Controller, UseGuards, Patch, Request, Get, Param, Delete, Post, ParseIntPipe, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, UseGuards, Patch, Request, Get, Param, Delete, Post, ParseIntPipe, UnauthorizedException, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { UsuarioService } from './usuario.service';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags, ApiOkResponse } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
@@ -89,7 +89,9 @@ export class UsuarioController {
     @ApiOkResponse({ description: 'Usuário atualizado com sucesso.' })
     @Roles(TipoUsuario.admin)
     @Patch('admin/:id')
-    async updateByAdmin(@Param('id') id: string, @Body() updateUsuarioDto: UpdateUsuarioDto) {
+    async updateByAdmin(@Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() updateUsuarioDto: UpdateUsuarioDto) {
         return this.usuarioService.updateByAdmin(id, updateUsuarioDto);
     }
 
@@ -97,7 +99,9 @@ export class UsuarioController {
     @ApiOkResponse({ description: 'Informações de um usúario.' })
     @Roles(TipoUsuario.admin)
     @Get(':id')
-    async findOne(@Param('id') id: string){
+    async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string){
         return this.usuarioService.findOne(id);
     }
 
@@ -113,7 +117,9 @@ export class UsuarioController {
     @ApiOkResponse({ description: 'Usuário removido com sucesso.' })
     @Roles(TipoUsuario.admin)
     @Delete(':id')
-    async remove(@Param('id') id: string){
+    async remove(@Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string){
         return this.usuarioService.remove(id);
     }
 
@@ -121,14 +127,18 @@ export class UsuarioController {
     @ApiOkResponse({ description: 'Usuário ativado com sucesso.' })
     @Roles(TipoUsuario.admin)
     @Post('ativar/:id')
-    async ativar(@Param('id') id: string){
+    async ativar(@Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string){
         return this.usuarioService.ativar(id);
     }
 
     @ApiOperation({ summary: 'Remove um endereço específico do usuário autenticado' })
     @ApiOkResponse({ description: 'Endereço removido com sucesso.'})
     @Delete('me/endereco/:enderecoId')
-    async removerMeuEndereco(@Request() request, @Param('enderecoId') enderecoId: string) {
+    async removerMeuEndereco(@Request() request, @Param('enderecoId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) enderecoId: string) {
         const userId = request.user.sub;
         const endereco = await this.enderecoService.findOne(enderecoId);
 
@@ -142,7 +152,9 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Edita um endereço específico do usuário autenticado' })
     @ApiOkResponse({ description: 'Endereço editado com sucesso.'})
     @Patch('me/endereco/:enderecoId')
-    async editarMeuEndereco(@Request() request, @Param('enderecoId') enderecoId: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
+    async editarMeuEndereco(@Request() request, @Param('enderecoId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) enderecoId: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
         const userId = request.user.sub;
         const endereco = await this.enderecoService.findOne(enderecoId);
         
@@ -156,7 +168,9 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Remove um telefone do usuario autenticado.' })
     @ApiOkResponse({ description: 'Telefone removido com sucesso.' })
     @Delete('me/telefone/remover/:telefoneId')
-    async removerMeuTelefone(@Request() request, @Param('telefoneId') telefoneId: string){
+    async removerMeuTelefone(@Request() request, @Param('telefoneId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) telefoneId: string){
         const userId = request.user.sub;
         const telefone = await this.telefoneService.findOne(telefoneId);
 
@@ -170,7 +184,9 @@ export class UsuarioController {
     @ApiOperation({ summary:'Edita um telefone do usuario autenticado' })
     @ApiOkResponse({ description:'Telefone editado com sucesso' })
     @Patch('me/telefone/atualizar/:telefoneId')
-    async editarMeuTelefone(@Request() request, @Param('telefoneId') telefoneId: string, @Body() updateTelefoneDto: UpdateTelefoneDto){
+    async editarMeuTelefone(@Request() request, @Param('telefoneId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) telefoneId: string, @Body() updateTelefoneDto: UpdateTelefoneDto){
         const userId = request.user.sub;
         const telefone = await this.telefoneService.findOne(telefoneId);
 

@@ -11,8 +11,9 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
+  ParseUUIDPipe,
 } from '@nestjs/common';
-import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -100,7 +101,10 @@ export class ReceitaController {
   @ApiOperation({ summary: 'Retorna uma receita pelo ID' })
   @ApiOkResponse({ description: 'Objeto da receita.' })
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) 
+    id: string) {
     return await this.receitaService.findOne(id);
   }
 

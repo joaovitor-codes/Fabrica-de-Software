@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { UnidadeMedidaService } from './unidade-medida.service';
 import { UnidadeMedidaDto } from './dto/unidade-medida.dto';
 import { UpdateUnidadeMedidaDto } from './dto/update-unidade-medida.dto';
@@ -27,7 +27,9 @@ export class UnidadeMedidaController {
   @ApiOperation({ summary: 'Retorna uma unidade de medida pelo ID' })
   @ApiOkResponse({ description: 'Objeto da unidade de medida.' })
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
     return await this.unidadeMedidaService.findOne(id);
   }
 
@@ -35,7 +37,9 @@ export class UnidadeMedidaController {
   @ApiOkResponse({ description: 'Unidade de medida atualizada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() updateUnidadeMedidaDto: UpdateUnidadeMedidaDto) {
+  async update(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() updateUnidadeMedidaDto: UpdateUnidadeMedidaDto) {
     return await this.unidadeMedidaService.update(id, updateUnidadeMedidaDto);
   }
 
@@ -43,7 +47,9 @@ export class UnidadeMedidaController {
   @ApiOkResponse({ description: 'Unidade de medida removida com sucesso.' })
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
     return await this.unidadeMedidaService.remove(id);
   }
 }
