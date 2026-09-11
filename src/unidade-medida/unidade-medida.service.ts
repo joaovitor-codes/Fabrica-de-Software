@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { UnidadeMedidaDto } from './dto/unidade-medida.dto';
 import { UpdateUnidadeMedidaDto } from './dto/update-unidade-medida.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,7 +28,7 @@ export class UnidadeMedidaService {
   async findAll() {
     const unidadesMedida = await this.prismaService.unidadeMedida.findMany();
     if (!unidadesMedida || unidadesMedida.length === 0) {
-      return { error: 'Nenhuma unidade de medida encontrada' };
+      throw new NotFoundException('Nenhuma unidade de medida encontrada');
     }
     return unidadesMedida;
   }
@@ -36,7 +36,7 @@ export class UnidadeMedidaService {
   async findOne(id: string) {
     const unidadeMedidaExists = await this.alreadyExists(id);
     if (!unidadeMedidaExists) {
-      return { error: 'Unidade de medida não encontrada' };
+      throw new NotFoundException('Unidade de medida não encontrada');
     }
     const unidadeMedida = await this.prismaService.unidadeMedida.findUnique({
       where: {
@@ -49,7 +49,7 @@ export class UnidadeMedidaService {
   async update(id: string, updateUnidadeMedidaDto: UpdateUnidadeMedidaDto) {
     const unidadeMedidaExists = await this.alreadyExists(id);
     if (!unidadeMedidaExists) {
-      return { error: 'Unidade de medida não encontrada' };
+      throw new NotFoundException('Unidade de medida não encontrada');
     }
     const unidadeMedida = await this.prismaService.unidadeMedida.update({
       where: { id },
@@ -66,7 +66,7 @@ export class UnidadeMedidaService {
   async remove(id: string) {
     const unidadeMedidaExists = await this.alreadyExists(id);
     if (!unidadeMedidaExists) {
-      return { error: 'Unidade de medida não encontrada' };
+      throw new NotFoundException('Unidade de medida não encontrada');
     }
 
     await this.prismaService.receitaIngrediente.deleteMany({

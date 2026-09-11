@@ -6,6 +6,13 @@ import { CreateClinicaDto, UpdateClinicaDto } from './dtos/clinicas';
 export class ClinicasService {
     constructor(private readonly prismaService: PrismaService) {}
 
+     async clinicaExists(id: string): Promise<boolean> {
+        const clinica = await this.prismaService.clinica.findUnique({
+            where: { id },
+        });
+        return !!clinica;
+    }
+
     private validarCnpj(cnpj: string): void {
         const cleaned = cnpj.replace(/\D/g, '');
 

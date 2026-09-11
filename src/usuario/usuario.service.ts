@@ -14,6 +14,15 @@ export class UsuarioService {
         private cacheService: CacheService
     ){}
 
+    async userExists(userId: string): Promise<boolean> {
+        const user = await this.prismaService.usuario.findFirst({
+            where: {
+                id: userId
+            }
+        });
+        return !!user;
+    }
+
     async create(data: CreateUsuarioDto){
         const hashedPassword = await bcrypt.hash(data.password, 10);
         

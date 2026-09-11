@@ -14,15 +14,18 @@ import { IaService } from '../ia/ia.service';
 import { CacheService } from '../cache/cache.service';
 import { SugestaoSubstituto } from '../ia/dtos/ia';
 import { IngredienteDTO } from '../ingrediente/dto/ingrediente';
+import { UsuarioService } from '../usuario/usuario.service';
 
 @Injectable()
 export class ReceitaService {
-  constructor(private readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService,
-    private readonly iaService: IaService,
-  ) {}
+ constructor(
+   private readonly prismaService: PrismaService,
+   private readonly usuario: UsuarioService,
+   private readonly cacheService: CacheService,
+   private readonly iaService: IaService,
+ ) {}
 
-  async alreadyExists(id: string) {
+  private async alreadyExists(id: string) {
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
     });
@@ -31,6 +34,16 @@ export class ReceitaService {
 
   async create(data: ReceitaDto, userId: string) {
     await this.cacheService.del('receitas:all');
+
+    const userExists = await this.usuario.userExists(userId);
+    
+    if (!userExists) {
+      throw new BadRequestException('Usuário não encontrado');
+    }
+
+    if (!data.ingredientes || data.ingredientes.length === 0) {
+      throw new BadRequestException('A receita deve ter pelo menos um ingrediente');
+    }
     const receita = await this.prismaService.receita.create({
       data: {
         nome: data.nome,
@@ -151,6 +164,75 @@ export class ReceitaService {
 
   return receitas;
 }
+
+  async findFavorites(usuarioId: string) {
+    const favoritos = await this.prismaService.favorito.findMany({
+      where: { usuarioId },
+      include: {
+        receita: {
+          include: {
+            ingredientes: {
+              include: {
+                ingrediente: true,
+                unidadeMedida: true,
+              },
+            },
+            midias: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if(!favoritos || favoritos.length === 0) {
+      throw new NotFoundException('Nenhuma receita favorita encontrada');
+    }
+
+    return favoritos.map(({ receita }) => receita);
+  }
+
+  async addFavorite(receitaId: string, usuarioId: string) {
+    const receitaExists = await this.alreadyExists(receitaId);
+    if (!receitaExists) {
+      throw new NotFoundException('Receita não encontrada');
+    }
+
+    const favoritoExists = await this.prismaService.favorito.findUnique({
+      where: {
+        usuarioId_receitaId: { usuarioId, receitaId },
+      },
+    });
+
+    if (favoritoExists) {
+      throw new ConflictException('A receita já foi favoritada');
+    }
+
+    const favorito = await this.prismaService.favorito.create({
+      data: { usuarioId, receitaId },
+    });
+
+    return { success: 'Receita favoritada com sucesso.', data: favorito };
+  }
+
+  async removeFavorite(receitaId: string, usuarioId: string) {
+    const favorito = await this.prismaService.favorito.findUnique({
+      where: {
+        usuarioId_receitaId: { usuarioId, receitaId },
+      },
+    });
+
+    if (!favorito) {
+      throw new NotFoundException('Receita não está nos favoritos');
+    }
+
+    await this.prismaService.favorito.delete({
+      where: {
+        usuarioId_receitaId: { usuarioId, receitaId },
+      },
+    });
+
+    return { success: 'Receita removida dos favoritos com sucesso.' };
+  }
 
   async findOne(id: string) {
     const receitaExists = await this.alreadyExists(id);
@@ -297,25 +379,48 @@ export class ReceitaService {
 
   async findFeedbacks() {} // TODO: Implementar o método de encontrar feedbacks para uma receita
 
-  async update(id: string, updateReceita: UpdateReceitaDto) {
-    const receitaExists = await this.alreadyExists(id);
-    if (!receitaExists) {
-      throw new NotFoundException('Receita não encontrada');
-    }
+  async update(id: string, updateReceita: UpdateReceitaDto, usuarioId: string) {
+    const cacheKey = 'receitas:all';
+    return this.prismaService.$transaction(async (tx) => {
+      const receitaAtual = await tx.receita.findUnique({ where: { id } });
 
-    const receita = await this.prismaService.receita.update({
-      where: { id },
-      data: {
-        nome: updateReceita.nome,
-        descricao: updateReceita.descricao,
-        modoPreparo: updateReceita.modoPreparo,
-        tempoPreparoMin: updateReceita.tempoPreparoMin,
-        porcoes: updateReceita.porcoes,
-        nivelDificuldade: updateReceita.nivelDificuldade,
-        avisoContaminacaoCruzada: updateReceita.avisoContaminacaoCruzada,
-      },
+      if (!receitaAtual) {
+        throw new NotFoundException('Receita não encontrada');
+      }
+      
+      await this.cacheService.del(cacheKey);
+
+      if (receitaAtual.status === 'aprovada') {
+        await tx.receitaVersao.create({
+          data: {
+            receitaId: receitaAtual.id,
+            versao: receitaAtual.versaoAtual,
+            nome: receitaAtual.nome,
+            descricao: receitaAtual.descricao,
+            modoPreparo: receitaAtual.modoPreparo,
+            alteradoPor: usuarioId,
+          },
+        });
+      }
+
+      const receita = await tx.receita.update({
+        where: { id },
+        data: {
+          nome: updateReceita.nome,
+          descricao: updateReceita.descricao,
+          modoPreparo: updateReceita.modoPreparo,
+          tempoPreparoMin: updateReceita.tempoPreparoMin,
+          porcoes: updateReceita.porcoes,
+          nivelDificuldade: updateReceita.nivelDificuldade,
+          avisoContaminacaoCruzada: updateReceita.avisoContaminacaoCruzada,
+          ...(receitaAtual.status === 'aprovada'
+            ? { versaoAtual: { increment: 1 } }
+            : {}),
+        },
+      });
+ 
+      return { success: 'Receita atualizada com sucesso.', data: receita };
     });
-    return { success: 'Receita atualizada com sucesso.', data: receita };
   }
 
   async aprovarReceita(id: string, usuarioId: string) {
@@ -399,11 +504,13 @@ export class ReceitaService {
   }
 
   async remove(id: string) {
+    const cacheKey = 'receitas:all';
     const receitaExists = await this.alreadyExists(id);
     if (!receitaExists) {
       throw new NotFoundException('Receita não encontrada');
     }
 
+    await this.cacheService.del(cacheKey);
     await this.prismaService.receitaMidia.deleteMany({
       where: { receitaId: id },
     });

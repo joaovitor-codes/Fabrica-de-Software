@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -46,7 +47,7 @@ const receitaStorage = diskStorage({
 @Controller('api/receita')
 export class ReceitaController {
   constructor(private readonly receitaService: ReceitaService) {}
-
+  
   @ApiOperation({ summary: 'Cria uma nova receita' })
   @ApiCreatedResponse({ description: 'Receita criada com sucesso.' })
   @UseGuards(AuthGuard)
@@ -57,6 +58,13 @@ export class ReceitaController {
     @Body('ingredientes') ingredientes: IngredienteDTO[],
   ) {
     return await this.receitaService.create(receita, req.user.sub);
+  }
+  
+  @ApiOperation({ summary: 'Retorna uma receita pelo nome' })
+  @ApiOkResponse({ description: 'Objeto da receita.' })
+  @Get('/nome')
+  async findByName(@Query('q') nome: string) {
+    return await this.receitaService.findByName(nome);
   }
 
   @ApiOperation({ summary: 'Envia uma mídia para uma receita' })
@@ -71,7 +79,10 @@ export class ReceitaController {
     { storage: receitaStorage },
   ))
   async uploadMedia(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')
+    })) id: string,
     @UploadedFiles()
     files: { image?: Express.Multer.File[], video?: Express.Multer.File[] },
     @Body('tipo') tipo: TipoMidia,
@@ -98,6 +109,41 @@ export class ReceitaController {
     return await this.receitaService.findSuggestions();
   }
 
+  @ApiOperation({ summary: 'Retorna as receitas favoritas do usuário autenticado' })
+  @ApiOkResponse({ description: 'Lista de receitas favoritas.' })
+  @UseGuards(AuthGuard)
+  @Get('favoritos')
+  async findFavorites(@Request() request) {
+    return await this.receitaService.findFavorites(request.user.sub);
+  }
+
+  @ApiOperation({ summary: 'Adiciona uma receita aos favoritos' })
+  @ApiCreatedResponse({ description: 'Receita favoritada com sucesso.' })
+  @UseGuards(AuthGuard)
+  @Post(':id/favorito')
+  async addFavorite(
+    @Param('id', new ParseUUIDPipe({ version: '4', 
+      errorHttpStatusCode: 400,
+      exceptionFactory: () => new BadRequestException('ID inválido')
+    })) id: string,
+    @Request() request,
+  ) {
+    return await this.receitaService.addFavorite(id, request.user.sub);
+  }
+
+  @ApiOperation({ summary: 'Remove uma receita dos favoritos' })
+  @ApiOkResponse({ description: 'Receita removida dos favoritos com sucesso.' })
+  @UseGuards(AuthGuard)
+  @Delete(':id/favorito')
+  async removeFavorite(
+    @Param('id', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 400,
+      exceptionFactory: () => new BadRequestException('ID inválido')
+    })) id: string,
+    @Request() request,
+  ) {
+    return await this.receitaService.removeFavorite(id, request.user.sub);
+  }
+
   @ApiOperation({ summary: 'Retorna uma receita pelo ID' })
   @ApiOkResponse({ description: 'Objeto da receita.' })
   @Get(':id')
@@ -108,12 +154,6 @@ export class ReceitaController {
     return await this.receitaService.findOne(id);
   }
 
-  @ApiOperation({ summary: 'Retorna uma receita pelo nome' })
-  @ApiOkResponse({ description: 'Objeto da receita.' })
-  @Get('/nome/:nome')
-  async findByName(@Param('nome') nome: string) {
-    return await this.receitaService.findByName(nome);
-  }
 
   @ApiOperation({ summary: 'Retorna os ingredientes de uma receita pelo ID' })
   @ApiOkResponse({ description: 'Array de ingredientes da receita.' })
@@ -158,8 +198,12 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita atualizada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() receita: UpdateReceitaDto) {
-    return await this.receitaService.update(id, receita);
+  async update(
+    @Param('id') id: string,
+    @Body() receita: UpdateReceitaDto,
+    @Request() request,
+  ) {
+    return await this.receitaService.update(id, receita, request.user.sub);
   }
 
   @ApiOperation({ summary: 'Aprova uma receita pelo ID' })
