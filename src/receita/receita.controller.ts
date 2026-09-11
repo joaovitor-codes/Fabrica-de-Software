@@ -158,8 +158,12 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita atualizada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() receita: UpdateReceitaDto) {
-    return await this.receitaService.update(id, receita);
+  async update(
+    @Param('id') id: string,
+    @Body() receita: UpdateReceitaDto,
+    @Request() request,
+  ) {
+    return await this.receitaService.update(id, receita, request.user.sub);
   }
 
   @ApiOperation({ summary: 'Aprova uma receita pelo ID' })

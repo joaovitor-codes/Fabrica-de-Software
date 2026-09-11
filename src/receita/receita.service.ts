@@ -232,25 +232,48 @@ export class ReceitaService {
 
   async findFeedbacks() {} // TODO: Implementar o método de encontrar feedbacks para uma receita
 
-  async update(id: string, updateReceita: UpdateReceitaDto) {
-    const receitaExists = await this.alreadyExists(id);
-    if (!receitaExists) {
-      throw new NotFoundException('Receita não encontrada');
-    }
+  async update(id: string, updateReceita: UpdateReceitaDto, usuarioId: string) {
+    const cacheKey = 'receitas:all';
+    return this.prismaService.$transaction(async (tx) => {
+      const receitaAtual = await tx.receita.findUnique({ where: { id } });
 
-    const receita = await this.prismaService.receita.update({
-      where: { id },
-      data: {
-        nome: updateReceita.nome,
-        descricao: updateReceita.descricao,
-        modoPreparo: updateReceita.modoPreparo,
-        tempoPreparoMin: updateReceita.tempoPreparoMin,
-        porcoes: updateReceita.porcoes,
-        nivelDificuldade: updateReceita.nivelDificuldade,
-        avisoContaminacaoCruzada: updateReceita.avisoContaminacaoCruzada,
-      },
+      if (!receitaAtual) {
+        throw new NotFoundException('Receita não encontrada');
+      }
+      
+      await this.cacheService.del(cacheKey);
+
+      if (receitaAtual.status === 'aprovada') {
+        await tx.receitaVersao.create({
+          data: {
+            receitaId: receitaAtual.id,
+            versao: receitaAtual.versaoAtual,
+            nome: receitaAtual.nome,
+            descricao: receitaAtual.descricao,
+            modoPreparo: receitaAtual.modoPreparo,
+            alteradoPor: usuarioId,
+          },
+        });
+      }
+
+      const receita = await tx.receita.update({
+        where: { id },
+        data: {
+          nome: updateReceita.nome,
+          descricao: updateReceita.descricao,
+          modoPreparo: updateReceita.modoPreparo,
+          tempoPreparoMin: updateReceita.tempoPreparoMin,
+          porcoes: updateReceita.porcoes,
+          nivelDificuldade: updateReceita.nivelDificuldade,
+          avisoContaminacaoCruzada: updateReceita.avisoContaminacaoCruzada,
+          ...(receitaAtual.status === 'aprovada'
+            ? { versaoAtual: { increment: 1 } }
+            : {}),
+        },
+      });
+
+      return { success: 'Receita atualizada com sucesso.', data: receita };
     });
-    return { success: 'Receita atualizada com sucesso.', data: receita };
   }
 
   async aprovarReceita(id: string, usuarioId: string) {
