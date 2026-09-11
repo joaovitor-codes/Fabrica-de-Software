@@ -10,15 +10,20 @@ import { Receita, StatusAprovacao, TipoMidia, TipoTransacaoPontos } from '@prism
 import { ReceitaDto } from './dto/receita';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateReceitaDto } from './dto/update.receita';
+import { IaService } from '../ia/ia.service';
 import { CacheService } from '../cache/cache.service';
+import { SugestaoSubstituto } from '../ia/dtos/ia';
+import { IngredienteDTO } from '../ingrediente/dto/ingrediente';
 import { UsuarioService } from '../usuario/usuario.service';
 
 @Injectable()
 export class ReceitaService {
-  constructor(private prismaService: PrismaService,
-    private readonly usuario: UsuarioService,
-    private cacheService: CacheService,
-  ) {}
+ constructor(
+   private readonly prismaService: PrismaService,
+   private readonly usuario: UsuarioService,
+   private readonly cacheService: CacheService,
+   private readonly iaService: IaService,
+ ) {}
 
   private async alreadyExists(id: string) {
     const receita = await this.prismaService.receita.findUnique({
@@ -272,7 +277,68 @@ export class ReceitaService {
     return receita!.ingredientes;
   }
 
-  async findReplacementFor(id: string) {} // TODO: Implementar o método de encontrar substitutos para os ingredientes de uma receita
+  async encontrarSubstitutos(ingredienteId: string, restricaoId: string) {
+    const substitutos = await this.prismaService.ingredienteSubstituto.findMany({
+      where: {
+        ingredienteOrigemId: ingredienteId,
+        restricaoId,
+      },
+      include: {
+        restricao: true,
+        ingredienteDestino: true,
+      },
+      orderBy: { prioridade: 'asc' },
+    });
+
+    if (substitutos.length > 0) {
+      return substitutos;
+    }
+
+    // Nada no banco ainda — cai pra IA sob demanda
+    const ingrediente = await this.prismaService.ingrediente.findUnique({
+      where: { id: ingredienteId },
+    });
+
+    if (!ingrediente) {
+      throw new NotFoundException('Ingrediente não encontrado');
+    }
+
+    const restricao = await this.prismaService.restricaoAlimentar.findUnique({
+      where: { id: restricaoId },
+    });
+
+    if (!restricao) {
+      throw new NotFoundException('Restrição não encontrada');
+    }
+
+    const sugestoes = await this.iaService.encontrarSubstituto(ingrediente.nome, restricao.nome);
+
+    // CRIANDO UM NOVOS INGREDIENTES
+    const ingredientesResolvidos = await Promise.all(
+      sugestoes.map((s) =>
+        this.prismaService.ingrediente.create({
+          data: this.mapSugestaoParaIngredienteDTO(s),
+        }),
+      ),
+  );
+
+    const vinculosCriados = await Promise.all(
+      ingredientesResolvidos.map((destino, index) =>
+        this.prismaService.ingredienteSubstituto.create({
+          data: {
+            ingredienteOrigemId: ingredienteId,
+            restricaoId,
+            ingredienteDestinoId: destino.id,
+            prioridade: index,
+            observacao: sugestoes[index].justificativa,
+          },
+          include: { restricao: true, ingredienteDestino: true },
+        }),
+      ),
+    );
+
+    return vinculosCriados;
+  }  
 
   async findAlerts(id: string) {
     const receitaExists = await this.alreadyExists(id);
@@ -456,4 +522,27 @@ export class ReceitaService {
     });
     return { success: 'Receita removida com sucesso.' };
   }
+
+
+  private parseNumeroSeguro(valor: string): number {
+    const numero = parseFloat(valor.replace(',', '.'));
+    if (isNaN(numero)) {
+      throw new Error(`Valor nutricional inválido recebido da IA: "${valor}"`);
+    }
+    return numero;
+  }
+
+  private mapSugestaoParaIngredienteDTO(sugestao: SugestaoSubstituto): IngredienteDTO {
+    return {
+      nome: sugestao.nome,
+      caloriasKcal: this.parseNumeroSeguro(sugestao.caloriasKcal),
+      proteinasG: this.parseNumeroSeguro(sugestao.proteinasG),
+      carboidratosG: this.parseNumeroSeguro(sugestao.carboidratosG),
+      gordurasG: this.parseNumeroSeguro(sugestao.gordurasG),
+      fibrasG: this.parseNumeroSeguro(sugestao.fibrasG),
+      sodioMg: this.parseNumeroSeguro(sugestao.sodioMg),
+      fonteDados: 'ia_estimativa_nao_verificada',
+    };
+  }
+  
 }

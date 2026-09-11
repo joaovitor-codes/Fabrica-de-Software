@@ -30,7 +30,6 @@ export class RestricaoRegraNutricionalService{
                 }
             })
 
-            // Retroaplica a regra nova na base de ingredientes já existente
             await this.regraNutricionalService.aplicarRegraATodosIngredientes(regra.id);
 
             return regra

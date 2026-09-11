@@ -168,9 +168,9 @@ export class ReceitaController {
   @ApiOkResponse({
     description: 'Array de ingredientes substitutos da receita.',
   })
-  @Get(':id/ingredientes/substituicao')
-  async findReplacementFor(@Param('id') id: string) {
-    return await this.receitaService.findReplacementFor(id);
+  @Get(':ingredienteId/ingredientes/:restricaoId/restricao/substituicao')
+  async findReplacementFor(@Param('ingredienteId') ingredienteId: string, @Param('restricaoId') restricaoId: string) {
+    return await this.receitaService.encontrarSubstitutos(ingredienteId, restricaoId);
   }
 
   @ApiOperation({ summary: 'Retorna os alertas de uma receita pelo ID' })
