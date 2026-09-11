@@ -583,6 +583,7 @@ model RestricaoAlimentar {
   ingredientes           IngredienteRestricao[]
   campanhasPublicitarias CampanhaPublicitaria[]
   regrasNutricionais     RestricaoRegraNutricional[]
+  ingredienteSubstitutos IngredienteSubstituto[]
 
   @@map("restricoes_alimentares")
 }
@@ -614,8 +615,10 @@ model Ingrediente {
   sodioMg            Decimal? @map("sodio_mg") @db.Decimal(8, 2)
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  restricoes IngredienteRestricao[]
-  receitas   ReceitaIngrediente[]
+  restricoes           IngredienteRestricao[]
+  receitas             ReceitaIngrediente[]
+  substituicoesOrigem  IngredienteSubstituto[] @relation("SubOrigem")
+  substituicoesDestino IngredienteSubstituto[] @relation("SubDestino")
 
   @@index([nome])
   @@map("ingredientes")
@@ -671,6 +674,24 @@ model RestricaoRegraNutricional {
 
   @@index([restricaoId])
   @@map("restricao_regras_nutricionais")
+}
+
+model IngredienteSubstituto {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ingredienteOrigemId  String   @map("ingrediente_origem_id") @db.Uuid
+  restricaoId          String   @map("restricao_id") @db.Uuid
+  ingredienteDestinoId String   @map("ingrediente_destino_id") @db.Uuid
+  prioridade           Int      @default(0)
+  observacao           String?  @db.Text
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restricao          RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
+  ingredienteOrigem  Ingrediente        @relation("SubOrigem", fields: [ingredienteOrigemId], references: [id])
+  ingredienteDestino Ingrediente        @relation("SubDestino", fields: [ingredienteDestinoId], references: [id])
+
+  @@unique([ingredienteOrigemId, restricaoId, ingredienteDestinoId])
+  @@index([ingredienteOrigemId, restricaoId])
+  @@map("ingrediente_substitutos")
 }
 
 // ============================================================
