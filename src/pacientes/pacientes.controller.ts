@@ -1,4 +1,4 @@
-import { Controller, Param, Post, UseGuards, Get, Body, Delete, Put } from '@nestjs/common';
+import { Controller, Param, Post, UseGuards, Get, Body, Delete, Put, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { PacientesService } from './pacientes.service';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../auth/roles.guard';
@@ -26,7 +26,9 @@ export class PacientesController {
     @ApiOkResponse({ description: 'Informações de um paciente.' })
     @Roles(TipoUsuario.admin)
     @Get(':id')
-    async findOne(@Param('id') id: string) {
+    async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
         return this.pacientesService.findOne(id);
     }
 
@@ -34,7 +36,9 @@ export class PacientesController {
     @ApiOkResponse({ description: 'Informações de um paciente.' })
     @Roles(TipoUsuario.admin)
     @Get(':userId')
-    async findByUserId(@Param('userId') userId: string) {
+    async findByUserId(@Param('userId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) userId: string) {
         return this.pacientesService.getPacienteByUserId(userId);
     }
 
@@ -50,7 +54,9 @@ export class PacientesController {
     @ApiOkResponse({ description: 'Paciente atualizado com sucesso.' })
     @Roles(TipoUsuario.admin)
     @Put('update/:id')
-    async updatePaciente(@Body() UpdatePacienteDto: UpdatePacienteDto, @Param('id') id: string) {
+    async updatePaciente(@Body() UpdatePacienteDto: UpdatePacienteDto, @Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
         return this.pacientesService.updatePaciente(UpdatePacienteDto, id);
     }
 
@@ -58,7 +64,9 @@ export class PacientesController {
     @ApiOperation({ summary: 'Remove um paciente específico' })
     @ApiOkResponse({ description: 'Paciente removido com sucesso.' })
     @Roles(TipoUsuario.admin)
-    async deletePaciente(@Param('id') id: string) {
+    async deletePaciente(@Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
         return this.pacientesService.deletePaciente(id);
     }
 

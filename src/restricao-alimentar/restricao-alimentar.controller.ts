@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RestricaoAlimentarService } from './restricao-alimentar.service';
 import { RestricaoRegraNutricionalService } from './restricao-regra-nutricional-service';
@@ -48,7 +48,9 @@ export class RestricaoAlimentarController {
   @ApiOkResponse({ description: 'Restrição alimentar retornada com sucesso.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
     return this.restricaoAlimentarService.findOne(id);
   }
 
@@ -57,7 +59,9 @@ export class RestricaoAlimentarController {
   @Roles(TipoUsuario.admin)
   @Patch(':id')
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')})) id: string,
     @Body() updateRestricaoAlimentarDto: UpdateRestricaoAlimentarDto,
   ) {
     return this.restricaoAlimentarService.update(id, updateRestricaoAlimentarDto);
@@ -67,7 +71,9 @@ export class RestricaoAlimentarController {
   @ApiOkResponse({ description: 'Restrição alimentar removida com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
     return this.restricaoAlimentarService.remove(id);
   }
 
@@ -81,7 +87,9 @@ export class RestricaoAlimentarController {
   @Roles(TipoUsuario.admin)
   @Post(':restricaoId/regras-nutricionais')
   async criarRegra(
-    @Param('restricaoId') restricaoId: string,
+    @Param('restricaoId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID Restrição inválido')})) restricaoId: string,
     @Body() dto: CreateRestricaoRegraNutricionalDto,
   ) {
     return this.restricaoRegraNutricionalService.criarRegra(restricaoId, dto);
@@ -91,7 +99,9 @@ export class RestricaoAlimentarController {
   @ApiOkResponse({ description: 'Restrição com suas regras nutricionais.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Get(':restricaoId/regras-nutricionais')
-  async getRegras(@Param('restricaoId') restricaoId: string) {
+  async getRegras(@Param('restricaoId', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID Restrição inválido')})) restricaoId: string) {
     return this.restricaoRegraNutricionalService.getRegraByRestricaoId(restricaoId);
   }
 
@@ -100,8 +110,12 @@ export class RestricaoAlimentarController {
   @Roles(TipoUsuario.admin)
   @Patch(':restricaoId/regras-nutricionais/:regraId')
   async updateRegra(
-    @Param('restricaoId') restricaoId: string,
-    @Param('regraId') regraId: string,
+    @Param('restricaoId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID Restrição inválido')})) restricaoId: string,
+    @Param('regraId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID Regra inválido')})) regraId: string,
     @Body() dto: UpdateRestricaoRegraNutricionalDto,
   ) {
     return this.restricaoRegraNutricionalService.updateRegra(restricaoId, regraId, dto);
@@ -112,8 +126,12 @@ export class RestricaoAlimentarController {
   @Roles(TipoUsuario.admin)
   @Delete(':restricaoId/regras-nutricionais/:regraId')
   async removeRegra(
-    @Param('restricaoId') restricaoId: string,
-    @Param('regraId') regraId: string,
+    @Param('restricaoId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID Restrição inválido')})) restricaoId: string,
+    @Param('regraId', new ParseUUIDPipe({version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID Regra inválido')})) regraId: string,
   ) {
     return this.restricaoRegraNutricionalService.delete(restricaoId, regraId);
   }

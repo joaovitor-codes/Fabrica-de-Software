@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EnderecoService } from './endereco.service';
 import { CreateEnderecoDto, UpdateEnderecoDto } from './dtos/endereco';
@@ -30,7 +30,9 @@ export class EnderecoController {
   @ApiOperation({ summary: 'Retorna um endereço específico pelo ID' })
   @ApiOkResponse({ description: 'Endereço retornado com sucesso.' })
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
     return this.enderecoService.findOne(id);
   }
 
@@ -38,7 +40,9 @@ export class EnderecoController {
   @ApiOkResponse({ description: 'Endereço atualizado com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
+  async update(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
     return this.enderecoService.update(id, updateEnderecoDto);
   }
 
@@ -46,7 +50,9 @@ export class EnderecoController {
   @ApiOkResponse({ description: 'Endereço removido com sucesso.' })
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id', new ParseUUIDPipe({version: '4', 
+    errorHttpStatusCode: 400, 
+    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
     return this.enderecoService.remove(id);
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { IngredienteDTO } from './dto/ingrediente';
 import { UpdateIngredienteDto } from './dto/update-ingrediente.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,7 +39,7 @@ export class IngredienteService {
   async findAll() {
     const ingredientes = await this.prismaService.ingrediente.findMany();
     if (!ingredientes || ingredientes.length === 0) {
-      return { error: 'Nenhum ingrediente encontrado' };
+      throw new NotFoundException('Nenhum ingrediente encontrado.');
     }
     return ingredientes;
   }
@@ -47,7 +47,7 @@ export class IngredienteService {
   async findOne(id: string) {
     const ingredienteExists = await this.alreadyExists(id);
     if (!ingredienteExists) {
-      return { error: 'Ingrediente não encontrado' };
+      throw new NotFoundException('Ingrediente não encontrado.');
     }
     const ingrediente = await this.prismaService.ingrediente.findUnique({
       where: { id },
@@ -61,7 +61,7 @@ export class IngredienteService {
   async update(id: string, updateIngredienteDto: UpdateIngredienteDto) {
     const ingredienteExists = await this.alreadyExists(id);
     if (!ingredienteExists) {
-      return { error: 'Ingrediente não encontrado' };
+      throw new NotFoundException('Ingrediente não encontrado.');
     }
     const ingredienteUpdated = await this.prismaService.ingrediente.update({
       where: { id },
@@ -79,7 +79,7 @@ export class IngredienteService {
   async remove(id: string) {
     const ingredienteExists = await this.alreadyExists(id);
     if (!ingredienteExists) {
-      return { error: 'Ingrediente não encontrado' };
+      throw new NotFoundException('Ingrediente não encontrado.');
     }
     await this.prismaService.ingrediente.delete({
       where: { id },
