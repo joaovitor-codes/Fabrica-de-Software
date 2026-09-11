@@ -28,7 +28,9 @@ import {
   ApiOperation,
 } from '@nestjs/swagger';
 import { IngredienteDTO } from '../ingrediente/dto/ingrediente';
-import { TipoMidia } from '@prisma/client';
+import { TipoMidia, TipoUsuario } from '@prisma/client';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 
 const uploadDirectory = join(process.cwd(), 'uploads', 'receitas');
 const receitaStorage = diskStorage({
@@ -96,6 +98,36 @@ export class ReceitaController {
   @Get('sugestoes')
   async findSuggestions() {
     return await this.receitaService.findSuggestions();
+  }
+
+  @ApiOperation({ summary: 'Retorna as receitas favoritas do usuário autenticado' })
+  @ApiOkResponse({ description: 'Lista de receitas favoritas.' })
+  @UseGuards(AuthGuard)
+  @Get('favoritos')
+  async findFavorites(@Request() request) {
+    return await this.receitaService.findFavorites(request.user.sub);
+  }
+
+  @ApiOperation({ summary: 'Adiciona uma receita aos favoritos' })
+  @ApiCreatedResponse({ description: 'Receita favoritada com sucesso.' })
+  @UseGuards(AuthGuard)
+  @Post(':id/favorito')
+  async addFavorite(
+    @Param('id', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 400 })) id: string,
+    @Request() request,
+  ) {
+    return await this.receitaService.addFavorite(id, request.user.sub);
+  }
+
+  @ApiOperation({ summary: 'Remove uma receita dos favoritos' })
+  @ApiOkResponse({ description: 'Receita removida dos favoritos com sucesso.' })
+  @UseGuards(AuthGuard)
+  @Delete(':id/favorito')
+  async removeFavorite(
+    @Param('id', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 400 })) id: string,
+    @Request() request,
+  ) {
+    return await this.receitaService.removeFavorite(id, request.user.sub);
   }
 
   @ApiOperation({ summary: 'Retorna uma receita pelo ID' })

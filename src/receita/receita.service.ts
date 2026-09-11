@@ -148,6 +148,71 @@ export class ReceitaService {
   return receitas;
 }
 
+  async findFavorites(usuarioId: string) {
+    const favoritos = await this.prismaService.favorito.findMany({
+      where: { usuarioId },
+      include: {
+        receita: {
+          include: {
+            ingredientes: {
+              include: {
+                ingrediente: true,
+                unidadeMedida: true,
+              },
+            },
+            midias: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return favoritos.map(({ receita }) => receita);
+  }
+
+  async addFavorite(receitaId: string, usuarioId: string) {
+    const receitaExists = await this.alreadyExists(receitaId);
+    if (!receitaExists) {
+      throw new NotFoundException('Receita não encontrada');
+    }
+
+    const favoritoExists = await this.prismaService.favorito.findUnique({
+      where: {
+        usuarioId_receitaId: { usuarioId, receitaId },
+      },
+    });
+
+    if (favoritoExists) {
+      throw new ConflictException('A receita já foi favoritada');
+    }
+
+    const favorito = await this.prismaService.favorito.create({
+      data: { usuarioId, receitaId },
+    });
+
+    return { success: 'Receita favoritada com sucesso.', data: favorito };
+  }
+
+  async removeFavorite(receitaId: string, usuarioId: string) {
+    const favorito = await this.prismaService.favorito.findUnique({
+      where: {
+        usuarioId_receitaId: { usuarioId, receitaId },
+      },
+    });
+
+    if (!favorito) {
+      throw new NotFoundException('Receita não está nos favoritos');
+    }
+
+    await this.prismaService.favorito.delete({
+      where: {
+        usuarioId_receitaId: { usuarioId, receitaId },
+      },
+    });
+
+    return { success: 'Receita removida dos favoritos com sucesso.' };
+  }
+
   async findOne(id: string) {
     const receitaExists = await this.alreadyExists(id);
     if (!receitaExists) {
