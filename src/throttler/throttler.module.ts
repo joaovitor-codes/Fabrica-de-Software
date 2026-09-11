@@ -1,5 +1,6 @@
 import { Global, Module } from "@nestjs/common";
-import { ThrottlerModule } from "@nestjs/throttler";
+import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 @Global()
 @Module({
@@ -13,6 +14,9 @@ import { ThrottlerModule } from "@nestjs/throttler";
         }),
   ],
   controllers: [],
-  providers: [],
+  providers: [{
+    provide: APP_GUARD,
+    useClass: ThrottlerGuard,
+  }],
 })
 export class ThrottlerModul {}

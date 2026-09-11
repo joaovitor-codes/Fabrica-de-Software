@@ -17,8 +17,6 @@ import { MailerModuleEmail } from './lib/mailer.module';
 import { RestricaoAlimentarModule } from './restricao-alimentar/restricao-alimentar.module';
 import { PacienteRestricaoModule } from './paciente-restricao/paciente-restricao.module';
 import { IngredienteRestricaoModule } from './ingrediente-restricao/ingrediente-restricao.module';
-import { ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from './cache/cache.module';
 import { Multer } from './multer/multer.module';
 import { ThrottlerModul } from './throttler/throttler.module';
@@ -52,9 +50,6 @@ import { ThrottlerModul } from './throttler/throttler.module';
     IngredienteRestricaoModule,
   ],
   controllers: [],
-  providers: [PrismaService, {
-    provide: APP_GUARD,
-    useClass: ThrottlerGuard,
-  }],
+  providers: [PrismaService],
 })
 export class AppModule {}
