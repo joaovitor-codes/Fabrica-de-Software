@@ -11,14 +11,16 @@ import { ReceitaDto } from './dto/receita';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateReceitaDto } from './dto/update.receita';
 import { CacheService } from '../cache/cache.service';
+import { UsuarioService } from '../usuario/usuario.service';
 
 @Injectable()
 export class ReceitaService {
   constructor(private prismaService: PrismaService,
+    private readonly usuario: UsuarioService,
     private cacheService: CacheService,
   ) {}
 
-  async alreadyExists(id: string) {
+  private async alreadyExists(id: string) {
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
     });
@@ -27,6 +29,16 @@ export class ReceitaService {
 
   async create(data: ReceitaDto, userId: string) {
     await this.cacheService.del('receitas:all');
+
+    const userExists = await this.usuario.userExists(userId);
+    
+    if (!userExists) {
+      throw new BadRequestException('Usuário não encontrado');
+    }
+
+    if (!data.ingredientes || data.ingredientes.length === 0) {
+      throw new BadRequestException('A receita deve ter pelo menos um ingrediente');
+    }
     const receita = await this.prismaService.receita.create({
       data: {
         nome: data.nome,
@@ -166,6 +178,10 @@ export class ReceitaService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    if(!favoritos || favoritos.length === 0) {
+      throw new NotFoundException('Nenhuma receita favorita encontrada');
+    }
 
     return favoritos.map(({ receita }) => receita);
   }
@@ -336,7 +352,7 @@ export class ReceitaService {
             : {}),
         },
       });
-
+ 
       return { success: 'Receita atualizada com sucesso.', data: receita };
     });
   }
@@ -422,11 +438,13 @@ export class ReceitaService {
   }
 
   async remove(id: string) {
+    const cacheKey = 'receitas:all';
     const receitaExists = await this.alreadyExists(id);
     if (!receitaExists) {
       throw new NotFoundException('Receita não encontrada');
     }
 
+    await this.cacheService.del(cacheKey);
     await this.prismaService.receitaMidia.deleteMany({
       where: { receitaId: id },
     });

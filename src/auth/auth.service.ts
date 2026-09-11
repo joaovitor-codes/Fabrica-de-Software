@@ -325,7 +325,7 @@ export class AuthService {
         if (cachedUser) {
             return cachedUser;
         }
-
+        
         const user = await this.prismaService.usuario.findUnique({
             where: {
                 id: userId
@@ -347,7 +347,6 @@ export class AuthService {
         };
 
         await this.cacheManager.set(cacheKey, userWithoutPasswordResult, AUTH_ME_CACHE_TTL);
-
         return userWithoutPasswordResult;
     }
 

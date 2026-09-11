@@ -10,12 +10,18 @@ import { createProfissionalDto, UpdateProfissionalDto } from './dtos/profissiona
 import { Prisma, StatusAprovacao, TipoUsuario } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CreateUsuarioDto } from '../usuario/dtos/usuario';
+import { ClinicasService } from '../clinicas/clinicas.service';
 
 @Injectable()
 export class ProfissionalService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(private readonly prismaService: PrismaService, private readonly clinicaService: ClinicasService) {}
 
   async solicitarCadastroProfissional(userId: string, dto: createProfissionalDto) {
+    const clinicaExiste = await this.clinicaService.clinicaExists(dto.clinicaId!);
+    if (!clinicaExiste) {
+      throw new NotFoundException('Clínica não encontrada');
+    }
+    
     const usuario = await this.prismaService.usuario.findUnique({
       where: { id: userId },
       include: { profissional: true },
@@ -29,6 +35,7 @@ export class ProfissionalService {
       if (usuario.profissional.statusAprovacao !== StatusAprovacao.rejeitado) {
         throw new ConflictException('Já existe uma solicitação profissional pendente ou aprovada para este usuário');
       }
+      
 
       return this.prismaService.profissional.update({
         where: { id: usuario.profissional.id },
