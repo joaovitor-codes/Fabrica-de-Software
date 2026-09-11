@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -28,9 +29,7 @@ import {
   ApiOperation,
 } from '@nestjs/swagger';
 import { IngredienteDTO } from '../ingrediente/dto/ingrediente';
-import { TipoMidia, TipoUsuario } from '@prisma/client';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import { TipoMidia } from '@prisma/client';
 
 const uploadDirectory = join(process.cwd(), 'uploads', 'receitas');
 const receitaStorage = diskStorage({
@@ -48,7 +47,7 @@ const receitaStorage = diskStorage({
 @Controller('api/receita')
 export class ReceitaController {
   constructor(private readonly receitaService: ReceitaService) {}
-
+  
   @ApiOperation({ summary: 'Cria uma nova receita' })
   @ApiCreatedResponse({ description: 'Receita criada com sucesso.' })
   @UseGuards(AuthGuard)
@@ -59,6 +58,13 @@ export class ReceitaController {
     @Body('ingredientes') ingredientes: IngredienteDTO[],
   ) {
     return await this.receitaService.create(receita, req.user.sub);
+  }
+  
+  @ApiOperation({ summary: 'Retorna uma receita pelo nome' })
+  @ApiOkResponse({ description: 'Objeto da receita.' })
+  @Get('/nome')
+  async findByName(@Query('q') nome: string) {
+    return await this.receitaService.findByName(nome);
   }
 
   @ApiOperation({ summary: 'Envia uma mídia para uma receita' })
@@ -73,7 +79,10 @@ export class ReceitaController {
     { storage: receitaStorage },
   ))
   async uploadMedia(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4', 
+      errorHttpStatusCode: 400, 
+      exceptionFactory: () => new BadRequestException('ID inválido')
+    })) id: string,
     @UploadedFiles()
     files: { image?: Express.Multer.File[], video?: Express.Multer.File[] },
     @Body('tipo') tipo: TipoMidia,
@@ -113,7 +122,10 @@ export class ReceitaController {
   @UseGuards(AuthGuard)
   @Post(':id/favorito')
   async addFavorite(
-    @Param('id', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 400 })) id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4', 
+      errorHttpStatusCode: 400,
+      exceptionFactory: () => new BadRequestException('ID inválido')
+    })) id: string,
     @Request() request,
   ) {
     return await this.receitaService.addFavorite(id, request.user.sub);
@@ -124,7 +136,9 @@ export class ReceitaController {
   @UseGuards(AuthGuard)
   @Delete(':id/favorito')
   async removeFavorite(
-    @Param('id', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 400 })) id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 400,
+      exceptionFactory: () => new BadRequestException('ID inválido')
+    })) id: string,
     @Request() request,
   ) {
     return await this.receitaService.removeFavorite(id, request.user.sub);
@@ -140,12 +154,6 @@ export class ReceitaController {
     return await this.receitaService.findOne(id);
   }
 
-  @ApiOperation({ summary: 'Retorna uma receita pelo nome' })
-  @ApiOkResponse({ description: 'Objeto da receita.' })
-  @Get('/nome/:nome')
-  async findByName(@Param('nome') nome: string) {
-    return await this.receitaService.findByName(nome);
-  }
 
   @ApiOperation({ summary: 'Retorna os ingredientes de uma receita pelo ID' })
   @ApiOkResponse({ description: 'Array de ingredientes da receita.' })
