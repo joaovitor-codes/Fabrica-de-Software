@@ -21,6 +21,7 @@ import { CacheModule } from './cache/cache.module';
 import { Multer } from './multer/multer.module';
 import { ThrottlerModul } from './throttler/throttler.module';
 import { IaModule } from './ia/ia.module';
+import { AnamneseModule } from './anamnese/anamnese.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { IaModule } from './ia/ia.module';
     PacienteRestricaoModule,
     IngredienteRestricaoModule,
     IaModule,
+    AnamneseModule,
   ],
   controllers: [],
   providers: [PrismaService],
