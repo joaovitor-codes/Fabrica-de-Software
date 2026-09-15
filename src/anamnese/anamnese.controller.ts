@@ -195,4 +195,11 @@ export class AnamneseController {
     async buscarAnamnese(@Request() request, @Param('id', uuidPipe('ID de anamnese inválido')) id: string) {
         return this.anamneseService.getAnamneseById(id, request.user.sub, request.user.tipoUsuario);
     }
+
+    @ApiOperation({ summary: 'Retorna todas as anamneses de um paciente (profissional dono, paciente dono ou admin)' })
+    @ApiOkResponse({ description: 'Anamneses retornadas com sucesso.' })
+    @Get('paciente/:pacienteId')
+    async getAnamnesesByPacienteId(@Request() request, @Param('pacienteId', uuidPipe('ID de paciente inválido')) pacienteId: string) {
+        return this.anamneseService.getAnamnesesByPacienteId(pacienteId, request.user.sub, request.user.tipoUsuario);
+    }
 }
