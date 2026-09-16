@@ -22,6 +22,7 @@ import { Multer } from './multer/multer.module';
 import { ThrottlerModul } from './throttler/throttler.module';
 import { IaModule } from './ia/ia.module';
 import { AnamneseModule } from './anamnese/anamnese.module';
+import { PlanoAlimentarModule } from './plano-alimentar/plano-alimentar.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AnamneseModule } from './anamnese/anamnese.module';
     IngredienteRestricaoModule,
     IaModule,
     AnamneseModule,
+    PlanoAlimentarModule
   ],
   controllers: [],
   providers: [PrismaService],
