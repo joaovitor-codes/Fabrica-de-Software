@@ -22,6 +22,7 @@ import { Multer } from './multer/multer.module';
 import { ThrottlerModul } from './throttler/throttler.module';
 import { IaModule } from './ia/ia.module';
 import { AnamneseModule } from './anamnese/anamnese.module';
+import { TagSintomasModule } from './tag-sintomas/tag-sintomas.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AnamneseModule } from './anamnese/anamnese.module';
     IngredienteRestricaoModule,
     IaModule,
     AnamneseModule,
+    TagSintomasModule,
   ],
   controllers: [],
   providers: [PrismaService],
