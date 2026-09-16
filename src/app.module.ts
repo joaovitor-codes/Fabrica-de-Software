@@ -23,6 +23,7 @@ import { ThrottlerModul } from './throttler/throttler.module';
 import { IaModule } from './ia/ia.module';
 import { AnamneseModule } from './anamnese/anamnese.module';
 import { TagSintomasModule } from './tag-sintomas/tag-sintomas.module';
+import { PlanoAlimentarModule } from './plano-alimentar/plano-alimentar.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { TagSintomasModule } from './tag-sintomas/tag-sintomas.module';
     IaModule,
     AnamneseModule,
     TagSintomasModule,
+    PlanoAlimentarModule
   ],
   controllers: [],
   providers: [PrismaService],
