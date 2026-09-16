@@ -7,6 +7,13 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
+
 @ApiTags('Restrição do Paciente')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, RolesGuard)
@@ -20,9 +27,7 @@ export class PacienteRestricaoController {
     @Post(':pacienteId/restricoes')
     async vincular(
         @Request() request,
-        @Param('pacienteId', new ParseUUIDPipe({version: '4', 
-          errorHttpStatusCode: 400, 
-          exceptionFactory: () => new BadRequestException('ID inválido')})) pacienteId: string,
+        @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string,
         @Body() dto: VincularPacienteRestricaoDto,
     ) {
         return this.pacienteRestricaoService.vincularRestricaoAoPaciente(
@@ -37,9 +42,7 @@ export class PacienteRestricaoController {
     @ApiOkResponse({ description: 'Lista de restrições do paciente.' })
     @Roles(TipoUsuario.admin, TipoUsuario.profissional)
     @Get(':pacienteId/restricoes')
-    async findAll(@Request() request, @Param('pacienteId', new ParseUUIDPipe({version: '4', 
-      errorHttpStatusCode: 400, 
-      exceptionFactory: () => new BadRequestException('ID inválido')})) pacienteId: string) {
+    async findAll(@Request() request, @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string) {
         return this.pacienteRestricaoService.findAllByPaciente(
             request.user.sub,
             request.user.tipoUsuario,
@@ -53,12 +56,8 @@ export class PacienteRestricaoController {
     @Patch(':pacienteId/restricoes/:restricaoId')
     async update(
         @Request() request,
-        @Param('pacienteId', new ParseUUIDPipe({version: '4', 
-          errorHttpStatusCode: 400, 
-          exceptionFactory: () => new BadRequestException('ID Paciente inválido')})) pacienteId: string,
-        @Param('restricaoId', new ParseUUIDPipe({version: '4', 
-          errorHttpStatusCode: 400, 
-          exceptionFactory: () => new BadRequestException('ID Restrição inválido')})) restricaoId: string,
+        @Param('pacienteId', uuidPipe('ID Paciente inválido')) pacienteId: string,
+        @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
         @Body() dto: UpdatePacienteRestricaoDto,
     ) {
         return this.pacienteRestricaoService.update(
@@ -76,12 +75,8 @@ export class PacienteRestricaoController {
     @Delete(':pacienteId/restricoes/:restricaoId')
     async remove(
         @Request() request,
-        @Param('pacienteId', new ParseUUIDPipe({version: '4', 
-          errorHttpStatusCode: 400, 
-          exceptionFactory: () => new BadRequestException('ID Paciente inválido')})) pacienteId: string,
-        @Param('restricaoId', new ParseUUIDPipe({version: '4', 
-          errorHttpStatusCode: 400, 
-          exceptionFactory: () => new BadRequestException('ID Restrição inválido')})) restricaoId: string,
+        @Param('pacienteId', uuidPipe('ID Paciente inválido')) pacienteId: string,
+        @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
     ) {
         return this.pacienteRestricaoService.delete(
             request.user.sub,

@@ -4,6 +4,13 @@ import { TelefoneService } from './telefone.service';
 import { CreateTelefoneDto, UpdateTelefoneDto } from './dtos/telefone';
 import { AuthGuard } from '../auth/auth.guard';
 
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
+
 @ApiTags('Telefone')
 @Controller('api/telefone')
 export class TelefoneController {
@@ -30,9 +37,7 @@ export class TelefoneController {
   @ApiOperation({ summary: 'Retorna um telefone específico pelo ID' })
   @ApiOkResponse({ description: 'Telefone retornado com sucesso.' })
   @Get(':id')
-  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async findOne(@Param('id', uuidPipe('ID inválido')) id: string) {
     return this.telefoneService.findOne(id);
   }
 
@@ -40,9 +45,7 @@ export class TelefoneController {
   @ApiOkResponse({ description: 'Telefone atualizado com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() updateTelefoneDto: UpdateTelefoneDto) {
+  async update(@Param('id', uuidPipe('ID inválido')) id: string, @Body() updateTelefoneDto: UpdateTelefoneDto) {
     return this.telefoneService.update(id, updateTelefoneDto);
   }
 
@@ -50,9 +53,7 @@ export class TelefoneController {
   @ApiOkResponse({ description: 'Telefone removido com sucesso.' })
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async remove(@Param('id', uuidPipe('ID inválido')) id: string) {
     return this.telefoneService.remove(id);
   }
 }
