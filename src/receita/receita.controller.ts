@@ -44,6 +44,13 @@ const receitaStorage = diskStorage({
   },
 });
 
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
+
 @Controller('api/receita')
 export class ReceitaController {
   constructor(private readonly receitaService: ReceitaService) {}
@@ -79,10 +86,7 @@ export class ReceitaController {
     { storage: receitaStorage },
   ))
   async uploadMedia(
-    @Param('id', new ParseUUIDPipe({ version: '4', 
-      errorHttpStatusCode: 400, 
-      exceptionFactory: () => new BadRequestException('ID inválido')
-    })) id: string,
+    @Param('id', uuidPipe('ID inválido')) id: string,
     @UploadedFiles()
     files: { image?: Express.Multer.File[], video?: Express.Multer.File[] },
     @Body('tipo') tipo: TipoMidia,
@@ -122,10 +126,7 @@ export class ReceitaController {
   @UseGuards(AuthGuard)
   @Post(':id/favorito')
   async addFavorite(
-    @Param('id', new ParseUUIDPipe({ version: '4', 
-      errorHttpStatusCode: 400,
-      exceptionFactory: () => new BadRequestException('ID inválido')
-    })) id: string,
+    @Param('id', uuidPipe('ID inválido')) id: string,
     @Request() request,
   ) {
     return await this.receitaService.addFavorite(id, request.user.sub);
@@ -136,9 +137,7 @@ export class ReceitaController {
   @UseGuards(AuthGuard)
   @Delete(':id/favorito')
   async removeFavorite(
-    @Param('id', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 400,
-      exceptionFactory: () => new BadRequestException('ID inválido')
-    })) id: string,
+    @Param('id', uuidPipe('ID inválido')) id: string,
     @Request() request,
   ) {
     return await this.receitaService.removeFavorite(id, request.user.sub);
@@ -147,10 +146,7 @@ export class ReceitaController {
   @ApiOperation({ summary: 'Retorna uma receita pelo ID' })
   @ApiOkResponse({ description: 'Objeto da receita.' })
   @Get(':id')
-  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) 
-    id: string) {
+  async findOne(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.receitaService.findOne(id);
   }
 
@@ -158,7 +154,7 @@ export class ReceitaController {
   @ApiOperation({ summary: 'Retorna os ingredientes de uma receita pelo ID' })
   @ApiOkResponse({ description: 'Array de ingredientes da receita.' })
   @Get(':id/ingredientes')
-  async findIngredients(@Param('id') id: string) {
+  async findIngredients(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.receitaService.findIngredients(id);
   }
 
@@ -169,14 +165,14 @@ export class ReceitaController {
     description: 'Array de ingredientes substitutos da receita.',
   })
   @Get(':ingredienteId/ingredientes/:restricaoId/restricao/substituicao')
-  async findReplacementFor(@Param('ingredienteId') ingredienteId: string, @Param('restricaoId') restricaoId: string) {
+  async findReplacementFor(@Param('ingredienteId', uuidPipe('ID Ingrediente inválido')) ingredienteId: string, @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string) {
     return await this.receitaService.encontrarSubstitutos(ingredienteId, restricaoId);
   }
 
   @ApiOperation({ summary: 'Retorna os alertas de uma receita pelo ID' })
   @ApiOkResponse({ description: 'Array de alertas da receita.' })
   @Get(':id/alertas')
-  async findAlerts(@Param('id') id: string) {
+  async findAlerts(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.receitaService.findAlerts(id);
   }
 
@@ -190,8 +186,8 @@ export class ReceitaController {
   @ApiOperation({ summary: 'Retorna todos os feedbacks de uma receita' })
   @ApiOkResponse({ description: 'Feedbacks de determinada receita.' })
   @Get(':id/feedback')
-  async findFeedback() {
-    return await this.receitaService.findFeedbacks();
+  async findFeedback(@Param('id', uuidPipe('ID inválido')) id: string) {
+    return await this.receitaService.findFeedbacks(id);
   }
 
   @ApiOperation({ summary: 'Atualiza uma receita pelo ID' })
@@ -199,7 +195,7 @@ export class ReceitaController {
   @UseGuards(AuthGuard)
   @Patch(':id')
   async update(
-    @Param('id') id: string,
+    @Param('id', uuidPipe('ID inválido')) id: string,
     @Body() receita: UpdateReceitaDto,
     @Request() request,
   ) {
@@ -210,7 +206,7 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita aprovada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id/aprovar')
-  async aprovarReceita(@Param('id') id: string, @Request() request) {
+  async aprovarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request) {
     return await this.receitaService.aprovarReceita(id, request.user.sub);
   }
 
@@ -218,7 +214,7 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita rejeitada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id/rejeitar')
-  async rejeitarReceita(@Param('id') id: string, @Request() request) {
+  async rejeitarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request) {
     return await this.receitaService.rejeitarReceita(id, request.user.sub);
   }
 
@@ -226,7 +222,7 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita removida com sucesso.' })
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.receitaService.remove(id);
   }
 }

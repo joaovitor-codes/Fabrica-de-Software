@@ -1,9 +1,16 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { IngredienteService } from './ingrediente.service';
 import { UpdateIngredienteDto } from './dto/update-ingrediente.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { IngredienteDTO } from './dto/ingrediente';
 import { ApiCreatedResponse, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
 
 @Controller('api/ingrediente')
 export class IngredienteController {
@@ -27,7 +34,7 @@ export class IngredienteController {
   @ApiOperation({ summary: 'Retorna um ingrediente específico pelo ID' })
   @ApiOkResponse({ description: 'Ingrediente retornado com sucesso.' })
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', uuidPipe('ID Ingrediente inválido')) id: string) {
     return await this.ingredienteService.findOne(id);
   }
 
@@ -35,7 +42,7 @@ export class IngredienteController {
   @ApiOkResponse({ description: 'Ingrediente atualizado com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() updateIngredienteDto: UpdateIngredienteDto) {
+  async update(@Param('id', uuidPipe('ID Ingrediente inválido')) id: string, @Body() updateIngredienteDto: UpdateIngredienteDto) {
     return await this.ingredienteService.update(id, updateIngredienteDto);
   }
 
@@ -43,7 +50,7 @@ export class IngredienteController {
   @ApiOkResponse({ description: 'Ingrediente removido com sucesso.' })
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id', uuidPipe('ID Ingrediente inválido')) id: string) {
     return await this.ingredienteService.remove(id);
   }
 }

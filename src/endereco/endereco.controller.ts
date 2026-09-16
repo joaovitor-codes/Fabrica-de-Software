@@ -4,6 +4,13 @@ import { EnderecoService } from './endereco.service';
 import { CreateEnderecoDto, UpdateEnderecoDto } from './dtos/endereco';
 import { AuthGuard } from '../auth/auth.guard';
 
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
+
 @ApiTags('Endereço')
 @Controller('api/endereco')
 export class EnderecoController {
@@ -30,9 +37,7 @@ export class EnderecoController {
   @ApiOperation({ summary: 'Retorna um endereço específico pelo ID' })
   @ApiOkResponse({ description: 'Endereço retornado com sucesso.' })
   @Get(':id')
-  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async findOne(@Param('id', uuidPipe('ID Endereço inválido')) id: string) {
     return this.enderecoService.findOne(id);
   }
 
@@ -40,9 +45,7 @@ export class EnderecoController {
   @ApiOkResponse({ description: 'Endereço atualizado com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
+  async update(@Param('id', uuidPipe('ID Endereço inválido')) id: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
     return this.enderecoService.update(id, updateEnderecoDto);
   }
 
@@ -50,9 +53,7 @@ export class EnderecoController {
   @ApiOkResponse({ description: 'Endereço removido com sucesso.' })
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async remove(@Param('id', uuidPipe('ID Endereço inválido')) id: string) {
     return this.enderecoService.remove(id);
   }
 }

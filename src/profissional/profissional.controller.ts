@@ -10,6 +10,12 @@ import { TipoUsuario } from '@prisma/client';
 import { CreateUsuarioDto } from '../usuario/dtos/usuario';
 import { ClinicasService } from '../clinicas/clinicas.service';
 
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
 
 @ApiTags('Profissionais')
 @ApiBearerAuth()
@@ -87,9 +93,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional aprovada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':id/aprovar')
-  async aprovar(@Request() request, @Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async aprovar(@Request() request, @Param('id', uuidPipe('ID inválido')) id: string) {
     return this.profissionalService.aprovarCadastroProfissional(request.user.sub, id);
   }
 
@@ -97,9 +101,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional rejeitada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':id/rejeitar')
-  async rejeitar(@Request() request, @Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async rejeitar(@Request() request, @Param('id', uuidPipe('ID inválido')) id: string) {
     return this.profissionalService.rejeitarCadastroProfissional(request.user.sub, id);
   }
 
@@ -107,9 +109,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Paciente vinculado ao profissional com sucesso.' })
   @Roles(TipoUsuario.profissional)
   @Post('paciente/:pacienteId/associar')
-  async associarPaciente(@Request() request, @Param('pacienteId', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) pacienteId: string) {
+  async associarPaciente(@Request() request, @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
 
     return this.profissionalService.associarPaciente(profissional.id, pacienteId);
@@ -119,9 +119,7 @@ export class ProfissionalController {
   @ApiResponse({ description: 'Retorna os dados de um profissional.' })
   @Roles(TipoUsuario.admin)
   @Get(':id')
-  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async findOne(@Param('id', uuidPipe('ID inválido')) id: string) {
     return this.profissionalService.findOne(id);
   }
 
@@ -129,9 +127,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Clínica Associada com sucesso ao profissional.' })
   @Roles(TipoUsuario.profissional)
   @Post('clinica/associar/:id')
-  async associarClinica(@Request() request, @Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async associarClinica(@Request() request, @Param('id', uuidPipe('ID inválido')) id: string) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
 
     if (profissional.clinicaId) {

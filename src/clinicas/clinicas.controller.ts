@@ -10,6 +10,13 @@ import { EnderecoService } from '../endereco/endereco.service';
 import { TelefoneService } from '../telefone/telefone.service';
 import { CreateTelefoneDto, UpdateTelefoneDto } from '../telefone/dtos/telefone';
 
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
+
 @ApiTags('Clínicas')
 @ApiBearerAuth()
 @UseGuards(AuthGuard, RolesGuard)
@@ -44,9 +51,7 @@ export class ClinicasController {
   @ApiOkResponse({ description: 'Lista de profissionais da clínica.' })
   @Roles(TipoUsuario.admin)
   @Get(':id/profissionais/page/:page/limit/:limit')
-  async findProfissionais(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Param('page', ParseIntPipe) page: number, @Param('limit', ParseIntPipe) limit: number) {
+  async findProfissionais(@Param('id', uuidPipe('ID Clínica inválido')) id: string, @Param('page', ParseIntPipe) page: number, @Param('limit', ParseIntPipe) limit: number) {
     return this.clinicasService.findProfissionais(id, page, limit);
   }
 
@@ -54,9 +59,7 @@ export class ClinicasController {
   @ApiOkResponse({ description: 'Clínica removida com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Delete(':id')
-  async remove(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async remove(@Param('id', uuidPipe('ID Clínica inválido')) id: string) {
     return this.clinicasService.remove(id);
   }
 
@@ -64,9 +67,7 @@ export class ClinicasController {
   @ApiOkResponse({ description: 'Dados da clínica.' })
   @Roles(TipoUsuario.admin)
   @Get(':id')
-  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async findOne(@Param('id', uuidPipe('ID Clínica inválido')) id: string) {
     return this.clinicasService.findOne(id);
   }
 
@@ -74,9 +75,7 @@ export class ClinicasController {
   @ApiOkResponse({ description: 'Clínica atualizada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Patch(':id')
-  async update(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() updateClinicaDto: UpdateClinicaDto) {
+  async update(@Param('id', uuidPipe('ID Clínica inválido')) id: string, @Body() updateClinicaDto: UpdateClinicaDto) {
     return this.clinicasService.update(id, updateClinicaDto);
   }
 
@@ -84,9 +83,7 @@ export class ClinicasController {
   @ApiCreatedResponse({ description: 'Endereço da clínica criado com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':id/endereco')
-  async createEndereco(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() createClinicaEnderecoDto: CreateClinicaEnderecoDto,) {
+  async createEndereco(@Param('id', uuidPipe('ID Clínica inválido')) id: string, @Body() createClinicaEnderecoDto: CreateClinicaEnderecoDto,) {
     await this.clinicasService.findOne(id);
 
     return await this.enderecoService.create({
@@ -99,9 +96,7 @@ export class ClinicasController {
   @ApiOkResponse({ description: 'Lista de endereços da clínica.' })
   @Roles(TipoUsuario.admin)
   @Get(':id/endereco')
-  async findEnderecos(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async findEnderecos(@Param('id', uuidPipe('ID Clínica inválido')) id: string) {
     await this.clinicasService.findOne(id);
     return this.enderecoService.findByClinica(id);
   }
@@ -110,9 +105,7 @@ export class ClinicasController {
   @ApiCreatedResponse({ description: 'Telefone adicionado com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':clinicaId/telefone')
-  async adicionarTelefone(@Param('clinicaId', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) clinicaId: string, @Body() telefoneDto: CreateTelefoneDto) {
+  async adicionarTelefone(@Param('clinicaId', uuidPipe('ID Clínica inválido')) clinicaId: string, @Body() telefoneDto: CreateTelefoneDto) {
     await this.clinicasService.findOne(clinicaId);
     return await this.telefoneService.create({
       ...telefoneDto,
@@ -124,12 +117,8 @@ export class ClinicasController {
   @ApiOkResponse({ description: 'Telefone removido com sucesso.'})
   @Roles(TipoUsuario.admin)
   @Delete(':clinicaId/telefone/remover/:telefoneId')
-  async removerTelefone(@Param('clinicaId', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID Clinica inválido')})) clinicaId: string,
-    @Param('telefoneId', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID Telefone inválido')})) telefoneId: string){
+  async removerTelefone(@Param('clinicaId', uuidPipe('ID Clínica inválido')) clinicaId: string,
+    @Param('telefoneId', uuidPipe('ID Telefone inválido')) telefoneId: string){
     const telefones = await this.telefoneService.findByClinica(clinicaId, telefoneId);
     if(telefones.length === 0){
       throw new BadRequestException('Não existe telefone associado a esta clinica')

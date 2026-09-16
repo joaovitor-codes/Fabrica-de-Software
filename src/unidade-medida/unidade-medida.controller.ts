@@ -5,6 +5,13 @@ import { UpdateUnidadeMedidaDto } from './dto/update-unidade-medida.dto';
 import { ApiCreatedResponse, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 
+const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+});
+
+
 @Controller('/api/unidade-medida')
 export class UnidadeMedidaController {
   constructor(private readonly unidadeMedidaService: UnidadeMedidaService) {}
@@ -27,9 +34,7 @@ export class UnidadeMedidaController {
   @ApiOperation({ summary: 'Retorna uma unidade de medida pelo ID' })
   @ApiOkResponse({ description: 'Objeto da unidade de medida.' })
   @Get(':id')
-  async findOne(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async findOne(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.unidadeMedidaService.findOne(id);
   }
 
@@ -37,9 +42,7 @@ export class UnidadeMedidaController {
   @ApiOkResponse({ description: 'Unidade de medida atualizada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string, @Body() updateUnidadeMedidaDto: UpdateUnidadeMedidaDto) {
+  async update(@Param('id', uuidPipe('ID inválido')) id: string, @Body() updateUnidadeMedidaDto: UpdateUnidadeMedidaDto) {
     return await this.unidadeMedidaService.update(id, updateUnidadeMedidaDto);
   }
 
@@ -47,9 +50,7 @@ export class UnidadeMedidaController {
   @ApiOkResponse({ description: 'Unidade de medida removida com sucesso.' })
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id', new ParseUUIDPipe({version: '4', 
-    errorHttpStatusCode: 400, 
-    exceptionFactory: () => new BadRequestException('ID inválido')})) id: string) {
+  async remove(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.unidadeMedidaService.remove(id);
   }
 }

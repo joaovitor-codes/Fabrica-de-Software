@@ -377,7 +377,7 @@ export class ReceitaService {
     return receitas;
   }
 
-  async findFeedbacks() {} // TODO: Implementar o método de encontrar feedbacks para uma receita
+  async findFeedbacks(id: string) {} // TODO: Implementar o método de encontrar feedbacks para uma receita
 
   async update(id: string, updateReceita: UpdateReceitaDto, usuarioId: string) {
     const cacheKey = 'receitas:all';
