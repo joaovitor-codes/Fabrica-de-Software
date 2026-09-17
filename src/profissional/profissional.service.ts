@@ -16,6 +16,13 @@ import { ClinicasService } from '../clinicas/clinicas.service';
 export class ProfissionalService {
   constructor(private readonly prismaService: PrismaService, private readonly clinicaService: ClinicasService) {}
 
+  async profissionalExists(id: string): Promise<boolean> {
+    const profissional = await this.prismaService.profissional.findUnique({
+      where: { id },
+    });
+    return !!profissional;
+  }
+
   async solicitarCadastroProfissional(userId: string, dto: createProfissionalDto) {
     const clinicaExiste = await this.clinicaService.clinicaExists(dto.clinicaId!);
     if (!clinicaExiste) {
