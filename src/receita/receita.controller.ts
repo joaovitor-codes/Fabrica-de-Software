@@ -158,17 +158,6 @@ export class ReceitaController {
     return await this.receitaService.findIngredients(id);
   }
 
-  @ApiOperation({
-    summary: 'Retorna os ingredientes substitutos de uma receita pelo ID',
-  })
-  @ApiOkResponse({
-    description: 'Array de ingredientes substitutos da receita.',
-  })
-  @Get(':ingredienteId/ingredientes/:restricaoId/restricao/substituicao')
-  async findReplacementFor(@Param('ingredienteId', uuidPipe('ID Ingrediente inválido')) ingredienteId: string, @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string) {
-    return await this.receitaService.encontrarSubstitutos(ingredienteId, restricaoId);
-  }
-
   @ApiOperation({ summary: 'Retorna os alertas de uma receita pelo ID' })
   @ApiOkResponse({ description: 'Array de alertas da receita.' })
   @Get(':id/alertas')
