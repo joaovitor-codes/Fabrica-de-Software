@@ -1,10 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createAnamnesePerguntaDto, updateAnamnesePerguntaDto } from './dtos/anamnese';
 import { mapPrismaNotFound } from './anamnese-resposta.util';
 
 @Injectable()
 export class AnamnesePerguntaService {
+    private readonly logger = new Logger(AnamnesePerguntaService.name);
+
     constructor(private readonly prismaService: PrismaService) {}
 
     async createAnamnesePergunta(data: createAnamnesePerguntaDto){
@@ -20,7 +22,7 @@ export class AnamnesePerguntaService {
             });
             return pergunta;
         }catch(error){
-            console.error('Erro ao criar pergunta da anamnese:', error);
+            this.logger.error('Erro ao criar pergunta da anamnese:', error);
             throw error;
         }
     }
@@ -38,7 +40,7 @@ export class AnamnesePerguntaService {
             });
             return pergunta;
         }catch(error){
-            console.error('Erro ao atualizar pergunta da anamnese:', error);
+            this.logger.error('Erro ao atualizar pergunta da anamnese:', error);
             mapPrismaNotFound(error, 'Pergunta não encontrada');
         }
     }
@@ -52,7 +54,7 @@ export class AnamnesePerguntaService {
                 }
             })
         }catch(error){
-            console.error('Erro ao desativar pergunta da anamnese:', error);
+            this.logger.error('Erro ao desativar pergunta da anamnese:', error);
             mapPrismaNotFound(error, 'Pergunta não encontrada');
         }
     }
@@ -66,7 +68,7 @@ export class AnamnesePerguntaService {
                 }
             })
         }catch(error){
-            console.error('Erro ao ativar pergunta da anamnese:', error);
+            this.logger.error('Erro ao ativar pergunta da anamnese:', error);
             mapPrismaNotFound(error, 'Pergunta não encontrada');
         }
     }
@@ -88,7 +90,7 @@ export class AnamnesePerguntaService {
                 where: { id }
             });
         }catch(error){
-            console.error('Erro ao deletar pergunta da anamnese:', error);
+            this.logger.error('Erro ao deletar pergunta da anamnese:', error);
             if(error instanceof ConflictException){
                 throw error;
             }
@@ -111,7 +113,7 @@ export class AnamnesePerguntaService {
             });
             return perguntas;
         }catch(error){
-            console.error('Erro ao buscar perguntas da anamnese:', error);
+            this.logger.error('Erro ao buscar perguntas da anamnese:', error);
             throw error;
         }
     }
@@ -128,7 +130,7 @@ export class AnamnesePerguntaService {
 
             return pergunta;
         }catch(error){
-            console.error('Erro ao buscar pergunta da anamnese:', error);
+            this.logger.error('Erro ao buscar pergunta da anamnese:', error);
             throw error;
         }
     }

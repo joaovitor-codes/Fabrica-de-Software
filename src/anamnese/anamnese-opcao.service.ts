@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createAnamneseOpcaoalDto, updateAnamneseOpcaoalDto } from './dtos/anamnese';
 import { mapPrismaNotFound } from './anamnese-resposta.util';
 
 @Injectable()
 export class AnamneseOpcaoService {
+    private readonly logger = new Logger(AnamneseOpcaoService.name);
+
     constructor(private readonly prismaService: PrismaService) {}
 
     async createAnamneseOpcao(data: createAnamneseOpcaoalDto){
@@ -17,7 +19,7 @@ export class AnamneseOpcaoService {
             })
             return opcao;
         }catch(error){
-            console.error('Erro ao criar opção da anamnese:', error);
+            this.logger.error('Erro ao criar opção da anamnese:', error);
             throw error;
         }
     }
@@ -32,7 +34,7 @@ export class AnamneseOpcaoService {
             })
             return opcao;
         }catch(error){
-            console.error('Erro ao atualizar opção da anamnese:', error);
+            this.logger.error('Erro ao atualizar opção da anamnese:', error);
             mapPrismaNotFound(error, 'Opção não encontrada');
         }
     }
@@ -51,7 +53,7 @@ export class AnamneseOpcaoService {
                 where: { perguntaId: perguntaId }
             });
         } catch (error) {
-            console.error('Erro ao buscar opções da anamnese:', error);
+            this.logger.error('Erro ao buscar opções da anamnese:', error);
             throw error;
         }
     }
@@ -62,7 +64,7 @@ export class AnamneseOpcaoService {
                 where: { id }
             })
         } catch (error) {
-            console.error('Erro ao deletar opção da anamnese:', error);
+            this.logger.error('Erro ao deletar opção da anamnese:', error);
             mapPrismaNotFound(error, 'Opção não encontrada');
         }
     }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe, BadRequestException, ParseIntPipe } from '@nestjs/common';
 import { IngredienteService } from './ingrediente.service';
 import { UpdateIngredienteDto } from './dto/update-ingrediente.dto';
 import { AuthGuard } from '../auth/auth.guard';
@@ -24,11 +24,11 @@ export class IngredienteController {
     return await this.ingredienteService.create(createIngredienteDto);
   }
 
-  @ApiOperation({ summary: 'Retorna todos os ingredientes cadastrados na base' })
+  @ApiOperation({ summary: 'Retorna todos os ingredientes paginados' })
   @ApiOkResponse({ description: 'Lista de ingredientes retornada com sucesso.' })
-  @Get('all')
-  async findAll() {
-    return await this.ingredienteService.findAll();
+  @Get('page/:page/limit/:limit')
+  async findAll(@Param('page', ParseIntPipe) page: number, @Param('limit', ParseIntPipe) limit: number) {
+    return await this.ingredienteService.findAll(page, limit);
   }
 
   @ApiOperation({ summary: 'Retorna um ingrediente específico pelo ID' })
