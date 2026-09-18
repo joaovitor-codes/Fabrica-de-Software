@@ -6,6 +6,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
+import { IngredienteSubstitutoService } from './ingrediente-substituto.service';
 
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
@@ -17,7 +18,10 @@ const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
 @ApiTags('Restrição do Ingrediente')
 @Controller('api/ingrediente')
 export class IngredienteRestricaoController {
-  constructor(private readonly ingredienteRestricaoService: IngredienteRestricaoService) {}
+  constructor(
+    private readonly ingredienteRestricaoService: IngredienteRestricaoService,
+    private readonly ingredienteSubstitutoService: IngredienteSubstitutoService,
+  ) {}
 
   @ApiOperation({ summary: 'Vincula uma restrição alimentar a um ingrediente' })
   @ApiCreatedResponse({ description: 'Restrição vinculada ao ingrediente com sucesso.' })
@@ -48,5 +52,27 @@ export class IngredienteRestricaoController {
     @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
   ) {
     return this.ingredienteRestricaoService.remove(ingredienteId, restricaoId);
+  }
+
+  @ApiOperation({ summary: 'Lista os substitutos já cadastrados para um ingrediente e restrição' })
+  @ApiOkResponse({ description: 'Lista de substitutos.' })
+  @Get(':ingredienteId/restricoes/:restricaoId/substitutos')
+  async findSubstitutos(
+    @Param('ingredienteId', uuidPipe('ID Ingrediente inválido')) ingredienteId: string,
+    @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
+  ) {
+    return this.ingredienteSubstitutoService.findAll(ingredienteId, restricaoId);
+  }
+
+  @ApiOperation({ summary: 'Gera (via IA) e cadastra substitutos para um ingrediente e restrição' })
+  @ApiCreatedResponse({ description: 'Substitutos gerados e cadastrados com sucesso.' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin, TipoUsuario.profissional)
+  @Post(':ingredienteId/restricoes/:restricaoId/substitutos')
+  async gerarSubstitutos(
+    @Param('ingredienteId', uuidPipe('ID Ingrediente inválido')) ingredienteId: string,
+    @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
+  ) {
+    return this.ingredienteSubstitutoService.gerarSubstituto(ingredienteId, restricaoId);
   }
 }
