@@ -36,12 +36,15 @@ export class IngredienteService {
     return { success: 'Ingrediente criado com sucesso.', data: ingrediente };
   }
 
-  // TODO FALTA PAGINAÇÃO NISSO AQUI 
-  async findAll() {
-    const ingredientes = await this.prismaService.ingrediente.findMany();
-    if (!ingredientes || ingredientes.length === 0) {
+  async findAll(page: number, limit: number) {
+    const ingredientes = await this.prismaService.ingrediente.findMany({
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    if(!ingredientes || ingredientes.length === 0){
       throw new NotFoundException('Nenhum ingrediente encontrado.');
     }
+    
     return ingredientes;
   }
 

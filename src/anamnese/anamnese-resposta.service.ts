@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createAnamneseRespostaDto, updateAnamneseRespostaDto } from './dtos/anamnese';
 import { AnamneseAcessoService } from './anamnese-acesso.service';
@@ -6,6 +6,8 @@ import { CamposResposta, mapPrismaNotFound, validarCamposPorTipoResposta } from 
 
 @Injectable()
 export class AnamneseRespostaService {
+    private readonly logger = new Logger(AnamneseRespostaService.name);
+
     constructor(
         private readonly prismaService: PrismaService,
         private readonly anamneseAcessoService: AnamneseAcessoService,
@@ -36,7 +38,7 @@ export class AnamneseRespostaService {
             })
             return resposta;
         }catch(error){
-            console.error('Erro ao criar resposta da anamnese:', error);
+            this.logger.error('Erro ao criar resposta da anamnese:', error);
             throw error;
         }
     }
@@ -75,7 +77,7 @@ export class AnamneseRespostaService {
             })
             return resposta;
         }catch(error){
-            console.error('Erro ao atualizar resposta da anamnese:', error);
+            this.logger.error('Erro ao atualizar resposta da anamnese:', error);
             if(error instanceof NotFoundException || error instanceof BadRequestException || error instanceof ForbiddenException){
                 throw error;
             }
@@ -103,7 +105,7 @@ export class AnamneseRespostaService {
                 where: { id }
             })
         }catch(error){
-            console.error('Erro ao deletar resposta da anamnese:', error);
+            this.logger.error('Erro ao deletar resposta da anamnese:', error);
             if(error instanceof NotFoundException || error instanceof ForbiddenException){
                 throw error;
             }

@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createAnamneseDto } from './dtos/anamnese';
 import { TipoUsuario } from '@prisma/client';
@@ -7,6 +7,8 @@ import { validarCamposPorTipoResposta } from './anamnese-resposta.util';
 
 @Injectable()
 export class AnamneseService {
+    private readonly logger = new Logger(AnamneseService.name);
+
     constructor(
         private readonly prismaService: PrismaService,
         private readonly anamneseAcessoService: AnamneseAcessoService,
@@ -63,7 +65,7 @@ export class AnamneseService {
 
             return anamnese;
         }catch(error){
-            console.error('Erro ao criar anamnese:', error);
+            this.logger.error('Erro ao criar anamnese:', error);
             throw error;
         }
     }
@@ -95,7 +97,7 @@ export class AnamneseService {
 
             return anamnese;
         }catch(error){
-            console.error('Erro ao buscar anamnese:', error);
+            this.logger.error('Erro ao buscar anamnese:', error);
             throw error;
         }
     }
@@ -129,12 +131,9 @@ export class AnamneseService {
 
             return anamneses;
         }catch(error){
-            console.error('Erro ao buscar anamneses por paciente:', error);
+            this.logger.error('Erro ao buscar anamneses por paciente:', error);
             throw error;
         }
     }
 
-    async teste(){
-        await this.prismaService
-    }
 }
