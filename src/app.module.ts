@@ -24,6 +24,7 @@ import { IaModule } from './ia/ia.module';
 import { AnamneseModule } from './anamnese/anamnese.module';
 import { TagSintomasModule } from './tag-sintomas/tag-sintomas.module';
 import { PlanoAlimentarModule } from './plano-alimentar/plano-alimentar.module';
+import { DiarioDeSintomasModule } from './diario-de-sintomas/diario-de-sintomas.module';
 
 @Module({
   imports: [
@@ -55,7 +56,8 @@ import { PlanoAlimentarModule } from './plano-alimentar/plano-alimentar.module';
     IaModule,
     AnamneseModule,
     TagSintomasModule,
-    PlanoAlimentarModule
+    PlanoAlimentarModule,
+    DiarioDeSintomasModule
   ],
   controllers: [],
   providers: [PrismaService],
