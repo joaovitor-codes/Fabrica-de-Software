@@ -1,29 +1,43 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ProfissionalService } from '../profissional/profissional.service';
+import { PlanoAlimentarDto, PlanoAlimentarItemDto } from './dto/plano-alimentar';
 
 @Injectable()
 export class PlanoAlimentarService {
   constructor(
     private prismaService: PrismaService,
-    private profissionalService: ProfissionalService,
   ) {}
 
-  async createPlanoAlimentar(planoAlimentarDto: any, profissionalId: string) {
-    const profissionalExiste = await this.profissionalService.profissionalExists(profissionalId);
+  async createPlanoAlimentar(planoAlimentarDto: PlanoAlimentarDto, profissionalId: string, pacienteId: string) {
+    const profissionalExiste = await this.prismaService.profissional.findUnique({
+      where: { id: profissionalId },
+    });
+
     if (!profissionalExiste) {
       throw new NotFoundException('Profissional não encontrado');
     }
 
+    const pacienteExiste = await this.prismaService.paciente.findUnique({
+      where: { id: pacienteId },
+    });
+
+    if (!pacienteExiste) {
+      throw new NotFoundException('Paciente não encontrado');
+    }
+
+    if(pacienteExiste.profissionalId !== profissionalId){
+      throw new NotFoundException('Paciente não pertence ao profissional');
+    }
+
     const planoAlimentar = await this.prismaService.planoAlimentar.create({
       data: {
-        pacienteId: planoAlimentarDto.pacienteId,
+        pacienteId: pacienteId,
         profissionalId: profissionalId,
         nome: planoAlimentarDto.nome,
         dataInicio: new Date(planoAlimentarDto.dataInicio),
         dataFim: new Date(planoAlimentarDto.dataFim),
         itens: {
-          create: planoAlimentarDto.itens.map((item: any) => ({
+          create: planoAlimentarDto.itens.map((item) => ({
             receitaId: item.receitaId,
             diaSemana: item.diaSemana,
             tipoRefeicao: item.tipoRefeicao,
@@ -34,6 +48,17 @@ export class PlanoAlimentarService {
     });
 
     return planoAlimentar;
+  }
+
+  async adicionarItemAoPlano(planoAlimentarId: string, item: PlanoAlimentarItemDto) {
+    const planoAlimentar = await this.prismaService.planoAlimentar.findUnique({
+      where: { id: planoAlimentarId },
+    });
+
+    if(!planoAlimentar){
+      throw new NotFoundException('Plano alimentar não encontrado');
+    }
+    
   }
 
   private horarioSugeridoParaDate(horario: string): Date {

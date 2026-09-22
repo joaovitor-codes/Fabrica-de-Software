@@ -31,10 +31,10 @@ export class PlanoAlimentarController {
 
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.profissional)
-  @Post()
-  async createPlanoAlimentar(@Body() planoAlimentarDto: PlanoAlimentarDto, @Request() req) {
+  @Post('/pacientes/:pacienteId')
+  async createPlanoAlimentar(@Body() planoAlimentarDto: PlanoAlimentarDto, @Request() req, @Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string) {
     const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
-    return await this.planoAlimentarService.createPlanoAlimentar(planoAlimentarDto, profissional.id);
+    return await this.planoAlimentarService.createPlanoAlimentar(planoAlimentarDto, profissional.id, pacienteId);
   }
 
   @ApiOperation({ summary: 'Marca (ou desmarca) uma refeição como concluída num dia específico' })

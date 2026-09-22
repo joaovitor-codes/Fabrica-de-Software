@@ -2,9 +2,6 @@ import { ChecklistRefeicao, ComentarioRefeicao, DiaSemana, Notificacao, TipoRefe
 import { IsDateString, IsNotEmpty, Matches } from "class-validator";
 
 export class PlanoAlimentarDto {
-    profissionalId!: string;
-    @IsNotEmpty()
-    pacienteId!: string;
     @IsNotEmpty()
     nome!: string;
     @IsDateString()
