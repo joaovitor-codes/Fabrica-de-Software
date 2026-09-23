@@ -37,6 +37,7 @@ class FakeAuthGuard implements CanActivate {
 class FakePrismaService {
     profissionais = new Map<string, any>();
     pacientes = new Map<string, any>();
+    receitas = new Map<string, any>();
     planosAlimentares = new Map<string, any>();
     planoAlimentarItens = new Map<string, any>();
 
@@ -60,6 +61,10 @@ class FakePrismaService {
         },
     };
 
+    receita = {
+        findUnique: async ({ where }: any) => this.receitas.get(where.id) ?? null,
+    };
+
     planoAlimentar = {
         create: async ({ data }: any) => {
             const planoAlimentar = { id: randomUUID(), ...data };
@@ -75,6 +80,13 @@ class FakePrismaService {
             this.planoAlimentarItens.set(item.id, item);
             return item;
         },
+        findFirst: async ({ where }: any) =>
+            [...this.planoAlimentarItens.values()].find(
+                (i) =>
+                    i.planoAlimentarId === where.planoAlimentarId &&
+                    i.diaSemana === where.diaSemana &&
+                    i.tipoRefeicao === where.tipoRefeicao,
+            ) ?? null,
     };
 }
 
@@ -92,8 +104,10 @@ describe('PlanoAlimentar (integration)', () => {
     const asOutroProfissional = () => ({ 'x-user-sub': outroProfissional.usuarioId, 'x-user-tipo': TipoUsuario.profissional });
     const asPaciente = () => ({ 'x-user-sub': paciente.usuarioId, 'x-user-tipo': TipoUsuario.paciente });
 
+    const receitaValida = { id: randomUUID(), nome: 'Omelete de claras' };
+
     const itemValido = {
-        receitaId: randomUUID(),
+        receitaId: receitaValida.id,
         diaSemana: DiaSemana.segunda,
         tipoRefeicao: TipoRefeicao.cafe_da_manha,
         horarioSugerido: '08:00',
@@ -120,6 +134,7 @@ describe('PlanoAlimentar (integration)', () => {
         prisma.profissionais.set(outroProfissional.id, outroProfissional);
         prisma.pacientes.set(paciente.id, paciente);
         prisma.pacientes.set(pacienteSemVinculo.id, pacienteSemVinculo);
+        prisma.receitas.set(receitaValida.id, receitaValida);
     });
 
     afterAll(async () => {
@@ -240,7 +255,15 @@ describe('PlanoAlimentar (integration)', () => {
                     .expect(400);
             });
 
-            it('permite que o profissional dono adicione itens à grade dia x refeição', async () => {
+            it('rejeita item com receita inexistente', async () => {
+                await request(app.getHttpServer())
+                    .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+                    .set(asProfissionalDono())
+                    .send({ ...itemValido, receitaId: randomUUID() })
+                    .expect(404);
+            });
+
+            it('permite que o profissional dono adicione um item à grade dia x refeição', async () => {
                 const res = await request(app.getHttpServer())
                     .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
                     .set(asProfissionalDono())
@@ -250,7 +273,20 @@ describe('PlanoAlimentar (integration)', () => {
                 expect(res.body.planoAlimentarId).toBe(planoAlimentarId);
                 expect(res.body.diaSemana).toBe(DiaSemana.segunda);
                 expect(res.body.tipoRefeicao).toBe(TipoRefeicao.cafe_da_manha);
+                expect(prisma.planoAlimentarItens.size).toBe(1);
+            });
 
+            it('rejeita item duplicado para o mesmo dia e refeição do plano', async () => {
+                await request(app.getHttpServer())
+                    .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+                    .set(asProfissionalDono())
+                    .send(itemValido)
+                    .expect(409);
+
+                expect(prisma.planoAlimentarItens.size).toBe(1);
+            });
+
+            it('permite montar a grade completa adicionando itens em dias/refeições diferentes', async () => {
                 const outroItem = { ...itemValido, diaSemana: DiaSemana.terca, tipoRefeicao: TipoRefeicao.almoco };
                 await request(app.getHttpServer())
                     .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
