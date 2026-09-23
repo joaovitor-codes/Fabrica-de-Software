@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanoAlimentarDto, PlanoAlimentarItemDto } from './dto/plano-alimentar';
 
@@ -36,21 +36,13 @@ export class PlanoAlimentarService {
         nome: planoAlimentarDto.nome,
         dataInicio: new Date(planoAlimentarDto.dataInicio),
         dataFim: new Date(planoAlimentarDto.dataFim),
-        itens: {
-          create: planoAlimentarDto.itens.map((item) => ({
-            receitaId: item.receitaId,
-            diaSemana: item.diaSemana,
-            tipoRefeicao: item.tipoRefeicao,
-            horarioSugerido: this.horarioSugeridoParaDate(item.horarioSugerido),
-          })),
-        },
       },
     });
 
     return planoAlimentar;
   }
 
-  async adicionarItemAoPlano(planoAlimentarId: string, item: PlanoAlimentarItemDto) {
+  async adicionarItemAoPlano(planoAlimentarId: string, item: PlanoAlimentarItemDto, profissionalId: string) {
     const planoAlimentar = await this.prismaService.planoAlimentar.findUnique({
       where: { id: planoAlimentarId },
     });
@@ -58,7 +50,42 @@ export class PlanoAlimentarService {
     if(!planoAlimentar){
       throw new NotFoundException('Plano alimentar não encontrado');
     }
+
+    if(planoAlimentar.profissionalId !== profissionalId){
+      throw new NotFoundException('Plano alimentar não pertence ao profissional');
+    }
+
+    const receitaExiste = await this.prismaService.receita.findUnique({
+      where: { id: item.receitaId },
+    });
+
+    if(!receitaExiste){
+      throw new NotFoundException('Receita não encontrada');
+    }
+
+    const itemDuplicado = await this.prismaService.planoAlimentarItem.findFirst({
+      where: {
+        planoAlimentarId: planoAlimentarId,
+        diaSemana: item.diaSemana,
+        tipoRefeicao: item.tipoRefeicao,
+      },
+    });
+
+    if(itemDuplicado){
+      throw new ConflictException('Já existe um item cadastrado para esse dia e refeição neste plano alimentar');
+    }
+
+    const novoItem = await this.prismaService.planoAlimentarItem.create({
+      data: {
+        planoAlimentarId: planoAlimentarId,
+        receitaId: item.receitaId,
+        diaSemana: item.diaSemana,
+        tipoRefeicao: item.tipoRefeicao,
+        horarioSugerido: this.horarioSugeridoParaDate(item.horarioSugerido),
+      },
+    });
     
+    return novoItem;
   }
 
   private horarioSugeridoParaDate(horario: string): Date {
