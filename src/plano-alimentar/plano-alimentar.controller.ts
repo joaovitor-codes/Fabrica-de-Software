@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Request, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Request, UseGuards } from "@nestjs/common";
 import { ApiCreatedResponse, ApiOkResponse, ApiOperation } from "@nestjs/swagger";
 import { AuthGuard } from "../auth/auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
@@ -92,6 +92,14 @@ export class PlanoAlimentarController {
   @Get('itens/:itemId/comentarios')
   async findComentarios(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
     return this.comentarioRefeicaoService.findAll(itemId, req.user.sub, req.user.tipoUsuario);
+  }
+
+  @ApiOperation({ summary: 'Remove (inativa) um plano alimentar' })
+  @ApiOkResponse({ description: 'Plano alimentar removido com sucesso.' })
+  @Roles(TipoUsuario.admin, TipoUsuario.profissional)
+  @Delete(':id')
+  async deletePlanoAlimentar(@Param('id', uuidPipe('ID do plano alimentar inválido')) id: string, @Request() req) {
+    return this.planoAlimentarService.deletePlanoAlimentar(id, req.user.sub, req.user.tipoUsuario);
   }
 
   @ApiOperation({ summary: 'Atualiza o status do checklist de uma refeição de um item do plano alimentar' })
