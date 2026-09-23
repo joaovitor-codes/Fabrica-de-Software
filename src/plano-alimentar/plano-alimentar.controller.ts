@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post, Request, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Request, UseGuards } from "@nestjs/common";
 import { ApiCreatedResponse, ApiOkResponse, ApiOperation } from "@nestjs/swagger";
 import { AuthGuard } from "../auth/auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
@@ -19,6 +19,7 @@ const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     exceptionFactory: () => new BadRequestException(mensagem),
 });
 
+@UseGuards(AuthGuard, RolesGuard)
 @Controller('api/plano-alimentar')
 export class PlanoAlimentarController {
   constructor(
@@ -29,7 +30,8 @@ export class PlanoAlimentarController {
     private comentarioRefeicaoService: ComentarioRefeicaoService,
   ) {}
 
-  @UseGuards(AuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Cria um novo plano alimentar para um paciente' })
+  @ApiCreatedResponse({ description: 'Plano alimentar criado com sucesso.' })
   @Roles(TipoUsuario.profissional)
   @Post('/pacientes/:pacienteId')
   async createPlanoAlimentar(@Body() planoAlimentarDto: PlanoAlimentarDto, @Request() req, @Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string) {
@@ -39,7 +41,6 @@ export class PlanoAlimentarController {
 
   @ApiOperation({ summary: 'Marca (ou desmarca) uma refeição como concluída num dia específico' })
   @ApiCreatedResponse({ description: 'Checklist atualizado com sucesso.' })
-  @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.paciente)
   @Post('itens/:itemId/checklist')
   async marcarChecklist(
@@ -53,7 +54,7 @@ export class PlanoAlimentarController {
 
   @ApiOperation({ summary: 'Lista o histórico de checklist de um item do plano alimentar' })
   @ApiOkResponse({ description: 'Histórico de checklist.' })
-  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.paciente, TipoUsuario.profissional)
   @Get('itens/:itemId/checklist')
   async findChecklist(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
     return this.checklistRefeicaoService.findAll(itemId, req.user.sub, req.user.tipoUsuario);
@@ -61,7 +62,6 @@ export class PlanoAlimentarController {
 
   @ApiOperation({ summary: 'Comenta uma refeição de um item do plano alimentar' })
   @ApiCreatedResponse({ description: 'Comentário criado com sucesso.' })
-  @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.paciente)
   @Post('itens/:itemId/comentarios')
   async criarComentario(
@@ -75,9 +75,22 @@ export class PlanoAlimentarController {
 
   @ApiOperation({ summary: 'Lista os comentários de um item do plano alimentar' })
   @ApiOkResponse({ description: 'Lista de comentários.' })
-  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.paciente, TipoUsuario.profissional)
   @Get('itens/:itemId/comentarios')
   async findComentarios(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
     return this.comentarioRefeicaoService.findAll(itemId, req.user.sub, req.user.tipoUsuario);
+  }
+
+  @ApiOperation({ summary: 'Atualiza o status do checklist de uma refeição de um item do plano alimentar' })
+  @ApiOkResponse({ description: 'Checklist atualizado com sucesso.' })
+  @Roles(TipoUsuario.paciente)
+  @Patch('itens/:itemId/checklist')
+  async atualizarChecklist(
+    @Param('itemId', uuidPipe('ID do item inválido')) itemId: string,
+    @Body() dto: MarcarCheckListDto,
+    @Request() req,
+  ) {
+    const paciente = await this.pacientesService.getPacienteByUserId(req.user.sub);
+    return this.checklistRefeicaoService.updateCheckList(itemId, paciente.id, dto);
   }
 }

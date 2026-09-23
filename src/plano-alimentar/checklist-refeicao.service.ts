@@ -80,4 +80,35 @@ export class ChecklistRefeicaoService {
         }
     }
 
+    async updateCheckList(itemId: string, pacienteId: string, dto: MarcarCheckListDto){
+        await this.verificarItemPaciente(itemId, pacienteId);
+        
+        const checklist = await this.prismaService.checklistRefeicao.findUnique({
+            where: {
+                planoAlimentarItemId_dataReferencia: {
+                    planoAlimentarItemId: itemId,
+                    dataReferencia: new Date(dto.dataReferencial)
+                }
+            }
+        });
+
+        if(!checklist){
+            throw new NotFoundException(`Checklist não encontrado para o item do plano alimentar na data ${dto.dataReferencial}`);
+        }
+
+        const updatedChecklist = await this.prismaService.checklistRefeicao.update({
+            where: {
+                planoAlimentarItemId_dataReferencia: {
+                    planoAlimentarItemId: itemId,
+                    dataReferencia: new Date(dto.dataReferencial)
+                }
+            },
+            data: {
+                concluido: dto.concluido,
+                concluidoEm: dto.concluido ? new Date() : null
+            }
+        })
+
+        return updatedChecklist;
+    }
 }
