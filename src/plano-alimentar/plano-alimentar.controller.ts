@@ -41,7 +41,6 @@ export class PlanoAlimentarController {
 
   @ApiOperation({ summary: 'Adiciona um item (grade dia x refeição) a um plano alimentar existente' })
   @ApiCreatedResponse({ description: 'Item adicionado ao plano alimentar com sucesso.' })
-  @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.profissional)
   @Post(':id/itens')
   async adicionarItemAoPlano(
