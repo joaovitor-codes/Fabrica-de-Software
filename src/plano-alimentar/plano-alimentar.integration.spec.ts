@@ -1,3 +1,5 @@
+/// <reference types="jest" />
+
 import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -67,11 +69,16 @@ class FakePrismaService {
 
     planoAlimentar = {
         create: async ({ data }: any) => {
-            const planoAlimentar = { id: randomUUID(), ...data };
+            const planoAlimentar = { id: randomUUID(), ativo: true, ...data };
             this.planosAlimentares.set(planoAlimentar.id, planoAlimentar);
             return planoAlimentar;
         },
         findUnique: async ({ where }: any) => this.planosAlimentares.get(where.id) ?? null,
+        update: async ({ where, data }: any) => {
+            const planoAlimentar = { ...this.planosAlimentares.get(where.id), ...data };
+            this.planosAlimentares.set(where.id, planoAlimentar);
+            return planoAlimentar;
+        },
     };
 
     planoAlimentarItem = {
@@ -296,6 +303,85 @@ describe('PlanoAlimentar (integration)', () => {
 
                 expect(prisma.planoAlimentarItens.size).toBe(2);
             });
+        });
+    });
+
+    describe('DELETE /api/plano-alimentar/:id', () => {
+        const criarPlano = async () => {
+            const res = await request(app.getHttpServer())
+                .post(`/api/plano-alimentar/pacientes/${paciente.id}`)
+                .set(asProfissionalDono())
+                .send({ nome: 'Plano a remover', dataInicio: '2026-02-01', dataFim: '2026-02-28' })
+                .expect(201);
+            return res.body.id as string;
+        };
+
+        it('rejeita quem não é admin nem profissional', async () => {
+            const planoAlimentarId = await criarPlano();
+
+            await request(app.getHttpServer())
+                .delete(`/api/plano-alimentar/${planoAlimentarId}`)
+                .set(asPaciente())
+                .expect(403);
+        });
+
+        it('rejeita id com formato inválido', async () => {
+            await request(app.getHttpServer())
+                .delete('/api/plano-alimentar/id-invalido')
+                .set(asProfissionalDono())
+                .expect(400);
+        });
+
+        it('rejeita plano alimentar inexistente', async () => {
+            await request(app.getHttpServer())
+                .delete(`/api/plano-alimentar/${randomUUID()}`)
+                .set(asProfissionalDono())
+                .expect(404);
+        });
+
+        it('rejeita outro profissional removendo plano que não é dele (BOLA)', async () => {
+            const planoAlimentarId = await criarPlano();
+
+            await request(app.getHttpServer())
+                .delete(`/api/plano-alimentar/${planoAlimentarId}`)
+                .set(asOutroProfissional())
+                .expect(404);
+        });
+
+        it('permite que o profissional dono remova (inative) o próprio plano', async () => {
+            const planoAlimentarId = await criarPlano();
+
+            await request(app.getHttpServer())
+                .delete(`/api/plano-alimentar/${planoAlimentarId}`)
+                .set(asProfissionalDono())
+                .expect(200);
+
+            expect(prisma.planosAlimentares.get(planoAlimentarId).ativo).toBe(false);
+        });
+
+        it('rejeita remover um plano que já está inativo', async () => {
+            const planoAlimentarId = await criarPlano();
+
+            await request(app.getHttpServer())
+                .delete(`/api/plano-alimentar/${planoAlimentarId}`)
+                .set(asProfissionalDono())
+                .expect(200);
+
+            await request(app.getHttpServer())
+                .delete(`/api/plano-alimentar/${planoAlimentarId}`)
+                .set(asProfissionalDono())
+                .expect(404);
+        });
+
+        it('permite que o admin remova o plano de qualquer profissional', async () => {
+            const planoAlimentarId = await criarPlano();
+
+            await request(app.getHttpServer())
+                .delete(`/api/plano-alimentar/${planoAlimentarId}`)
+                .set(asAdmin())
+                .expect(200);
+
+            expect(prisma.planosAlimentares.get(planoAlimentarId).ativo).toBe(false);
         });
     });
 });

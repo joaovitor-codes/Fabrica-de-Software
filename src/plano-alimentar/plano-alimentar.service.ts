@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { TipoUsuario } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanoAlimentarDto, PlanoAlimentarItemDto } from './dto/plano-alimentar';
 
@@ -86,6 +87,33 @@ export class PlanoAlimentarService {
     });
     
     return novoItem;
+  }
+
+  async deletePlanoAlimentar(planoAlimentarId: string, usuarioId: string, tipoUsuario: TipoUsuario) {
+    const planoAlimentar = await this.prismaService.planoAlimentar.findUnique({
+      where: { id: planoAlimentarId },
+    });
+
+    if(!planoAlimentar){
+      throw new NotFoundException('Plano alimentar não encontrado');
+    }
+
+    if(tipoUsuario !== TipoUsuario.admin){
+      const profissional = await this.prismaService.profissional.findUnique({ where: { usuarioId } });
+
+      if(profissional?.id !== planoAlimentar.profissionalId){
+        throw new NotFoundException('Plano alimentar não pertence ao profissional');
+      }
+    }
+
+    if(!planoAlimentar.ativo){
+      throw new NotFoundException('Plano alimentar não encontrado');
+    }
+
+    return this.prismaService.planoAlimentar.update({
+      where: { id: planoAlimentarId },
+      data: { ativo: false },
+    });
   }
 
   private horarioSugeridoParaDate(horario: string): Date {
