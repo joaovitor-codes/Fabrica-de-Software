@@ -10,14 +10,9 @@ export class PlanoAlimentarDto {
     @IsDateString()
     @IsNotEmpty()
     dataFim!: string;
-
-    @IsNotEmpty()
-    itens!: PlanoAlimentarItemDto[];
-
 }
 
 export class PlanoAlimentarItemDto {
-    planoAlimentarId!: string;
     receitaId!: string;
     @IsNotEmpty()
     diaSemana!: DiaSemana;

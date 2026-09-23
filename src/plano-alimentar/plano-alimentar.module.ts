@@ -6,8 +6,6 @@ import { PlanoAlimentarController } from './plano-alimentar.controller';
 import { PlanoAlimentarService } from './plano-alimentar.service';
 import { ChecklistRefeicaoService } from './checklist-refeicao.service';
 import { ComentarioRefeicaoService } from './comentario-refeicao.service';
-import { AuthGuard } from '../auth/auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
 
 @Module({
   imports: [],
@@ -18,8 +16,6 @@ import { RolesGuard } from '../auth/roles.guard';
     PacientesService,
     ChecklistRefeicaoService,
     ComentarioRefeicaoService,
-    AuthGuard,
-    RolesGuard,
   ],
   controllers: [PlanoAlimentarController],
 })

@@ -4,7 +4,7 @@ import { AuthGuard } from "../auth/auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { TipoUsuario } from "@prisma/client";
-import { PlanoAlimentarDto } from "./dto/plano-alimentar";
+import { PlanoAlimentarDto, PlanoAlimentarItemDto } from "./dto/plano-alimentar";
 import { PlanoAlimentarService } from "./plano-alimentar.service";
 import { ProfissionalService } from "../profissional/profissional.service";
 import { PacientesService } from "../pacientes/pacientes.service";
@@ -35,6 +35,20 @@ export class PlanoAlimentarController {
   async createPlanoAlimentar(@Body() planoAlimentarDto: PlanoAlimentarDto, @Request() req, @Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string) {
     const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
     return await this.planoAlimentarService.createPlanoAlimentar(planoAlimentarDto, profissional.id, pacienteId);
+  }
+
+  @ApiOperation({ summary: 'Adiciona um item (grade dia x refeição) a um plano alimentar existente' })
+  @ApiCreatedResponse({ description: 'Item adicionado ao plano alimentar com sucesso.' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.profissional)
+  @Post(':id/itens')
+  async adicionarItemAoPlano(
+    @Param('id', uuidPipe('ID do plano alimentar inválido')) id: string,
+    @Body() dto: PlanoAlimentarItemDto,
+    @Request() req,
+  ) {
+    const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
+    return this.planoAlimentarService.adicionarItemAoPlano(id, dto, profissional.id);
   }
 
   @ApiOperation({ summary: 'Marca (ou desmarca) uma refeição como concluída num dia específico' })
