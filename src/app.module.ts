@@ -25,6 +25,7 @@ import { AnamneseModule } from './anamnese/anamnese.module';
 import { TagSintomasModule } from './tag-sintomas/tag-sintomas.module';
 import { PlanoAlimentarModule } from './plano-alimentar/plano-alimentar.module';
 import { DiarioDeSintomasModule } from './diario-de-sintomas/diario-de-sintomas.module';
+import { PontosTransacaoModule } from './pontos-transacao/pontos-transacao.module';
 
 @Module({
   imports: [
@@ -57,7 +58,8 @@ import { DiarioDeSintomasModule } from './diario-de-sintomas/diario-de-sintomas.
     AnamneseModule,
     TagSintomasModule,
     PlanoAlimentarModule,
-    DiarioDeSintomasModule
+    DiarioDeSintomasModule,
+    PontosTransacaoModule
   ],
   controllers: [],
   providers: [PrismaService],

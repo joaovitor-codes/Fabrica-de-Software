@@ -154,6 +154,7 @@ enum StatusReceita {
 
 enum TipoTransacaoPontos {
   ganho_aprovacao
+  ganho_rejeicao
   resgate_desconto
   ajuste_manual
 
