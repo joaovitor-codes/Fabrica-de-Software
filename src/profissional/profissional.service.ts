@@ -26,9 +26,11 @@ export class ProfissionalService {
   }
 
   async solicitarCadastroProfissional(userId: string, dto: createProfissionalDto) {
-    const clinicaExiste = await this.clinicaService.clinicaExists(dto.clinicaId!);
-    if (!clinicaExiste) {
-      throw new NotFoundException('Clínica não encontrada');
+    if (dto.clinicaId) {
+      const clinicaExiste = await this.clinicaService.clinicaExists(dto.clinicaId);
+      if (!clinicaExiste) {
+        throw new NotFoundException('Clínica não encontrada');
+      }
     }
     
     const usuario = await this.prismaService.usuario.findUnique({
@@ -220,7 +222,7 @@ export class ProfissionalService {
     }
   }
 
-  private async exigirProfissionalAprovado(profissionalId: string) {
+  async exigirProfissionalAprovado(profissionalId: string) {
     const profissional = await this.prismaService.profissional.findUnique({
       where: { id: profissionalId },
     });
