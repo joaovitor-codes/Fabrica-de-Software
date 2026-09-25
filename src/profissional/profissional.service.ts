@@ -14,7 +14,9 @@ import { ClinicasService } from '../clinicas/clinicas.service';
 
 @Injectable()
 export class ProfissionalService {
-  constructor(private readonly prismaService: PrismaService, private readonly clinicaService: ClinicasService) {}
+  constructor(
+    private readonly prismaService: PrismaService, private readonly clinicaService: ClinicasService
+  ) {}
 
   async profissionalExists(id: string): Promise<boolean> {
     const profissional = await this.prismaService.profissional.findUnique({

@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UpdateReceitaDto } from './dto/update.receita';
 import { CacheService } from '../cache/cache.service';
 import { UsuarioService } from '../usuario/usuario.service';
+import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 
 @Injectable()
 export class ReceitaService {
@@ -19,6 +20,7 @@ export class ReceitaService {
    private readonly prismaService: PrismaService,
    private readonly usuario: UsuarioService,
    private readonly cacheService: CacheService,
+   private readonly pontosTransacaoService: PontosTransacaoService
  ) {}
 
   private async alreadyExists(id: string) {
@@ -391,15 +393,13 @@ export class ReceitaService {
         },
       });
 
-      await tx.pontosTransacao.create({
-        data: {
-          profissionalId: profissional.id,
-          receitaId: receita.id,
-          pontos: 10,
-          tipo: TipoTransacaoPontos.ganho_aprovacao,
-          descricao: 'Pontos por aprovação de receita',
-        },
-      });
+      await this.pontosTransacaoService.createPontoTransacao(
+        profissional.id,
+        TipoTransacaoPontos.ganho_aprovacao,
+        10,
+        `Aprovação da receita: ${receita.nome}`,
+        tx,
+      );
 
       return { success: 'Receita aprovada com sucesso.', data: receitaAprovada };
     });
@@ -431,6 +431,14 @@ export class ReceitaService {
           status: 'rejeitada',
         },
       });
+
+      await this.pontosTransacaoService.createPontoTransacao(
+        profissional.id,
+        TipoTransacaoPontos.ganho_rejeicao,
+        5,
+        `Rejeição da receita: ${receita.nome}`,
+        tx,
+      );
 
       return { success: 'Receita rejeitada com sucesso.', data: receitaRejeitada };
     });
