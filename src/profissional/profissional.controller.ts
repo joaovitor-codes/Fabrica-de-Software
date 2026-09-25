@@ -9,6 +9,7 @@ import { Roles } from '../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 import { CreateUsuarioDto } from '../usuario/dtos/usuario';
 import { ClinicasService } from '../clinicas/clinicas.service';
+import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
@@ -25,6 +26,7 @@ export class ProfissionalController {
   constructor(
     private readonly profissionalService: ProfissionalService,
     private readonly clinicaService: ClinicasService,
+    private readonly pontosTransacaoService: PontosTransacaoService,
   ) {}
 
   @ApiOperation({ summary: 'Listar os pacientes do profissional autenticado' })
@@ -48,6 +50,29 @@ export class ProfissionalController {
     }
 
     return this.clinicaService.findOne(profissional.clinicaId);
+  }
+
+  @ApiOperation({ summary: 'Obter o saldo de pontos do profissional autenticado' })
+  @ApiResponse({ description: 'Retorna o saldo de pontos de incentivo do profissional.' })
+  @Roles(TipoUsuario.profissional)
+  @Get('pontos/saldo')
+  async getSaldo(@Request() request) {
+    const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
+    await this.profissionalService.exigirProfissionalAprovado(profissional.id);
+    const saldo = await this.pontosTransacaoService.getSaldo(profissional.id);
+
+    return { saldo };
+  }
+
+  @ApiOperation({ summary: 'Listar o histórico de transações de pontos do profissional autenticado' })
+  @ApiResponse({ description: 'Retorna o histórico paginado de transações de pontos do profissional.' })
+  @Roles(TipoUsuario.profissional)
+  @Get('pontos/historico')
+  async historicoTransacoes(@Request() request, @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number, @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number) {
+    const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
+    await this.profissionalService.exigirProfissionalAprovado(profissional.id);
+
+    return this.pontosTransacaoService.historicoTransacoes(profissional.id, page, limit);
   }
 
   @ApiOperation({ summary: 'Solicitar cadastro como profissional' })
