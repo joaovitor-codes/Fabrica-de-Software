@@ -482,6 +482,7 @@ model Paciente {
   diarioSintomas       DiarioSintoma[]
   anamneses            Anamnese[]
   logsAcessoRecebidos  LogAcessoDadoSensivel[] @relation("LogAcessoPaciente")
+  receitasAdaptadas    ReceitaAdaptacao[]
 
   @@index([profissionalId])
   @@map("pacientes")
@@ -784,9 +785,13 @@ model Receita {
   @@map("receitas")
 }
 
-// Liga uma receita à versão adaptada dela para uma restrição (Fase 2 de
-// regra_negocio_receitas_seguras.md). A adaptada é uma Receita comum: a
-// verificação é a aprovação dela (pendente = não verificada).
+// Liga uma receita à versão adaptada dela (regra_negocio_receitas_seguras.md).
+// A adaptada é uma Receita comum: a verificação é a aprovação dela.
+// Dois tipos:
+// - para uma restrição (restricaoId, sem pacienteId): automática, pública e
+//   reaproveitada por quem tem a mesma restrição;
+// - para um paciente (pacienteId, sem restricaoId): escolhida pelo
+//   profissional dele, já verificada e visível só para esse paciente.
 model ReceitaAdaptacao {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   receitaOrigemId   String   @map("receita_origem_id") @db.Uuid
@@ -794,7 +799,8 @@ model ReceitaAdaptacao {
   // deixa a adaptação desatualizada.
   versaoOrigem      Int      @map("versao_origem")
   receitaAdaptadaId String   @unique @map("receita_adaptada_id") @db.Uuid
-  restricaoId       String   @map("restricao_id") @db.Uuid
+  restricaoId       String?  @map("restricao_id") @db.Uuid
+  pacienteId        String?  @map("paciente_id") @db.Uuid
   // Para o profissional que verifica: o que mudou e o que conferir.
   resumoIa          String?  @map("resumo_ia") @db.Text
   // [{ ingredienteOrigemId, acao: "substituir" | "remover", ingredienteDestinoId? }]
@@ -802,11 +808,13 @@ model ReceitaAdaptacao {
   trocas            Json
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  receitaOrigem   Receita            @relation("AdaptacaoOrigem", fields: [receitaOrigemId], references: [id])
-  receitaAdaptada Receita            @relation("AdaptacaoAdaptada", fields: [receitaAdaptadaId], references: [id])
-  restricao       RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
+  receitaOrigem   Receita             @relation("AdaptacaoOrigem", fields: [receitaOrigemId], references: [id])
+  receitaAdaptada Receita             @relation("AdaptacaoAdaptada", fields: [receitaAdaptadaId], references: [id])
+  restricao       RestricaoAlimentar? @relation(fields: [restricaoId], references: [id], onDelete: Restrict)
+  paciente        Paciente?           @relation(fields: [pacienteId], references: [id], onDelete: Restrict)
 
   @@unique([receitaOrigemId, restricaoId])
+  @@index([pacienteId])
   @@map("receita_adaptacoes")
 }
 

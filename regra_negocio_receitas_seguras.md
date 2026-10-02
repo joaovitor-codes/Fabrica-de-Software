@@ -212,6 +212,45 @@ Quando a adaptada é aprovada, as substituições de `trocas` viram `Ingrediente
 | Bruno, lactose moderada | Vitamina de banana | leite → extrato de soja | na hora |
 | Carla, hipertensão grave | Frango com salada | azeite (sem sódio informado) → abacate | depois da verificação |
 
+## Adaptação pelo profissional do paciente
+
+São dois cenários, com quem decide diferente:
+
+| | Catálogo (qualquer paciente) | Plano alimentar (paciente com profissional) |
+| --- | --- | --- |
+| Quem decide | o sistema (Fases 2 e 3) | o profissional |
+| O que o sistema faz | adapta sozinho | sugere; o profissional escolhe |
+| Verificação | profissional da plataforma, para restrição estrita | a escolha do profissional já é a verificação |
+| Quem vê a adaptada | quem tem a restrição (regras da Fase 2) | só aquele paciente |
+
+**Andamento**: implementado (`AdaptacaoReceitaService.sugerir` e `salvarDoProfissional`).
+
+### `POST /api/receita/:id/sugestoes-adaptacao { pacienteId }`
+
+Só o profissional do paciente (ou admin). Considera **todas as restrições do paciente de uma vez**: os candidatos e as sugestões são seguros para todas elas (ex: paciente com lactose e alergia a soja não recebe "troque o leite por extrato de soja"). Uma chamada à IA, nada gravado. A resposta traz:
+- `restricoesVioladas`: o que a receita fere para o paciente;
+- `ingredientes`: cada um com `trocar` e, se for o caso, `sugestoes` (até 3 da IA, depois dos substitutos já curados, sem repetir), cada uma com `fonte: curado | ia`; remover é sempre possível;
+- `receitaInteira`: a adaptação completa da IA (lista, modo de preparo, resumo), já conferida pela checagem determinística, ou `{ erro }` se não passou.
+
+### `POST /api/receita/:id/adaptacao-profissional`
+
+Grava a escolha do profissional: `{ pacienteId, ingredientes, modoPreparo?, trocas?, resumo? }`.
+- A lista final precisa ser segura para **todas** as restrições do paciente (inclusive as leves), e o modo de preparo não pode citar ingrediente fora dela; senão 422.
+- A adaptada nasce **aprovada pelo profissional** e ligada ao paciente (`ReceitaAdaptacao.pacienteId`, sem `restricaoId`).
+- `trocas` diz qual ingrediente original virou qual; ingrediente original que saiu sem troca informada conta como removido. As substituições viram `IngredienteSubstituto` para as restrições que o ingrediente original continha.
+- O id devolvido entra no plano pelo endpoint de item que já existe.
+
+### Privacidade
+
+A adaptação feita para um paciente não aparece no catálogo de mais ninguém (nem para visitante) e não entra no plano de outro paciente (422). A equipe (profissional e admin) vê tudo.
+
+### Teste com a IA real (base local, 2026-10-04)
+
+Bruno: intolerância à lactose (moderada) + alergia a soja. Receita: vitamina de banana com leite.
+- Sugestões para o leite: água de coco, creme de coco, creme vegetal de aveia, sem nenhuma opção de soja. Receita inteira: leite → água de coco.
+- A nutricionista escolheu a terceira opção (creme vegetal de aveia), gravou (aprovada) e pôs no café da manhã do plano do Bruno.
+- Bruno vê a vitamina adaptada sem violações; outra paciente recebe 404.
+
 ## Fase 3: substituição da original pela adaptada
 
 Entrega: nas listagens, o usuário vê diretamente a versão que pode comer.

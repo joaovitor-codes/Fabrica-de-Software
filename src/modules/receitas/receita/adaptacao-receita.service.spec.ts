@@ -132,7 +132,7 @@ describe('AdaptacaoReceitaService.adaptar', () => {
 
     expect(ia.adaptarReceita).toHaveBeenCalledWith(
       expect.objectContaining({
-        restricao: 'Hipertensão',
+        restricoes: ['Hipertensão'],
         itens: [
           expect.objectContaining({ nome: 'Arroz', trocar: false }),
           expect.objectContaining({ nome: 'Sal, grosso', trocar: true }),

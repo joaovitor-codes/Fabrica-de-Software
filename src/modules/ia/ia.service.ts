@@ -93,7 +93,7 @@ export class IaService {
    * Só vão dados da receita e o nome da restrição.
    */
   async adaptarReceita(entrada: {
-    restricao: string;
+    restricoes: string[];
     nome: string;
     modoPreparo: string | null;
     itens: {
@@ -120,7 +120,7 @@ export class IaService {
       .join('\n        ');
 
     const prompt = `Você adapta receitas de uma plataforma de nutrição no Brasil para
-        quem tem a restrição: ${entrada.restricao}.
+        quem tem as restrições: ${entrada.restricoes.join('; ')}.
 
         Receita: ${entrada.nome}
         Ingredientes (índice. nome — quantidade unidade):
@@ -140,14 +140,16 @@ export class IaService {
           o índice "c" e a "quantidade" na MESMA unidade do original;
         - "remover": quando o ingrediente é acessório e a receita fica boa
           sem ele (ex: sal, que pode dar lugar a ervas da lista, se houver).
+        Em "opcoes", liste até 3 candidatos que também serviriam, do melhor
+        para o pior (o profissional pode escolher outro).
         Não troque ingredientes sem [TROCAR]. Use só candidatos da lista.
         Reescreva o modo de preparo citando só os ingredientes da receita
         adaptada. No "resumo" (até 400 caracteres), diga ao nutricionista o
         que mudou, o impacto em textura e sabor e o que conferir.
 
         Responda APENAS um JSON, sem texto adicional:
-        {"trocas": [{"i": 0, "acao": "substituir", "c": 0, "quantidade": 0},
-                    {"i": 1, "acao": "remover"}],
+        {"trocas": [{"i": 0, "acao": "substituir", "c": 0, "quantidade": 0, "opcoes": [0]},
+                    {"i": 1, "acao": "remover", "opcoes": []}],
          "modoPreparo": "...", "resumo": "..."}`;
 
     return this.perguntarJson(prompt);

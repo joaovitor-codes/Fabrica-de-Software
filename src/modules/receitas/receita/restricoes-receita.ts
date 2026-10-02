@@ -118,6 +118,28 @@ export async function restricaoPorId(
   };
 }
 
+/**
+ * Adaptação feita pelo profissional para um paciente só aparece para esse
+ * paciente (a equipe vê tudo por outro caminho). Sem usuário, só as
+ * públicas.
+ */
+export function semAdaptacoesDeOutros(
+  usuarioId?: string,
+): Prisma.ReceitaWhereInput {
+  const publicas: Prisma.ReceitaWhereInput[] = [
+    { adaptacaoDe: { is: null } },
+    { adaptacaoDe: { is: { pacienteId: null } } },
+  ];
+  return {
+    OR: usuarioId
+      ? [
+          ...publicas,
+          { adaptacaoDe: { is: { paciente: { is: { usuarioId } } } } },
+        ]
+      : publicas,
+  };
+}
+
 /** Restrições do usuário autenticado; vazio se ele não é paciente. */
 export function restricoesDoUsuario(
   prisma: PrismaService,
@@ -286,19 +308,25 @@ export async function violacoesDosIngredientes(
 }
 
 /**
- * Ingredientes da base seguros para a restrição, para a IA escolher
- * substitutos: revisados depois da criação da restrição, com o dado das
- * regras nutricionais e sem vínculo com ela.
+ * Ingredientes da base seguros para TODAS as restrições, para a IA escolher
+ * substitutos: revisados depois da criação da restrição mais recente, com o
+ * dado das regras nutricionais e sem vínculo com nenhuma delas.
  */
 export function ingredientesSegurosPara(
   prisma: PrismaService,
-  restricao: RestricaoDoPaciente,
+  restricoes: RestricaoDoPaciente[],
 ) {
+  const criadaPorUltimo = new Date(
+    Math.max(...restricoes.map((r) => r.criadaEm.getTime())),
+  );
+  const campos = [...new Set(restricoes.flatMap((r) => r.campos))];
   return prisma.ingrediente.findMany({
     where: {
-      restricoesRevisadasEm: { gte: restricao.criadaEm },
-      ...Object.fromEntries(restricao.campos.map((c) => [c, { not: null }])),
-      restricoes: { none: { restricaoId: restricao.restricaoId } },
+      restricoesRevisadasEm: { gte: criadaPorUltimo },
+      ...Object.fromEntries(campos.map((c) => [c, { not: null }])),
+      restricoes: {
+        none: { restricaoId: { in: restricoes.map((r) => r.restricaoId) } },
+      },
     },
     select: { id: true, nome: true },
     orderBy: { nome: 'asc' },

@@ -194,7 +194,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
   // Adaptações para leite ainda não verificadas (pendentes).
   const adaptadaPorOutro = nova('Bolo de leite (adaptada)', [ingrediente([])], {
     status: StatusReceita.pendente,
-    adaptacaoDe: { restricaoId: leite },
+    adaptacaoDe: { restricaoId: leite, pacienteId: null },
   });
   const adaptadaPeloAlergico = nova(
     'Pudim (adaptada, pedida pelo alérgico)',
@@ -202,7 +202,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     {
       status: StatusReceita.pendente,
       criadoPor: alergico.id,
-      adaptacaoDe: { restricaoId: leite },
+      adaptacaoDe: { restricaoId: leite, pacienteId: null },
     },
   );
   const adaptadaPeloIntolerante = nova(
@@ -211,7 +211,19 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     {
       status: StatusReceita.pendente,
       criadoPor: intolerante.id,
-      adaptacaoDe: { restricaoId: leite },
+      adaptacaoDe: { restricaoId: leite, pacienteId: null },
+    },
+  );
+  // Adaptação feita pelo profissional para o paciente "semRestricao".
+  const privadaDoOutro = nova(
+    'Bolo (adaptado pelo nutricionista)',
+    [ingrediente([])],
+    {
+      adaptacaoDe: {
+        restricaoId: null,
+        pacienteId: 'paciente-sem-restricao',
+        paciente: { usuarioId: semRestricao.id },
+      },
     },
   );
   const propriaComLeite = nova('Pudim do alérgico', [ingrediente([leite])], {
@@ -288,6 +300,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       adaptadaPorOutro,
       adaptadaPeloAlergico,
       adaptadaPeloIntolerante,
+      privadaDoOutro,
     );
     prisma.restricoesAlimentares.push({
       id: leite,
@@ -512,6 +525,32 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     });
   });
 
+  describe('adaptação feita pelo profissional para um paciente', () => {
+    it('aparece só para esse paciente', async () => {
+      const dele = await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .set(como(semRestricao))
+        .expect(200);
+      expect(ids(dele.body)).toContain(privadaDoOutro.id);
+
+      const deOutro = await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .set(como(intolerante))
+        .expect(200);
+      expect(ids(deOutro.body)).not.toContain(privadaDoOutro.id);
+
+      const visitante = await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .expect(200);
+      expect(ids(visitante.body)).not.toContain(privadaDoOutro.id);
+
+      await request(app.getHttpServer())
+        .get(`/api/receita/${privadaDoOutro.id}`)
+        .set(como(intolerante))
+        .expect(404);
+    });
+  });
+
   describe('?seguraPara=<restricaoId>', () => {
     it('visitante filtra pelas receitas seguras para uma restrição', async () => {
       const res = await request(app.getHttpServer())
@@ -533,13 +572,15 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
   });
 
   describe('sem filtro de restrição', () => {
-    it('paciente sem restrições vê todas as aprovadas', async () => {
+    it('paciente sem restrições vê todas as aprovadas (e a adaptação feita para ele)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/receita/validadas')
         .set(como(semRestricao))
         .expect(200);
 
-      expect(ids(res.body)).toEqual(todasAprovadas);
+      expect(ids(res.body)).toEqual(
+        [...todasAprovadas, privadaDoOutro.id].sort(),
+      );
     });
 
     it('visitante vê todas as aprovadas', async () => {
@@ -563,6 +604,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
           adaptadaPorOutro.id,
           adaptadaPeloAlergico.id,
           adaptadaPeloIntolerante.id,
+          privadaDoOutro.id,
         ].sort(),
       );
     });

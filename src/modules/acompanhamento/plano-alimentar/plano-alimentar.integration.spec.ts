@@ -94,6 +94,11 @@ class FakePrismaService {
   };
 
   receitaIngrediente = { findMany: async () => [] };
+  adaptacoesPorReceita = new Map<string, { pacienteId: string | null }>();
+  receitaAdaptacao = {
+    findUnique: async ({ where }: any) =>
+      this.adaptacoesPorReceita.get(where.receitaAdaptadaId) ?? null,
+  };
 
   planoAlimentar = {
     create: async ({ data }: any) => {
@@ -815,6 +820,40 @@ describe('PlanoAlimentar (integration)', () => {
         } finally {
           prisma.pacienteRestricoes = [];
         }
+      });
+
+      it('rejeita adaptação feita para outro paciente (422)', async () => {
+        const planoAlimentarId = await criarPlano();
+        const adaptadaDeOutro = { id: randomUUID(), nome: 'Bolo adaptado' };
+        prisma.receitas.set(adaptadaDeOutro.id, adaptadaDeOutro);
+        prisma.adaptacoesPorReceita.set(adaptadaDeOutro.id, {
+          pacienteId: randomUUID(),
+        });
+
+        const res = await request(app.getHttpServer())
+          .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+          .set(asProfissionalDono())
+          .send({
+            ...itemValido,
+            receitaId: adaptadaDeOutro.id,
+            tipoRefeicao: TipoRefeicao.ceia,
+          })
+          .expect(422);
+        expect(res.body.message).toContain('outro paciente');
+
+        // A adaptação feita para o próprio paciente entra.
+        prisma.adaptacoesPorReceita.set(adaptadaDeOutro.id, {
+          pacienteId: paciente.id,
+        });
+        await request(app.getHttpServer())
+          .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+          .set(asProfissionalDono())
+          .send({
+            ...itemValido,
+            receitaId: adaptadaDeOutro.id,
+            tipoRefeicao: TipoRefeicao.ceia,
+          })
+          .expect(201);
       });
 
       it('rejeita receita inexistente e enum inválido', async () => {

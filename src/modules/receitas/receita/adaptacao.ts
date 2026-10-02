@@ -172,3 +172,47 @@ export function interpretarAdaptacao(
 
   return { ingredientes, trocas, modoPreparo, resumo };
 }
+
+const MAX_OPCOES = 3;
+
+/**
+ * Lê as opções de substituto que a IA sugeriu para cada ingrediente a
+ * trocar (`"opcoes": [c, ...]` em cada troca), para o profissional escolher.
+ * Só índices válidos de candidatos, sem repetição, até 3 por ingrediente.
+ * Independe de a troca escolhida pela IA ser válida.
+ */
+export function interpretarOpcoes(
+  resposta: unknown,
+  problematicos: Set<number>,
+  totalCandidatos: number,
+): Map<number, number[]> {
+  const resultado = new Map<number, number[]>();
+  const trocas = (resposta as { trocas?: unknown } | null)?.trocas;
+  if (!Array.isArray(trocas)) {
+    return resultado;
+  }
+  for (const t of trocas as unknown[]) {
+    const troca = t as { i?: unknown; opcoes?: unknown; c?: unknown } | null;
+    const i = troca?.i;
+    if (typeof i !== 'number' || !problematicos.has(i) || resultado.has(i)) {
+      continue;
+    }
+    const brutas = [
+      ...(Array.isArray(troca!.opcoes) ? (troca!.opcoes as unknown[]) : []),
+      troca!.c,
+    ];
+    const validas = [
+      ...new Set(
+        brutas.filter(
+          (c): c is number =>
+            typeof c === 'number' &&
+            Number.isInteger(c) &&
+            c >= 0 &&
+            c < totalCandidatos,
+        ),
+      ),
+    ].slice(0, MAX_OPCOES);
+    resultado.set(i, validas);
+  }
+  return resultado;
+}
