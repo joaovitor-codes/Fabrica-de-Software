@@ -42,6 +42,8 @@ class FakePrismaService {
     receitas = new Map<string, any>();
     planosAlimentares = new Map<string, any>();
     planoAlimentarItens = new Map<string, any>();
+    checklists: any[] = [];
+    comentarios: any[] = [];
 
     profissional = {
         findUnique: async ({ where }: any) => {
@@ -73,9 +75,19 @@ class FakePrismaService {
             this.planosAlimentares.set(planoAlimentar.id, planoAlimentar);
             return planoAlimentar;
         },
-        findUnique: async ({ where }: any) => this.planosAlimentares.get(where.id) ?? null,
+        findUnique: async ({ where, include }: any) => {
+            const planoAlimentar = this.planosAlimentares.get(where.id);
+            if (!planoAlimentar) return null;
+            if (!include?.itens) return planoAlimentar;
+            const itens = [...this.planoAlimentarItens.values()]
+                .filter((i) => i.planoAlimentarId === planoAlimentar.id)
+                .map((i) => ({ ...i, receita: this.receitas.get(i.receitaId) ?? null }));
+            return { ...planoAlimentar, itens };
+        },
+        findMany: async ({ where }: any) =>
+            [...this.planosAlimentares.values()].filter((p) => p.pacienteId === where.pacienteId),
         update: async ({ where, data }: any) => {
-            const planoAlimentar = { ...this.planosAlimentares.get(where.id), ...data };
+            const planoAlimentar = { ...this.planosAlimentares.get(where.id), ...semUndefined(data) };
             this.planosAlimentares.set(where.id, planoAlimentar);
             return planoAlimentar;
         },
@@ -92,10 +104,44 @@ class FakePrismaService {
                 (i) =>
                     i.planoAlimentarId === where.planoAlimentarId &&
                     i.diaSemana === where.diaSemana &&
-                    i.tipoRefeicao === where.tipoRefeicao,
+                    i.tipoRefeicao === where.tipoRefeicao &&
+                    (!where.id?.not || i.id !== where.id.not),
             ) ?? null,
+        findUnique: async ({ where, include }: any) => {
+            const item = this.planoAlimentarItens.get(where.id);
+            if (!item) return null;
+            if (!include?.planoAlimentar) return item;
+            return { ...item, planoAlimentar: this.planosAlimentares.get(item.planoAlimentarId) };
+        },
+        update: async ({ where, data }: any) => {
+            const item = { ...this.planoAlimentarItens.get(where.id), ...semUndefined(data) };
+            this.planoAlimentarItens.set(where.id, item);
+            return item;
+        },
+        delete: async ({ where }: any) => {
+            const item = this.planoAlimentarItens.get(where.id);
+            this.planoAlimentarItens.delete(where.id);
+            return item;
+        },
+    };
+
+    checklistRefeicao = {
+        count: async ({ where }: any) =>
+            this.checklists.filter((c) => c.planoAlimentarItemId === where.planoAlimentarItemId).length,
+        findMany: async ({ where }: any) =>
+            this.checklists.filter((c) => c.planoAlimentarItemId === where.planoAlimentarItemId),
+    };
+
+    comentarioRefeicao = {
+        count: async ({ where }: any) =>
+            this.comentarios.filter((c) => c.planoAlimentarItemId === where.planoAlimentarItemId).length,
+        findMany: async ({ where }: any) =>
+            this.comentarios.filter((c) => c.planoAlimentarItemId === where.planoAlimentarItemId),
     };
 }
+
+/** Prisma ignora chaves `undefined` no `data` de um update; o fake precisa imitar isso. */
+const semUndefined = (data: any) => Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
 
 describe('PlanoAlimentar (integration)', () => {
     let app: INestApplication;
@@ -382,6 +428,361 @@ describe('PlanoAlimentar (integration)', () => {
                 .expect(200);
 
             expect(prisma.planosAlimentares.get(planoAlimentarId).ativo).toBe(false);
+        });
+    });
+
+    describe('consulta e edição de plano/itens', () => {
+        const asOutroPaciente = () => ({ 'x-user-sub': pacienteSemVinculo.usuarioId, 'x-user-tipo': TipoUsuario.paciente });
+        const outraReceita = { id: randomUUID(), nome: 'Salada de grão-de-bico' };
+
+        const criarPlano = async () => {
+            const res = await request(app.getHttpServer())
+                .post(`/api/plano-alimentar/pacientes/${paciente.id}`)
+                .set(asProfissionalDono())
+                .send({ nome: 'Plano de março', dataInicio: '2026-03-01', dataFim: '2026-03-31' })
+                .expect(201);
+            return res.body.id as string;
+        };
+
+        const criarItem = async (planoAlimentarId: string, item: any = itemValido) => {
+            const res = await request(app.getHttpServer())
+                .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+                .set(asProfissionalDono())
+                .send(item)
+                .expect(201);
+            return res.body.id as string;
+        };
+
+        beforeAll(() => {
+            prisma.receitas.set(outraReceita.id, outraReceita);
+        });
+
+        describe('GET /api/plano-alimentar/:id', () => {
+            it('permite que o profissional dono veja o plano com a grade de itens e a receita', async () => {
+                const planoAlimentarId = await criarPlano();
+                await criarItem(planoAlimentarId);
+
+                const res = await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asProfissionalDono())
+                    .expect(200);
+
+                expect(res.body.itens).toHaveLength(1);
+                expect(res.body.itens[0].receita.nome).toBe(receitaValida.nome);
+            });
+
+            it('permite que o paciente dono veja o próprio plano', async () => {
+                const planoAlimentarId = await criarPlano();
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asPaciente())
+                    .expect(200);
+            });
+
+            it('permite que o admin veja qualquer plano', async () => {
+                const planoAlimentarId = await criarPlano();
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asAdmin())
+                    .expect(200);
+            });
+
+            it('rejeita outro profissional ou outro paciente vendo plano que não é dele (BOLA)', async () => {
+                const planoAlimentarId = await criarPlano();
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asOutroProfissional())
+                    .expect(404);
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asOutroPaciente())
+                    .expect(404);
+            });
+
+            it('rejeita plano inexistente e id inválido', async () => {
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/${randomUUID()}`)
+                    .set(asProfissionalDono())
+                    .expect(404);
+
+                await request(app.getHttpServer())
+                    .get('/api/plano-alimentar/id-invalido')
+                    .set(asProfissionalDono())
+                    .expect(400);
+            });
+        });
+
+        describe('GET /api/plano-alimentar/pacientes/:pacienteId', () => {
+            it('permite que o paciente e o profissional responsável listem os planos', async () => {
+                await criarPlano();
+
+                const resPaciente = await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/pacientes/${paciente.id}`)
+                    .set(asPaciente())
+                    .expect(200);
+
+                const resProfissional = await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/pacientes/${paciente.id}`)
+                    .set(asProfissionalDono())
+                    .expect(200);
+
+                expect(resPaciente.body.length).toBeGreaterThan(0);
+                expect(resPaciente.body.every((p: any) => p.pacienteId === paciente.id)).toBe(true);
+                expect(resProfissional.body).toHaveLength(resPaciente.body.length);
+            });
+
+            it('rejeita outro profissional ou outro paciente listando planos de quem não é dele (BOLA)', async () => {
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/pacientes/${paciente.id}`)
+                    .set(asOutroProfissional())
+                    .expect(404);
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/pacientes/${paciente.id}`)
+                    .set(asOutroPaciente())
+                    .expect(404);
+            });
+
+            it('rejeita paciente inexistente', async () => {
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/pacientes/${randomUUID()}`)
+                    .set(asAdmin())
+                    .expect(404);
+            });
+        });
+
+        describe('PATCH /api/plano-alimentar/:id', () => {
+            it('permite que o profissional dono renomeie o plano sem mexer nas datas', async () => {
+                const planoAlimentarId = await criarPlano();
+
+                const res = await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asProfissionalDono())
+                    .send({ nome: 'Plano de março (revisado)' })
+                    .expect(200);
+
+                expect(res.body.nome).toBe('Plano de março (revisado)');
+                expect(prisma.planosAlimentares.get(planoAlimentarId).dataInicio).toEqual(new Date('2026-03-01'));
+            });
+
+            it('rejeita dataFim anterior a dataInicio', async () => {
+                const planoAlimentarId = await criarPlano();
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asProfissionalDono())
+                    .send({ dataFim: '2026-02-01' })
+                    .expect(400);
+            });
+
+            it('rejeita quem não é profissional e outro profissional (BOLA)', async () => {
+                const planoAlimentarId = await criarPlano();
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asPaciente())
+                    .send({ nome: 'x' })
+                    .expect(403);
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asOutroProfissional())
+                    .send({ nome: 'x' })
+                    .expect(404);
+            });
+
+            it('rejeita editar plano inativo', async () => {
+                const planoAlimentarId = await criarPlano();
+
+                await request(app.getHttpServer())
+                    .delete(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asProfissionalDono())
+                    .expect(200);
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/${planoAlimentarId}`)
+                    .set(asProfissionalDono())
+                    .send({ nome: 'x' })
+                    .expect(404);
+            });
+        });
+
+        describe('PATCH /api/plano-alimentar/itens/:itemId', () => {
+            it('permite trocar receita e horário do item', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                const res = await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asProfissionalDono())
+                    .send({ receitaId: outraReceita.id, horarioSugerido: '09:30' })
+                    .expect(200);
+
+                expect(res.body.receitaId).toBe(outraReceita.id);
+                expect(res.body.diaSemana).toBe(itemValido.diaSemana);
+            });
+
+            it('permite reenviar o mesmo dia/refeição do próprio item sem acusar duplicidade', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asProfissionalDono())
+                    .send({ diaSemana: itemValido.diaSemana, tipoRefeicao: itemValido.tipoRefeicao })
+                    .expect(200);
+            });
+
+            it('rejeita mover o item para um dia/refeição já ocupado no plano', async () => {
+                const planoAlimentarId = await criarPlano();
+                await criarItem(planoAlimentarId);
+                const itemId = await criarItem(planoAlimentarId, { ...itemValido, tipoRefeicao: TipoRefeicao.almoco });
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asProfissionalDono())
+                    .send({ tipoRefeicao: TipoRefeicao.cafe_da_manha })
+                    .expect(409);
+            });
+
+            it('rejeita receita inexistente e enum inválido', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asProfissionalDono())
+                    .send({ receitaId: randomUUID() })
+                    .expect(404);
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asProfissionalDono())
+                    .send({ diaSemana: 'feriado' })
+                    .expect(400);
+            });
+
+            it('rejeita outro profissional editando item que não é dele (BOLA)', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                await request(app.getHttpServer())
+                    .patch(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asOutroProfissional())
+                    .send({ horarioSugerido: '10:00' })
+                    .expect(404);
+            });
+        });
+
+        describe('GET de checklist e comentários de um item', () => {
+            it('permite que o admin veja o histórico de checklist do item', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+                prisma.checklists.push({ planoAlimentarItemId: itemId });
+
+                const res = await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/itens/${itemId}/checklist`)
+                    .set(asAdmin())
+                    .expect(200);
+
+                expect(res.body).toHaveLength(1);
+            });
+
+            it('permite que o paciente e o profissional donos vejam os comentários do item', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+                prisma.comentarios.push({ planoAlimentarItemId: itemId });
+
+                const resPaciente = await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/itens/${itemId}/comentarios`)
+                    .set(asPaciente())
+                    .expect(200);
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/itens/${itemId}/comentarios`)
+                    .set(asProfissionalDono())
+                    .expect(200);
+
+                expect(resPaciente.body).toHaveLength(1);
+            });
+
+            it('permite que o admin veja os comentários de qualquer item', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/itens/${itemId}/comentarios`)
+                    .set(asAdmin())
+                    .expect(200);
+            });
+
+            it('rejeita outro profissional vendo os comentários do item (BOLA)', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                await request(app.getHttpServer())
+                    .get(`/api/plano-alimentar/itens/${itemId}/comentarios`)
+                    .set(asOutroProfissional())
+                    .expect(403);
+            });
+        });
+
+        describe('DELETE /api/plano-alimentar/itens/:itemId', () => {
+            it('permite que o profissional dono remova item sem histórico', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                await request(app.getHttpServer())
+                    .delete(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asProfissionalDono())
+                    .expect(200);
+
+                expect(prisma.planoAlimentarItens.has(itemId)).toBe(false);
+            });
+
+            it('rejeita remover item com checklist ou comentário do paciente', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemComChecklist = await criarItem(planoAlimentarId);
+                const itemComComentario = await criarItem(planoAlimentarId, { ...itemValido, tipoRefeicao: TipoRefeicao.jantar });
+                prisma.checklists.push({ planoAlimentarItemId: itemComChecklist });
+                prisma.comentarios.push({ planoAlimentarItemId: itemComComentario });
+
+                await request(app.getHttpServer())
+                    .delete(`/api/plano-alimentar/itens/${itemComChecklist}`)
+                    .set(asProfissionalDono())
+                    .expect(409);
+
+                await request(app.getHttpServer())
+                    .delete(`/api/plano-alimentar/itens/${itemComComentario}`)
+                    .set(asProfissionalDono())
+                    .expect(409);
+
+                expect(prisma.planoAlimentarItens.has(itemComChecklist)).toBe(true);
+            });
+
+            it('rejeita quem não é profissional, outro profissional (BOLA) e item inexistente', async () => {
+                const planoAlimentarId = await criarPlano();
+                const itemId = await criarItem(planoAlimentarId);
+
+                await request(app.getHttpServer())
+                    .delete(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asPaciente())
+                    .expect(403);
+
+                await request(app.getHttpServer())
+                    .delete(`/api/plano-alimentar/itens/${itemId}`)
+                    .set(asOutroProfissional())
+                    .expect(404);
+
+                await request(app.getHttpServer())
+                    .delete(`/api/plano-alimentar/itens/${randomUUID()}`)
+                    .set(asProfissionalDono())
+                    .expect(404);
+            });
         });
     });
 });
