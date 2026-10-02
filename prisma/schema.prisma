@@ -752,6 +752,9 @@ model Receita {
   porcoes                  Int?
   nivelDificuldade         NivelDificuldade @default(medio) @map("nivel_dificuldade")
   avisoContaminacaoCruzada Boolean          @default(false) @map("aviso_contaminacao_cruzada")
+  // Citados no modo de preparo e ausentes da lista (apontados pela IA). Não
+  // vazio = para restrição estrita, a receita conta como não revisada.
+  ingredientesNaoListados  String[]         @default([]) @map("ingredientes_nao_listados")
   criadoPor                String           @map("criado_por") @db.Uuid
   status                   StatusReceita    @default(pendente)
   profissionalAprovadorId  String?          @map("profissional_aprovador_id") @db.Uuid

@@ -134,7 +134,7 @@ A IA nunca grava vínculo direto. Ela só recebe nomes de ingrediente e de restr
 
 ## Fase 1: filtro padrão por restrições (só nativas)
 
-**Andamento**: itens 1 a 7, 9 e 10 implementados. A lógica comum (restrições do paciente, cláusula de receita segura e `restricoesVioladas`) fica em `src/modules/receitas/receita/restricoes-receita.ts`, usada pelo `ReceitaService` e pelo plano alimentar. Falta o item 8 (ingredientes ocultos no modo de preparo).
+**Andamento**: Fase 1 completa. A lógica comum (restrições do paciente, cláusula de receita segura e `restricoesVioladas`) fica em `src/modules/receitas/receita/restricoes-receita.ts`, usada pelo `ReceitaService` e pelo plano alimentar. Item 8 em `src/modules/receitas/receita/ingredientes-ocultos.ts` e `IaService.ingredientesNaoListados`. Limitação: hoje o `update` não edita a lista de ingredientes (ver "Decisões em aberto"), então o autor só tira o aviso reescrevendo o modo de preparo.
 
 Formato de `restricoesVioladas`, em cada receita das listagens e no corpo do 403/422: `{ id, nome, estrita, contem[], naoRevisados[], semDado[] }`, um por restrição violada, cada lista com `{ id, nome }` dos ingredientes.
 

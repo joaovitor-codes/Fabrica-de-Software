@@ -9,6 +9,7 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
+import { IaService } from '../../ia/ia.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 
 /** Fake em memória cobrindo só o que update/remove/upload/alertas usam. */
@@ -94,6 +95,7 @@ describe('ReceitaService - autor ou admin e alertas', () => {
         { provide: CacheService, useValue: { del: async () => {} } },
         { provide: UsuarioService, useValue: {} },
         { provide: PontosTransacaoService, useValue: {} },
+        { provide: IaService, useValue: {} },
       ],
     }).compile();
 

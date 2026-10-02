@@ -23,6 +23,7 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
+import { IaService } from '../../ia/ia.service';
 import { AuthGuard } from '../../../auth/auth.guard';
 import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
 
@@ -66,6 +67,7 @@ const atende = (r: any, where: any = {}): boolean =>
         return valor.every((i: any) => atende(i, cond.every));
       if ('none' in cond) return !valor.some((i: any) => atende(i, cond.none));
       if ('in' in cond) return cond.in.includes(valor);
+      if ('isEmpty' in cond) return (valor.length === 0) === cond.isEmpty;
       if ('gte' in cond) return valor !== null && valor >= cond.gte;
       if ('not' in cond) return valor !== cond.not;
       return atende(valor, cond);
@@ -158,6 +160,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     criadoPor: autor.id,
     createdAt: new Date(),
     deletedAt: null,
+    ingredientesNaoListados: [],
     ingredientes,
     ...extra,
   });
@@ -179,6 +182,10 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     ingrediente([]),
     ingrediente([], true, null),
   ]);
+  // Tudo revisado e seguro na lista, mas o modo de preparo cita queijo.
+  const comQueijoFora = nova('Macarrão gratinado', [ingrediente([])], {
+    ingredientesNaoListados: ['queijo ralado'],
+  });
   const propriaComLeite = nova('Pudim do alérgico', [ingrediente([leite])], {
     status: StatusReceita.pendente,
     criadoPor: alergico.id,
@@ -211,6 +218,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     segura.id,
     naoRevisada.id,
     semDadoSodio.id,
+    comQueijoFora.id,
   ].sort();
 
   beforeAll(async () => {
@@ -229,6 +237,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         },
         { provide: UsuarioService, useValue: {} },
         { provide: PontosTransacaoService, useValue: {} },
+        { provide: IaService, useValue: {} },
       ],
     })
       .overrideGuard(AuthGuard)
@@ -246,6 +255,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       segura,
       naoRevisada,
       semDadoSodio,
+      comQueijoFora,
       propriaComLeite,
     );
     prisma.restricoesAlimentares.push({
@@ -421,6 +431,30 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         .get('/api/receita/validadas')
         .set(como(alergicoGergelim))
         .expect(404);
+    });
+  });
+
+  describe('ingrediente citado no modo de preparo e fora da lista', () => {
+    it('esconde do paciente com alergia e explica no 403', async () => {
+      const lista = await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .set(como(alergico))
+        .expect(200);
+      expect(ids(lista.body)).not.toContain(comQueijoFora.id);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/receita/${comQueijoFora.id}`)
+        .set(como(alergico))
+        .expect(403);
+      expect(res.body.ingredientesNaoListados).toEqual(['queijo ralado']);
+    });
+
+    it('não esconde de quem só tem restrição leve ou moderada', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .set(como(intolerante))
+        .expect(200);
+      expect(ids(res.body)).toContain(comQueijoFora.id);
     });
   });
 

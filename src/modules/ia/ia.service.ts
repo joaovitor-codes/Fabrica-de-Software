@@ -87,6 +87,37 @@ export class IaService {
   }
 
   /**
+   * Aponta ingredientes citados no modo de preparo que não estão na lista da
+   * receita. Devolve o JSON cru: quem chama valida com
+   * `interpretarIngredientesNaoListados`. Só vão textos da receita.
+   */
+  async ingredientesNaoListados(
+    modoPreparo: string,
+    ingredientes: string[],
+  ): Promise<unknown> {
+    const prompt = `Você confere receitas de uma plataforma de nutrição no Brasil.
+
+        Ingredientes listados na receita:
+        ${ingredientes.map((nome) => `- ${nome}`).join('\n        ')}
+
+        Modo de preparo (entre as linhas ---):
+        ---
+        ${modoPreparo}
+        ---
+
+        Liste os alimentos que o modo de preparo manda usar e que NÃO estão
+        na lista acima (ex: "finalize com queijo ralado" sem queijo na lista).
+        Considere equivalentes como presentes (ex: "ovos" e "Ovo, de galinha").
+        Ignore água e utensílios. Sal, temperos, óleos e coberturas contam.
+        Escreva cada alimento como aparece no modo de preparo.
+
+        Responda APENAS um JSON, sem texto adicional:
+        {"faltando": ["..."]}`;
+
+    return this.perguntarJson(prompt);
+  }
+
+  /**
    * Classifica um lote de ingredientes quanto às restrições informadas, para
    * a curadoria (scripts/curadoria-alergenos.ts). Devolve o JSON cru: quem
    * chama valida com `interpretarClassificacaoIa`. Só vão nomes de

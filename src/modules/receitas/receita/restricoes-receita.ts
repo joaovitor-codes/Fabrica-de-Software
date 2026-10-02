@@ -151,6 +151,8 @@ export function clausulaSegura(
   const campos = [...new Set(restricoes.flatMap((r) => r.campos))];
 
   return {
+    // Ingrediente citado no modo de preparo e fora da lista: ninguém conferiu.
+    ingredientesNaoListados: { isEmpty: true },
     ingredientes: {
       every: {
         ingrediente: {

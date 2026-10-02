@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -24,6 +25,8 @@ import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
+import { IaService } from '../../ia/ia.service';
+import { interpretarIngredientesNaoListados } from './ingredientes-ocultos';
 import {
   RestricaoDoPaciente,
   clausulaSegura,
@@ -35,11 +38,14 @@ import {
 
 @Injectable()
 export class ReceitaService {
+  private readonly logger = new Logger(ReceitaService.name);
+
   constructor(
     private readonly prismaService: PrismaService,
     private readonly usuario: UsuarioService,
     private readonly cacheService: CacheService,
     private readonly pontosTransacaoService: PontosTransacaoService,
+    private readonly iaService: IaService,
   ) {}
 
   private async alreadyExists(id: string) {
@@ -63,11 +69,18 @@ export class ReceitaService {
         'A receita deve ter pelo menos um ingrediente',
       );
     }
+
+    const ingredientesNaoListados = await this.verificarIngredientesOcultos(
+      data.modoPreparo,
+      data.ingredientes.map((i) => i.ingredienteId),
+    );
+
     const receita = await this.prismaService.receita.create({
       data: {
         nome: data.nome,
         descricao: data.descricao,
         modoPreparo: data.modoPreparo,
+        ingredientesNaoListados,
         tempoPreparoMin: data.tempoPreparoMin,
         porcoes: data.porcoes,
         nivelDificuldade: data.nivelDificuldade,
@@ -91,7 +104,53 @@ export class ReceitaService {
         },
       },
     });
-    return { success: 'Receita criada com sucesso.', data: receita };
+    return {
+      success: 'Receita criada com sucesso.',
+      ...this.avisoIngredientesOcultos(ingredientesNaoListados),
+      data: receita,
+    };
+  }
+
+  /**
+   * Pergunta à IA quais ingredientes o modo de preparo cita e a lista não
+   * tem. Falha da IA não impede salvar a receita: volta lista vazia e fica
+   * no log.
+   */
+  private async verificarIngredientesOcultos(
+    modoPreparo: string | null | undefined,
+    ingredienteIds: string[],
+  ): Promise<string[]> {
+    if (!modoPreparo?.trim()) {
+      return [];
+    }
+    try {
+      const ingredientes = await this.prismaService.ingrediente.findMany({
+        where: { id: { in: ingredienteIds } },
+        select: { nome: true },
+      });
+      const resposta = await this.iaService.ingredientesNaoListados(
+        modoPreparo,
+        ingredientes.map((i) => i.nome),
+      );
+      return interpretarIngredientesNaoListados(resposta);
+    } catch (erro) {
+      this.logger.error(
+        `Falha ao conferir ingredientes do modo de preparo: ${erro}`,
+      );
+      return [];
+    }
+  }
+
+  private avisoIngredientesOcultos(ingredientesNaoListados: string[]) {
+    if (ingredientesNaoListados.length === 0) {
+      return {};
+    }
+    return {
+      aviso:
+        `O modo de preparo cita ingredientes que não estão na lista: ` +
+        `${ingredientesNaoListados.join(', ')}. Inclua-os na receita: ` +
+        `enquanto isso, ela não aparece para quem tem alergia ou restrição grave.`,
+    };
   }
 
   async uploadMedia(
@@ -440,6 +499,23 @@ export class ReceitaService {
     usuario: UsuarioAutenticado,
   ) {
     const cacheKey = 'receitas:all';
+
+    // Modo de preparo novo: confere de novo os ingredientes citados. Fora da
+    // transação (a IA demora) e só depois de checar o autor, para ninguém
+    // gastar chamada de IA numa receita que não pode editar.
+    let ingredientesNaoListados: string[] | undefined;
+    if (updateReceita.modoPreparo !== undefined) {
+      await this.garantirAutorOuAdmin(id, usuario);
+      const itens = await this.prismaService.receitaIngrediente.findMany({
+        where: { receitaId: id },
+        select: { ingredienteId: true },
+      });
+      ingredientesNaoListados = await this.verificarIngredientesOcultos(
+        updateReceita.modoPreparo,
+        itens.map((i) => i.ingredienteId),
+      );
+    }
+
     return this.prismaService.$transaction(async (tx) => {
       const receitaAtual = await tx.receita.findUnique({ where: { id } });
 
@@ -470,6 +546,7 @@ export class ReceitaService {
           nome: updateReceita.nome,
           descricao: updateReceita.descricao,
           modoPreparo: updateReceita.modoPreparo,
+          ingredientesNaoListados,
           tempoPreparoMin: updateReceita.tempoPreparoMin,
           porcoes: updateReceita.porcoes,
           nivelDificuldade: updateReceita.nivelDificuldade,
@@ -486,7 +563,11 @@ export class ReceitaService {
         },
       });
 
-      return { success: 'Receita atualizada com sucesso.', data: receita };
+      return {
+        success: 'Receita atualizada com sucesso.',
+        ...this.avisoIngredientesOcultos(ingredientesNaoListados ?? []),
+        data: receita,
+      };
     });
   }
 
@@ -729,7 +810,7 @@ export class ReceitaService {
     if (estritas.length > 0) {
       const existe = await this.prismaService.receita.findFirst({
         where: { id, ...this.filtroBase(usuario) },
-        select: { id: true },
+        select: { id: true, ingredientesNaoListados: true },
       });
       if (existe) {
         const violadas = await restricoesVioladas(
@@ -742,6 +823,7 @@ export class ReceitaService {
           error: 'Forbidden',
           message: 'Esta receita não é segura para as suas restrições',
           restricoesVioladas: violadas.get(id) ?? [],
+          ingredientesNaoListados: existe.ingredientesNaoListados ?? [],
         });
       }
     }
