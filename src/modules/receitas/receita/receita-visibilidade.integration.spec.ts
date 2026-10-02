@@ -83,10 +83,16 @@ describe('Receita - visibilidade nas rotas públicas (integration)', () => {
     status,
     criadoPor: autor.id,
     createdAt: new Date(),
+    deletedAt: null,
   });
   const aprovada = nova('Bolo aprovado', StatusReceita.aprovada);
   const pendente = nova('Bolo pendente', StatusReceita.pendente);
   const rejeitada = nova('Bolo rejeitado', StatusReceita.rejeitada);
+
+  const excluida = {
+    ...nova('Bolo excluído', StatusReceita.aprovada),
+    deletedAt: new Date(),
+  };
 
   const ids = (body: any[]) => body.map((r) => r.id).sort();
 
@@ -118,7 +124,7 @@ describe('Receita - visibilidade nas rotas públicas (integration)', () => {
     await app.init();
 
     prisma = moduleRef.get(PrismaService);
-    prisma.receitas.push(aprovada, pendente, rejeitada);
+    prisma.receitas.push(aprovada, pendente, rejeitada, excluida);
   });
 
   afterAll(async () => {
@@ -154,13 +160,15 @@ describe('Receita - visibilidade nas rotas públicas (integration)', () => {
       expect(ids(res.body)).toEqual([aprovada.id]);
     });
 
-    it('profissional vê todas (curadoria)', async () => {
+    it('profissional vê todas (curadoria), menos as excluídas', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/receita/all')
         .set(como(profissional))
         .expect(200);
 
-      expect(res.body).toHaveLength(3);
+      expect(ids(res.body)).toEqual(
+        [aprovada.id, pendente.id, rejeitada.id].sort(),
+      );
     });
   });
 
@@ -177,6 +185,12 @@ describe('Receita - visibilidade nas rotas públicas (integration)', () => {
       await request(app.getHttpServer())
         .get(`/api/receita/${pendente.id}/alertas`)
         .expect(404);
+    });
+
+    it('receita excluída segue acessível pelo id (planos que a usam)', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/receita/${excluida.id}`)
+        .expect(200);
     });
 
     it('visitante vê receita aprovada', async () => {

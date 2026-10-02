@@ -80,7 +80,8 @@ export class PlanoAlimentarService {
       where: { id: item.receitaId },
     });
 
-    if (!receitaExiste) {
+    // Receita excluída continua nos planos antigos, mas não entra em novos itens.
+    if (!receitaExiste || receitaExiste.deletedAt) {
       throw new NotFoundException('Receita não encontrada');
     }
 
@@ -264,7 +265,7 @@ export class PlanoAlimentarService {
         where: { id: dto.receitaId },
       });
 
-      if (!receitaExiste) {
+      if (!receitaExiste || receitaExiste.deletedAt) {
         throw new NotFoundException('Receita não encontrada');
       }
     }

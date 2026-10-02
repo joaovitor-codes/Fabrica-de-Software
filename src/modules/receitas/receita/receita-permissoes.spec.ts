@@ -15,6 +15,10 @@ import { UsuarioAutenticado } from '../../../auth/auth.types';
 class FakePrismaService {
   receitas = new Map<string, any>();
   midias: any[] = [];
+  favoritos: any[] = [];
+  versoes: any[] = [];
+  itensPlano: any[] = [];
+  profissionais: any[] = [];
 
   async $transaction(fn: (tx: any) => Promise<any>) {
     return fn(this);
@@ -31,7 +35,32 @@ class FakePrismaService {
     delete: async ({ where }: any) => this.receitas.delete(where.id),
   };
 
-  receitaVersao = { create: async () => ({}) };
+  receitaVersao = {
+    create: async ({ data }: any) => {
+      this.versoes.push(data);
+      return data;
+    },
+    deleteMany: async ({ where }: any) => {
+      this.versoes = this.versoes.filter(
+        (v) => v.receitaId !== where.receitaId,
+      );
+    },
+  };
+  favorito = {
+    deleteMany: async ({ where }: any) => {
+      this.favoritos = this.favoritos.filter(
+        (f) => f.receitaId !== where.receitaId,
+      );
+    },
+  };
+  planoAlimentarItem = {
+    count: async ({ where }: any) =>
+      this.itensPlano.filter((i) => i.receitaId === where.receitaId).length,
+  };
+  profissional = {
+    findUnique: async ({ where }: any) =>
+      this.profissionais.find((p) => p.usuarioId === where.usuarioId) ?? null,
+  };
   receitaIngrediente = { deleteMany: async () => ({}) };
   receitaMidia = {
     deleteMany: async () => ({}),
@@ -77,6 +106,8 @@ describe('ReceitaService - autor ou admin e alertas', () => {
       nome: 'Omelete',
       status: 'pendente',
       criadoPor: autor.id,
+      versaoAtual: 1,
+      deletedAt: null,
     });
   });
 
@@ -88,6 +119,32 @@ describe('ReceitaService - autor ou admin e alertas', () => {
         ).rejects.toBeInstanceOf(ForbiddenException);
       }
       expect(prisma.receitas.get(receitaId).nome).toBe('Omelete');
+    });
+
+    it('receita aprovada editada volta para pendente e guarda a versão', async () => {
+      prisma.receitas.set(receitaId, {
+        ...prisma.receitas.get(receitaId),
+        status: 'aprovada',
+        profissionalAprovadorId: randomUUID(),
+        dataAprovacao: new Date(),
+      });
+
+      await service.update(receitaId, { nome: 'Nova versão' } as any, autor);
+
+      const receita = prisma.receitas.get(receitaId);
+      expect(receita.status).toBe('pendente');
+      expect(receita.profissionalAprovadorId).toBeNull();
+      expect(receita.dataAprovacao).toBeNull();
+      expect(prisma.versoes).toEqual([
+        expect.objectContaining({ receitaId, nome: 'Omelete', versao: 1 }),
+      ]);
+    });
+
+    it('receita pendente editada continua pendente, sem nova versão', async () => {
+      await service.update(receitaId, { nome: 'Ajuste' } as any, autor);
+
+      expect(prisma.receitas.get(receitaId).status).toBe('pendente');
+      expect(prisma.versoes).toHaveLength(0);
     });
 
     it('permite o autor e o admin', async () => {
@@ -117,10 +174,66 @@ describe('ReceitaService - autor ou admin e alertas', () => {
       expect(prisma.receitas.has(receitaId)).toBe(false);
     });
 
+    it('apaga de vez receita fora de planos, junto com favoritos e versões', async () => {
+      prisma.favoritos.push({ receitaId, usuarioId: outro.id });
+      prisma.versoes.push({ receitaId, versao: 1 });
+
+      await service.remove(receitaId, autor);
+
+      expect(prisma.receitas.has(receitaId)).toBe(false);
+      expect(prisma.favoritos).toHaveLength(0);
+      expect(prisma.versoes).toHaveLength(0);
+    });
+
+    it('mantém receita usada em plano (exclusão lógica) e remove favoritos', async () => {
+      prisma.itensPlano.push({ receitaId });
+      prisma.favoritos.push({ receitaId, usuarioId: outro.id });
+
+      await service.remove(receitaId, autor);
+
+      expect(prisma.receitas.get(receitaId).deletedAt).toBeInstanceOf(Date);
+      expect(prisma.favoritos).toHaveLength(0);
+    });
+
+    it('não permite editar nem apagar de novo uma receita já excluída', async () => {
+      prisma.itensPlano.push({ receitaId });
+      await service.remove(receitaId, autor);
+
+      await expect(service.remove(receitaId, autor)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      await expect(
+        service.update(receitaId, { nome: 'x' } as any, autor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
     it('responde 404 para receita inexistente', async () => {
       await expect(service.remove(randomUUID(), admin)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('aprovar / rejeitar', () => {
+    it('profissional não pode aprovar nem rejeitar a própria receita', async () => {
+      const autorProfissional = usuario(TipoUsuario.profissional);
+      prisma.profissionais.push({
+        id: randomUUID(),
+        usuarioId: autorProfissional.id,
+        statusAprovacao: 'aprovado',
+      });
+      prisma.receitas.set(receitaId, {
+        ...prisma.receitas.get(receitaId),
+        criadoPor: autorProfissional.id,
+      });
+
+      await expect(
+        service.aprovarReceita(receitaId, autorProfissional.id),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        service.rejeitarReceita(receitaId, autorProfissional.id),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.receitas.get(receitaId).status).toBe('pendente');
     });
   });
 
