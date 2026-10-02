@@ -16,6 +16,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { RestricaoAlimentarService } from './restricao-alimentar.service';
 import { RestricaoRegraNutricionalService } from './restricao-regra-nutricional.service';
@@ -41,6 +42,7 @@ const uuidPipe = (mensagem: string) =>
 
 @ApiTags('Restrição Alimentar')
 @UseGuards(AuthGuard, RolesGuard)
+@ApiBearerAuth()
 @Controller('api/restricao-alimentar')
 export class RestricaoAlimentarController {
   constructor(

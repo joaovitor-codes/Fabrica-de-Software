@@ -14,6 +14,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { IngredienteRestricaoService } from './ingrediente-restricao.service';
 import { VincularIngredienteRestricaoDto } from './dtos/ingrediente-restricao';
@@ -42,6 +43,7 @@ export class IngredienteRestricaoController {
   @ApiCreatedResponse({
     description: 'Restrição vinculada ao ingrediente com sucesso.',
   })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Post(':ingredienteId/restricoes')
@@ -69,6 +71,7 @@ export class IngredienteRestricaoController {
     summary: 'Remove o vínculo de uma restrição alimentar com o ingrediente',
   })
   @ApiOkResponse({ description: 'Vínculo removido com sucesso.' })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Delete(':ingredienteId/restricoes/:restricaoId')
@@ -106,6 +109,7 @@ export class IngredienteRestricaoController {
   @ApiCreatedResponse({
     description: 'Substitutos gerados e cadastrados com sucesso.',
   })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Post(':ingredienteId/restricoes/:restricaoId/substitutos')

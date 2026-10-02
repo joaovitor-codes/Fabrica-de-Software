@@ -15,6 +15,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { TagSintomasService } from './tag-sintomas.service';
 import { CreateTagSintomaDto, UpdateTagSintomaDto } from './dtos/tag-sintoma';
@@ -25,6 +26,7 @@ import { TipoUsuario } from '@prisma/client';
 
 @ApiTags('Tag Sintomas')
 @UseGuards(AuthGuard, RolesGuard)
+@ApiBearerAuth()
 @Controller('api/tag-sintomas')
 export class TagSintomasController {
   constructor(private readonly tagSintomasService: TagSintomasService) {}

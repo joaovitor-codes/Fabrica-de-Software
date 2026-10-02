@@ -17,6 +17,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../../auth/auth.guard';
 
@@ -33,6 +34,7 @@ export class UnidadeMedidaController {
 
   @ApiOperation({ summary: 'Cria uma nova unidade de medida' })
   @ApiCreatedResponse({ description: 'Unidade de medida criada com sucesso.' })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Post()
   async create(@Body() createUnidadeMedidaDto: UnidadeMedidaDto) {
@@ -55,6 +57,7 @@ export class UnidadeMedidaController {
 
   @ApiOperation({ summary: 'Atualiza uma unidade de medida pelo ID' })
   @ApiOkResponse({ description: 'Unidade de medida atualizada com sucesso.' })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Patch(':id')
   async update(
@@ -66,6 +69,7 @@ export class UnidadeMedidaController {
 
   @ApiOperation({ summary: 'Remove uma unidade de medida pelo ID' })
   @ApiOkResponse({ description: 'Unidade de medida removida com sucesso.' })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Delete(':id')
   async remove(@Param('id', uuidPipe('ID inválido')) id: string) {

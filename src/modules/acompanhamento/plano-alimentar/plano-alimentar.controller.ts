@@ -15,6 +15,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../../auth/auth.guard';
 import { RolesGuard } from '../../../auth/roles.guard';
@@ -43,6 +44,7 @@ const uuidPipe = (mensagem: string) =>
   });
 
 @UseGuards(AuthGuard, RolesGuard)
+@ApiBearerAuth()
 @Controller('api/plano-alimentar')
 export class PlanoAlimentarController {
   constructor(
