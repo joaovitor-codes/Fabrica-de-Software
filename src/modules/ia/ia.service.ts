@@ -87,6 +87,73 @@ export class IaService {
   }
 
   /**
+   * Propõe a adaptação de uma receita para uma restrição: para cada
+   * ingrediente problemático, substituir por um candidato (por índice) ou
+   * remover. Devolve o JSON cru: quem chama valida com `interpretarAdaptacao`.
+   * Só vão dados da receita e o nome da restrição.
+   */
+  async adaptarReceita(entrada: {
+    restricao: string;
+    nome: string;
+    modoPreparo: string | null;
+    itens: {
+      nome: string;
+      quantidade: number;
+      unidade: string;
+      trocar: boolean;
+    }[];
+    candidatos: string[];
+    preferidos: Record<number, number[]>;
+  }): Promise<unknown> {
+    const itens = entrada.itens
+      .map(
+        (item, i) =>
+          `${i}. ${item.nome} — ${item.quantidade} ${item.unidade}` +
+          (item.trocar ? '  [TROCAR]' : ''),
+      )
+      .join('\n        ');
+    const candidatos = entrada.candidatos
+      .map((nome, c) => `${c}. ${nome}`)
+      .join('\n        ');
+    const preferidos = Object.entries(entrada.preferidos)
+      .map(([i, cs]) => `item ${i}: candidatos ${cs.join(', ')}`)
+      .join('\n        ');
+
+    const prompt = `Você adapta receitas de uma plataforma de nutrição no Brasil para
+        quem tem a restrição: ${entrada.restricao}.
+
+        Receita: ${entrada.nome}
+        Ingredientes (índice. nome — quantidade unidade):
+        ${itens}
+
+        Modo de preparo (entre as linhas ---):
+        ---
+        ${entrada.modoPreparo ?? '(sem modo de preparo)'}
+        ---
+
+        Candidatos seguros para substituição (índice. nome):
+        ${candidatos}
+        ${preferidos ? `\n        Substitutos já aprovados por nutricionistas (prefira estes):\n        ${preferidos}` : ''}
+
+        Para CADA ingrediente marcado [TROCAR], escolha uma ação:
+        - "substituir": por um candidato com a mesma função culinária; informe
+          o índice "c" e a "quantidade" na MESMA unidade do original;
+        - "remover": quando o ingrediente é acessório e a receita fica boa
+          sem ele (ex: sal, que pode dar lugar a ervas da lista, se houver).
+        Não troque ingredientes sem [TROCAR]. Use só candidatos da lista.
+        Reescreva o modo de preparo citando só os ingredientes da receita
+        adaptada. No "resumo" (até 400 caracteres), diga ao nutricionista o
+        que mudou, o impacto em textura e sabor e o que conferir.
+
+        Responda APENAS um JSON, sem texto adicional:
+        {"trocas": [{"i": 0, "acao": "substituir", "c": 0, "quantidade": 0},
+                    {"i": 1, "acao": "remover"}],
+         "modoPreparo": "...", "resumo": "..."}`;
+
+    return this.perguntarJson(prompt);
+  }
+
+  /**
    * Aponta ingredientes citados no modo de preparo que não estão na lista da
    * receita. Devolve o JSON cru: quem chama valida com
    * `interpretarIngredientesNaoListados`. Só vão textos da receita.

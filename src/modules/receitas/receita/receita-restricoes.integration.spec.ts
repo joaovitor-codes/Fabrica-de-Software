@@ -67,6 +67,11 @@ const atende = (r: any, where: any = {}): boolean =>
         return valor.every((i: any) => atende(i, cond.every));
       if ('none' in cond) return !valor.some((i: any) => atende(i, cond.none));
       if ('in' in cond) return cond.in.includes(valor);
+      if ('notIn' in cond) return !cond.notIn.includes(valor);
+      if ('is' in cond) {
+        const v = valor ?? null;
+        return cond.is === null ? v === null : v !== null && atende(v, cond.is);
+      }
       if ('isEmpty' in cond) return (valor.length === 0) === cond.isEmpty;
       if ('gte' in cond) return valor !== null && valor >= cond.gte;
       if ('not' in cond) return valor !== cond.not;
@@ -186,6 +191,29 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
   const comQueijoFora = nova('Macarrão gratinado', [ingrediente([])], {
     ingredientesNaoListados: ['queijo ralado'],
   });
+  // Adaptações para leite ainda não verificadas (pendentes).
+  const adaptadaPorOutro = nova('Bolo de leite (adaptada)', [ingrediente([])], {
+    status: StatusReceita.pendente,
+    adaptacaoDe: { restricaoId: leite },
+  });
+  const adaptadaPeloAlergico = nova(
+    'Pudim (adaptada, pedida pelo alérgico)',
+    [ingrediente([])],
+    {
+      status: StatusReceita.pendente,
+      criadoPor: alergico.id,
+      adaptacaoDe: { restricaoId: leite },
+    },
+  );
+  const adaptadaPeloIntolerante = nova(
+    'Vitamina (adaptada, pedida pelo intolerante)',
+    [ingrediente([])],
+    {
+      status: StatusReceita.pendente,
+      criadoPor: intolerante.id,
+      adaptacaoDe: { restricaoId: leite },
+    },
+  );
   const propriaComLeite = nova('Pudim do alérgico', [ingrediente([leite])], {
     status: StatusReceita.pendente,
     criadoPor: alergico.id,
@@ -257,6 +285,9 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       semDadoSodio,
       comQueijoFora,
       propriaComLeite,
+      adaptadaPorOutro,
+      adaptadaPeloAlergico,
+      adaptadaPeloIntolerante,
     );
     prisma.restricoesAlimentares.push({
       id: leite,
@@ -458,6 +489,29 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     });
   });
 
+  describe('adaptação ainda não verificada', () => {
+    const abrir = (receita: { id: string }, usuario: any) =>
+      request(app.getHttpServer())
+        .get(`/api/receita/${receita.id}`)
+        .set(como(usuario));
+
+    it('aparece para quem tem a restrição como leve ou moderada', async () => {
+      await abrir(adaptadaPorOutro, intolerante).expect(200);
+    });
+
+    it('não aparece para quem tem a restrição como estrita nem para quem não a tem', async () => {
+      await abrir(adaptadaPorOutro, alergico).expect(404);
+      await abrir(adaptadaPorOutro, semRestricao).expect(404);
+    });
+
+    it('quem pediu vê, exceto se a restrição for estrita para ele', async () => {
+      await abrir(adaptadaPeloIntolerante, intolerante).expect(200);
+
+      const res = await abrir(adaptadaPeloAlergico, alergico).expect(403);
+      expect(res.body.message).toContain('ainda não foi verificada');
+    });
+  });
+
   describe('?seguraPara=<restricaoId>', () => {
     it('visitante filtra pelas receitas seguras para uma restrição', async () => {
       const res = await request(app.getHttpServer())
@@ -503,7 +557,13 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         .expect(200);
 
       expect(ids(res.body)).toEqual(
-        [...todasAprovadas, propriaComLeite.id].sort(),
+        [
+          ...todasAprovadas,
+          propriaComLeite.id,
+          adaptadaPorOutro.id,
+          adaptadaPeloAlergico.id,
+          adaptadaPeloIntolerante.id,
+        ].sort(),
       );
     });
   });
