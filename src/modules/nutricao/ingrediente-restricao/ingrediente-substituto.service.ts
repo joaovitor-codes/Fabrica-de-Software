@@ -11,6 +11,9 @@ import { IaService } from '../../ia/ia.service';
 import { SugestaoSubstituto } from '../../ia/dtos/ia';
 import { IngredienteDTO } from '../ingrediente/dtos/ingrediente';
 
+/** fonteDados dos ingredientes criados a partir de sugestão da IA. */
+export const FONTE_ESTIMATIVA_IA = 'ia_estimativa_nao_verificada';
+
 @Injectable()
 export class IngredienteSubstitutoService {
   private readonly logger = new Logger(IngredienteSubstitutoService.name);
@@ -135,7 +138,7 @@ export class IngredienteSubstitutoService {
       gordurasG: this.parseNumeroSeguro(sugestao.gordurasG),
       fibrasG: this.parseNumeroSeguro(sugestao.fibrasG),
       sodioMg: this.parseNumeroSeguro(sugestao.sodioMg),
-      fonteDados: 'ia_estimativa_nao_verificada',
+      fonteDados: FONTE_ESTIMATIVA_IA,
     };
   }
 }

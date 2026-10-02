@@ -261,6 +261,8 @@ describe('ReceitaService - autor ou admin e alertas', () => {
   });
 
   describe('findAlerts', () => {
+    const revisado = new Date('2026-10-01T00:00:00Z');
+
     it('agrupa as restrições dos ingredientes e não expõe pontos', async () => {
       const lactose = {
         id: randomUUID(),
@@ -276,9 +278,27 @@ describe('ReceitaService - autor ou admin e alertas', () => {
         avisoContaminacaoCruzada: true,
         pontosTransacoes: [{ pontos: 10 }],
         ingredientes: [
-          { ingrediente: { ...leite, restricoes: [{ restricao: lactose }] } },
-          { ingrediente: { ...queijo, restricoes: [{ restricao: lactose }] } },
-          { ingrediente: { ...ovo, restricoes: [] } },
+          {
+            ingrediente: {
+              ...leite,
+              restricoesRevisadasEm: revisado,
+              restricoes: [{ restricao: lactose }],
+            },
+          },
+          {
+            ingrediente: {
+              ...queijo,
+              restricoesRevisadasEm: revisado,
+              restricoes: [{ restricao: lactose }],
+            },
+          },
+          {
+            ingrediente: {
+              ...ovo,
+              restricoesRevisadasEm: revisado,
+              restricoes: [],
+            },
+          },
         ],
       });
 
@@ -287,7 +307,38 @@ describe('ReceitaService - autor ou admin e alertas', () => {
       expect(alertas).toEqual({
         avisoContaminacaoCruzada: true,
         restricoes: [{ ...lactose, ingredientes: [leite, queijo] }],
+        ingredientesNaoRevisados: [],
       });
+    });
+
+    it('lista os ingredientes que ninguém revisou', async () => {
+      const queijoCaseiro = { id: randomUUID(), nome: 'Queijo caseiro' };
+      const ovo = { id: randomUUID(), nome: 'Ovo' };
+      prisma.receitas.set(receitaId, {
+        ...prisma.receitas.get(receitaId),
+        status: 'aprovada',
+        avisoContaminacaoCruzada: false,
+        ingredientes: [
+          {
+            ingrediente: {
+              ...queijoCaseiro,
+              restricoesRevisadasEm: null,
+              restricoes: [],
+            },
+          },
+          {
+            ingrediente: {
+              ...ovo,
+              restricoesRevisadasEm: revisado,
+              restricoes: [],
+            },
+          },
+        ],
+      });
+
+      const alertas = await service.findAlerts(receitaId);
+
+      expect(alertas.ingredientesNaoRevisados).toEqual([queijoCaseiro]);
     });
   });
 });

@@ -222,7 +222,8 @@ export class ReceitaController {
   })
   @ApiOkResponse({
     description:
-      'Objeto com avisoContaminacaoCruzada e as restrições com os ingredientes que as disparam.',
+      'Objeto com avisoContaminacaoCruzada, as restrições com os ingredientes que as disparam ' +
+      'e os ingredientes ainda não revisados por um curador.',
   })
   @ApiBearerAuth()
   @UseGuards(OptionalAuthGuard)
