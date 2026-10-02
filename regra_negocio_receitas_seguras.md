@@ -126,6 +126,8 @@ Roda em dois passos, com revisão humana no meio. O cabeçalho do script tem o u
 
 A IA nunca grava vínculo direto. Ela só recebe nomes de ingrediente e de restrição.
 
+**CSV revisado vale em qualquer banco.** O id do ingrediente é gerado por cada banco; o CSV traz também o `codigo_fonte_externo` (ex: `TACO-4-123`), que é o mesmo em todos, e o `aplicar` acha o ingrediente por ele. Linhas de ingrediente sem código (cadastrado por usuário) só valem no banco de origem e são ignoradas nos outros. O CSV revisado fica versionado em `scripts/curadoria-alergenos-revisado.csv` e é aplicado pelo `npm run db:preparar`.
+
 ### Primeira rodada (base local, 2026-10-02)
 
 603 ingredientes, todos com resposta da IA: 610 vínculos candidatos (378 pedindo atenção) e 378 ingredientes sem nenhuma restrição. A IA acertou casos que a palavra-chave erra ("chocolate amargo, sem leite" não marcado como leite; sardinha e ovo no cuscuz paulista) e foi conservadora: 288 candidatos são "IA incerta", a maioria lecitina de soja e leite/ovo em pães e massas.

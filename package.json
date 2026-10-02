@@ -17,7 +17,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "db:preparar": "ts-node scripts/import-taco.ts scripts/taco_composicao.csv && ts-node scripts/regras-nutricionais.ts && ts-node scripts/curadoria-alergenos.ts aplicar scripts/curadoria-alergenos-revisado.csv --se-existir"
   },
   "dependencies": {
     "@keyv/redis": "^5.1.6",

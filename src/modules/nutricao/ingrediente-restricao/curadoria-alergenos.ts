@@ -301,6 +301,8 @@ export type Fonte = 'palavra_chave' | 'ia' | 'ambos' | 'manual' | '';
 
 export interface LinhaCuradoria {
   ingredienteId: string;
+  /** Código estável entre bancos (ex: TACO-4-123); vazio se não houver. */
+  codigoFonteExterno: string;
   ingrediente: string;
   /** Vazio na linha que fala do ingrediente como um todo. */
   restricao: string;
@@ -313,6 +315,7 @@ export interface LinhaCuradoria {
 export interface IngredienteCuradoria {
   id: string;
   nome: string;
+  codigoFonteExterno?: string | null;
 }
 
 /**
@@ -332,7 +335,11 @@ export function montarLinhas(
   ia: ClassificacaoIa | undefined,
   restricoes: RestricaoCuradoria[] = RESTRICOES_CURADORIA,
 ): LinhaCuradoria[] {
-  const base = { ingredienteId: ingrediente.id, ingrediente: ingrediente.nome };
+  const base = {
+    ingredienteId: ingrediente.id,
+    codigoFonteExterno: ingrediente.codigoFonteExterno ?? '',
+    ingrediente: ingrediente.nome,
+  };
   const candidatas = restricoes
     .map((r) => r.nome)
     .filter(
@@ -389,6 +396,7 @@ export function montarLinhas(
 
 export const COLUNAS_CSV = [
   'ingrediente_id',
+  'codigo_fonte_externo',
   'ingrediente',
   'restricao',
   'fonte',
@@ -404,6 +412,7 @@ export function gerarCsv(linhas: LinhaCuradoria[]): string {
   const corpo = linhas.map((l) =>
     [
       l.ingredienteId,
+      l.codigoFonteExterno,
       l.ingrediente,
       l.restricao,
       l.fonte,
@@ -431,7 +440,7 @@ export interface PlanoAplicacao {
  * nada: um vínculo que já existe (ex: curado manualmente) continua.
  */
 export function planejarAplicacao(
-  linhasCsv: Record<string, string>[],
+  linhasCsv: (Record<string, string> | null)[],
   restricoesConhecidas: string[],
 ): PlanoAplicacao {
   const conhecidas = new Map(
@@ -448,6 +457,7 @@ export function planejarAplicacao(
   const vistos = new Set<string>();
 
   linhasCsv.forEach((linha, indice) => {
+    if (!linha) return; // ignorada por resolverIngredientes
     const numero = indice + 2; // linha 1 é o cabeçalho
     const ingredienteId = (linha.ingrediente_id ?? '').trim();
     const decisao = normalizar(linha.decisao ?? '') as Decisao;
@@ -494,4 +504,60 @@ export function planejarAplicacao(
     (comPendencia.has(id) ? plano.pendentes : plano.revisados).push(id);
   }
   return plano;
+}
+
+export interface ResolucaoIngredientes {
+  /** Mesmo tamanho e ordem do CSV; `null` nas linhas ignoradas. */
+  linhas: (Record<string, string> | null)[];
+  ignoradas: number;
+  erros: string[];
+}
+
+/**
+ * Troca o `ingrediente_id` de cada linha pelo id deste banco. O id é gerado
+ * por cada banco; o `codigo_fonte_externo` (ex: TACO-4-123) é o mesmo em
+ * todos, então tem prioridade. Assim um CSV revisado num banco aplica em
+ * qualquer outro.
+ *
+ * - Código que não existe aqui é erro (ex: TACO não importada).
+ * - Linha sem código (ingrediente criado por usuário) só vale no banco de
+ *   origem: se o id não existe aqui, a linha é ignorada e o ingrediente
+ *   continua não revisado.
+ */
+export function resolverIngredientes(
+  linhasCsv: Record<string, string>[],
+  idPorCodigo: Map<string, string>,
+  idsExistentes: Set<string>,
+): ResolucaoIngredientes {
+  const resolucao: ResolucaoIngredientes = {
+    linhas: [],
+    ignoradas: 0,
+    erros: [],
+  };
+
+  linhasCsv.forEach((linha, indice) => {
+    const codigo = (linha.codigo_fonte_externo ?? '').trim();
+    if (codigo) {
+      const id = idPorCodigo.get(codigo);
+      if (!id) {
+        resolucao.erros.push(
+          `linha ${indice + 2}: código ${codigo} não existe neste banco`,
+        );
+        resolucao.linhas.push(null);
+        return;
+      }
+      resolucao.linhas.push({ ...linha, ingrediente_id: id });
+      return;
+    }
+
+    const id = (linha.ingrediente_id ?? '').trim();
+    if (id && !idsExistentes.has(id)) {
+      resolucao.ignoradas += 1;
+      resolucao.linhas.push(null);
+      return;
+    }
+    resolucao.linhas.push(linha);
+  });
+
+  return resolucao;
 }
