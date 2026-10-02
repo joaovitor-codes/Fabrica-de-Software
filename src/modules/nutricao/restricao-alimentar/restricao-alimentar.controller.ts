@@ -1,8 +1,28 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RestricaoAlimentarService } from './restricao-alimentar.service';
 import { RestricaoRegraNutricionalService } from './restricao-regra-nutricional.service';
-import { CreateRestricaoAlimentarDto, UpdateRestricaoAlimentarDto } from './dtos/restricao-alimentar';
+import {
+  CreateRestricaoAlimentarDto,
+  UpdateRestricaoAlimentarDto,
+} from './dtos/restricao-alimentar';
 import {
   CreateRestricaoRegraNutricionalDto,
   UpdateRestricaoRegraNutricionalDto,
@@ -12,12 +32,12 @@ import { RolesGuard } from '../../../auth/roles.guard';
 import { Roles } from '../../../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 
-const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+const uuidPipe = (mensagem: string) =>
+  new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
     exceptionFactory: () => new BadRequestException(mensagem),
-});
-
+  });
 
 @ApiTags('Restrição Alimentar')
 @UseGuards(AuthGuard, RolesGuard)
@@ -33,14 +53,20 @@ export class RestricaoAlimentarController {
   */
 
   @ApiOperation({ summary: 'Cria uma nova restrição alimentar' })
-  @ApiCreatedResponse({ description: 'Restrição alimentar criada com sucesso.' })
+  @ApiCreatedResponse({
+    description: 'Restrição alimentar criada com sucesso.',
+  })
   @Roles(TipoUsuario.admin)
   @Post()
-  async create(@Body() createRestricaoAlimentarDto: CreateRestricaoAlimentarDto) {
+  async create(
+    @Body() createRestricaoAlimentarDto: CreateRestricaoAlimentarDto,
+  ) {
     return this.restricaoAlimentarService.create(createRestricaoAlimentarDto);
   }
 
-  @ApiOperation({ summary: 'Obtém uma lista paginada de restrições alimentares' })
+  @ApiOperation({
+    summary: 'Obtém uma lista paginada de restrições alimentares',
+  })
   @ApiOkResponse({ description: 'Lista de restrições alimentares.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Get('page/:page/limit/:limit')
@@ -51,7 +77,9 @@ export class RestricaoAlimentarController {
     return this.restricaoAlimentarService.findAll(page, limit);
   }
 
-  @ApiOperation({ summary: 'Retorna uma restrição alimentar específica pelo ID' })
+  @ApiOperation({
+    summary: 'Retorna uma restrição alimentar específica pelo ID',
+  })
   @ApiOkResponse({ description: 'Restrição alimentar retornada com sucesso.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Get(':id')
@@ -59,7 +87,9 @@ export class RestricaoAlimentarController {
     return this.restricaoAlimentarService.findOne(id);
   }
 
-  @ApiOperation({ summary: 'Atualiza uma restrição alimentar específica pelo ID' })
+  @ApiOperation({
+    summary: 'Atualiza uma restrição alimentar específica pelo ID',
+  })
   @ApiOkResponse({ description: 'Restrição alimentar atualizada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Patch(':id')
@@ -67,10 +97,15 @@ export class RestricaoAlimentarController {
     @Param('id', uuidPipe('ID inválido')) id: string,
     @Body() updateRestricaoAlimentarDto: UpdateRestricaoAlimentarDto,
   ) {
-    return this.restricaoAlimentarService.update(id, updateRestricaoAlimentarDto);
+    return this.restricaoAlimentarService.update(
+      id,
+      updateRestricaoAlimentarDto,
+    );
   }
 
-  @ApiOperation({ summary: 'Remove uma restrição alimentar específica pelo ID' })
+  @ApiOperation({
+    summary: 'Remove uma restrição alimentar específica pelo ID',
+  })
   @ApiOkResponse({ description: 'Restrição alimentar removida com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Delete(':id')
@@ -87,7 +122,8 @@ export class RestricaoAlimentarController {
   @Roles(TipoUsuario.admin)
   @Post(':restricaoId/regras-nutricionais')
   async criarRegra(
-    @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
+    @Param('restricaoId', uuidPipe('ID Restrição inválido'))
+    restricaoId: string,
     @Body() dto: CreateRestricaoRegraNutricionalDto,
   ) {
     return this.restricaoRegraNutricionalService.criarRegra(restricaoId, dto);
@@ -97,8 +133,13 @@ export class RestricaoAlimentarController {
   @ApiOkResponse({ description: 'Restrição com suas regras nutricionais.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Get(':restricaoId/regras-nutricionais')
-  async getRegras(@Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string) {
-    return this.restricaoRegraNutricionalService.getRegraByRestricaoId(restricaoId);
+  async getRegras(
+    @Param('restricaoId', uuidPipe('ID Restrição inválido'))
+    restricaoId: string,
+  ) {
+    return this.restricaoRegraNutricionalService.getRegraByRestricaoId(
+      restricaoId,
+    );
   }
 
   @ApiOperation({ summary: 'Atualiza uma regra nutricional da restrição' })
@@ -106,11 +147,16 @@ export class RestricaoAlimentarController {
   @Roles(TipoUsuario.admin)
   @Patch(':restricaoId/regras-nutricionais/:regraId')
   async updateRegra(
-    @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
+    @Param('restricaoId', uuidPipe('ID Restrição inválido'))
+    restricaoId: string,
     @Param('regraId', uuidPipe('ID Regra inválido')) regraId: string,
     @Body() dto: UpdateRestricaoRegraNutricionalDto,
   ) {
-    return this.restricaoRegraNutricionalService.updateRegra(restricaoId, regraId, dto);
+    return this.restricaoRegraNutricionalService.updateRegra(
+      restricaoId,
+      regraId,
+      dto,
+    );
   }
 
   @ApiOperation({ summary: 'Remove uma regra nutricional da restrição' })
@@ -118,7 +164,8 @@ export class RestricaoAlimentarController {
   @Roles(TipoUsuario.admin)
   @Delete(':restricaoId/regras-nutricionais/:regraId')
   async removeRegra(
-    @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
+    @Param('restricaoId', uuidPipe('ID Restrição inválido'))
+    restricaoId: string,
     @Param('regraId', uuidPipe('ID Regra inválido')) regraId: string,
   ) {
     return this.restricaoRegraNutricionalService.delete(restricaoId, regraId);

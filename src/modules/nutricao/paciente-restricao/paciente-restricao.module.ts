@@ -8,6 +8,6 @@ import { PacientesModule } from '../../identidade/pacientes/pacientes.module';
   imports: [RestricaoAlimentarModule, PacientesModule],
   providers: [PacienteRestricaoService],
   controllers: [PacienteRestricaoController],
-  exports: [PacienteRestricaoService]
+  exports: [PacienteRestricaoService],
 })
 export class PacienteRestricaoModule {}

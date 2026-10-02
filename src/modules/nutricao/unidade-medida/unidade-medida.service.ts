@@ -22,7 +22,10 @@ export class UnidadeMedidaService {
         ativo: createUnidadeMedidaDto.ativo,
       },
     });
-    return { success: 'Unidade de medida criada com sucesso.', data: unidadeMedida };
+    return {
+      success: 'Unidade de medida criada com sucesso.',
+      data: unidadeMedida,
+    };
   }
 
   async findAll() {
@@ -59,7 +62,9 @@ export class UnidadeMedidaService {
         ativo: updateUnidadeMedidaDto.ativo,
       },
     });
-    return { success: 'Unidade de medida atualizada com sucesso.', data: unidadeMedida,
+    return {
+      success: 'Unidade de medida atualizada com sucesso.',
+      data: unidadeMedida,
     };
   }
 

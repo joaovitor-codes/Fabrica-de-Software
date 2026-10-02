@@ -6,7 +6,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { unlink } from 'fs/promises';
-import { Receita, StatusAprovacao, TipoMidia, TipoTransacaoPontos } from '@prisma/client';
+import {
+  Receita,
+  StatusAprovacao,
+  TipoMidia,
+  TipoTransacaoPontos,
+} from '@prisma/client';
 import { ReceitaDto } from './dtos/receita';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { UpdateReceitaDto } from './dtos/update-receita';
@@ -16,12 +21,12 @@ import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.ser
 
 @Injectable()
 export class ReceitaService {
- constructor(
-   private readonly prismaService: PrismaService,
-   private readonly usuario: UsuarioService,
-   private readonly cacheService: CacheService,
-   private readonly pontosTransacaoService: PontosTransacaoService
- ) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly usuario: UsuarioService,
+    private readonly cacheService: CacheService,
+    private readonly pontosTransacaoService: PontosTransacaoService,
+  ) {}
 
   private async alreadyExists(id: string) {
     const receita = await this.prismaService.receita.findUnique({
@@ -34,13 +39,15 @@ export class ReceitaService {
     await this.cacheService.del('receitas:all');
 
     const userExists = await this.usuario.userExists(userId);
-    
+
     if (!userExists) {
       throw new BadRequestException('Usuário não encontrado');
     }
 
     if (!data.ingredientes || data.ingredientes.length === 0) {
-      throw new BadRequestException('A receita deve ter pelo menos um ingrediente');
+      throw new BadRequestException(
+        'A receita deve ter pelo menos um ingrediente',
+      );
     }
     const receita = await this.prismaService.receita.create({
       data: {
@@ -74,94 +81,90 @@ export class ReceitaService {
   }
 
   async uploadMedia(
-  id: string,
-  file: Express.Multer.File,
-  tipo: TipoMidia,
-  ordem: number,
-) {
-  if (!file) {
-    throw new BadRequestException('file is required');
+    id: string,
+    file: Express.Multer.File,
+    tipo: TipoMidia,
+    ordem: number,
+  ) {
+    if (!file) {
+      throw new BadRequestException('file is required');
+    }
+
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'video/mp4'];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      await unlink(file.path).catch(() => undefined);
+
+      throw new BadRequestException('invalid file type');
+    }
+
+    const maxSize = 5 * 1024 * 1024;
+
+    if (file.size > maxSize) {
+      await unlink(file.path).catch(() => undefined);
+
+      throw new BadRequestException('file is too large!');
+    }
+
+    const receitaExists = await this.alreadyExists(id);
+
+    if (!receitaExists) {
+      await unlink(file.path).catch(() => undefined);
+
+      throw new NotFoundException('Receita não encontrada');
+    }
+
+    let folder: string;
+
+    if (file.fieldname === 'image') {
+      folder = 'images';
+    } else if (file.fieldname === 'video') {
+      folder = 'videos';
+    } else {
+      await unlink(file.path).catch(() => undefined);
+
+      throw new BadRequestException('Invalid file field');
+    }
+
+    try {
+      const midia = await this.prismaService.receitaMidia.create({
+        data: {
+          receitaId: id,
+          url: `/uploads/receitas/${folder}/${file.filename}`,
+          tipo,
+          ordem,
+        },
+      });
+
+      return {
+        success: 'Mídia enviada com sucesso.',
+        data: midia,
+      };
+    } catch (error) {
+      await unlink(file.path).catch(() => undefined);
+
+      throw error;
+    }
   }
-
-  const allowedMimeTypes = [
-    'image/jpeg',
-    'image/png',
-    'video/mp4',
-  ];
-
-  if (!allowedMimeTypes.includes(file.mimetype)) {
-    await unlink(file.path).catch(() => undefined);
-
-    throw new BadRequestException('invalid file type');
-  }
-
-  const maxSize = 5 * 1024 * 1024;
-
-  if (file.size > maxSize) {
-    await unlink(file.path).catch(() => undefined);
-
-    throw new BadRequestException('file is too large!');
-  }
-
-  const receitaExists = await this.alreadyExists(id);
-
-  if (!receitaExists) {
-    await unlink(file.path).catch(() => undefined);
-
-    throw new NotFoundException('Receita não encontrada');
-  }
-
-  let folder: string;
-
-  if (file.fieldname === 'image') {
-    folder = 'images';
-  } else if (file.fieldname === 'video') {
-    folder = 'videos';
-  } else {
-    await unlink(file.path).catch(() => undefined);
-
-    throw new BadRequestException('Invalid file field');
-  }
-
-  try {
-    const midia = await this.prismaService.receitaMidia.create({
-      data: {
-        receitaId: id,
-        url: `/uploads/receitas/${folder}/${file.filename}`,
-        tipo,
-        ordem,
-      },
-    });
-
-    return {
-      success: 'Mídia enviada com sucesso.',
-      data: midia,
-    };
-  } catch (error) {
-    await unlink(file.path).catch(() => undefined);
-
-    throw error;
-  }
-}
 
   async findAll() {
-  const cacheKey = 'receitas:all';
+    const cacheKey = 'receitas:all';
 
-  const cachedReceitas = await this.cacheService.get<Receita[]>(cacheKey);
+    const cachedReceitas = await this.cacheService.get<Receita[]>(cacheKey);
 
-  if (cachedReceitas) {
-    return cachedReceitas;
+    if (cachedReceitas) {
+      return cachedReceitas;
+    }
+
+    const receitas = await this.prismaService.receita.findMany({});
+
+    if (!receitas || receitas.length === 0) {
+      throw new NotFoundException('Nenhuma receita encontrada');
+    }
+    await this.cacheService.set(cacheKey, receitas, 300_000);
+
+    return receitas;
   }
-
-  const receitas = await this.prismaService.receita.findMany({});
-
-  if (!receitas || receitas.length === 0) {
-    throw new NotFoundException('Nenhuma receita encontrada');
-  }
-  await this.cacheService.set(cacheKey, receitas, 300_000);
-
-  return receitas;
-}
 
   async findFavorites(usuarioId: string) {
     const favoritos = await this.prismaService.favorito.findMany({
@@ -182,7 +185,7 @@ export class ReceitaService {
       orderBy: { createdAt: 'desc' },
     });
 
-    if(!favoritos || favoritos.length === 0) {
+    if (!favoritos || favoritos.length === 0) {
       throw new NotFoundException('Nenhuma receita favorita encontrada');
     }
 
@@ -273,7 +276,7 @@ export class ReceitaService {
       include: { ingredientes: true },
     });
     return receita!.ingredientes;
-  }  
+  }
 
   async findAlerts(id: string) {
     const receitaExists = await this.alreadyExists(id);
@@ -322,7 +325,7 @@ export class ReceitaService {
       if (!receitaAtual) {
         throw new NotFoundException('Receita não encontrada');
       }
-      
+
       await this.cacheService.del(cacheKey);
 
       if (receitaAtual.status === 'aprovada') {
@@ -353,7 +356,7 @@ export class ReceitaService {
             : {}),
         },
       });
- 
+
       return { success: 'Receita atualizada com sucesso.', data: receita };
     });
   }
@@ -364,7 +367,9 @@ export class ReceitaService {
     });
 
     if (!profissional) {
-      throw new NotFoundException('Você ainda não possui cadastro profissional');
+      throw new NotFoundException(
+        'Você ainda não possui cadastro profissional',
+      );
     }
 
     if (profissional.statusAprovacao !== StatusAprovacao.aprovado) {
@@ -401,7 +406,10 @@ export class ReceitaService {
         tx,
       );
 
-      return { success: 'Receita aprovada com sucesso.', data: receitaAprovada };
+      return {
+        success: 'Receita aprovada com sucesso.',
+        data: receitaAprovada,
+      };
     });
   }
 
@@ -409,9 +417,11 @@ export class ReceitaService {
     const profissional = await this.prismaService.profissional.findUnique({
       where: { usuarioId },
     });
-    
+
     if (!profissional) {
-      throw new NotFoundException('Você ainda não possui cadastro profissional');
+      throw new NotFoundException(
+        'Você ainda não possui cadastro profissional',
+      );
     }
 
     return this.prismaService.$transaction(async (tx) => {
@@ -440,7 +450,10 @@ export class ReceitaService {
         tx,
       );
 
-      return { success: 'Receita rejeitada com sucesso.', data: receitaRejeitada };
+      return {
+        success: 'Receita rejeitada com sucesso.',
+        data: receitaRejeitada,
+      };
     });
   }
 
@@ -463,5 +476,4 @@ export class ReceitaService {
     });
     return { success: 'Receita removida com sucesso.' };
   }
-  
 }

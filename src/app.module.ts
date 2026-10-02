@@ -33,7 +33,7 @@ import { PontosTransacaoModule } from './modules/receitas/pontos-transacao/ponto
       isGlobal: true,
       validationSchema: envValidationSchema,
       validationOptions: {
-        abortEarly: false, 
+        abortEarly: false,
       },
     }),
     ThrottlerConfigModule,
@@ -59,7 +59,7 @@ import { PontosTransacaoModule } from './modules/receitas/pontos-transacao/ponto
     TagSintomasModule,
     PlanoAlimentarModule,
     DiarioDeSintomasModule,
-    PontosTransacaoModule
+    PontosTransacaoModule,
   ],
   controllers: [],
   providers: [PrismaService],

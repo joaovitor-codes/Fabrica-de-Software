@@ -1,5 +1,12 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { TipoContato } from '@prisma/client';
 
 export class CreateTelefoneDto {
@@ -25,7 +32,8 @@ export class CreateTelefoneDto {
   principal?: boolean;
 
   @ApiPropertyOptional({
-    description: 'ID do usuário dono do telefone (exclusivo com clinicaId — informe apenas um dos dois)',
+    description:
+      'ID do usuário dono do telefone (exclusivo com clinicaId — informe apenas um dos dois)',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()
@@ -33,7 +41,8 @@ export class CreateTelefoneDto {
   usuarioId?: string;
 
   @ApiPropertyOptional({
-    description: 'ID da clínica dona do telefone (exclusivo com usuarioId — informe apenas um dos dois)',
+    description:
+      'ID da clínica dona do telefone (exclusivo com usuarioId — informe apenas um dos dois)',
     example: '123e4567-e89b-12d3-a456-426614174001',
   })
   @IsOptional()

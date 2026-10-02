@@ -17,7 +17,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
             user: configService.getOrThrow<string>('SMTP_USER'),
             pass: configService.getOrThrow<string>('SMTP_PASS'),
           },
-      },
+        },
         defaults: {
           from: configService.getOrThrow<string>('SMTP_FROM'),
         },

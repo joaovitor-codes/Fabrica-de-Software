@@ -1,5 +1,16 @@
 import { IsNotEmpty } from 'class-validator';
-import { NivelDificuldade, StatusAprovacao, Usuario, Profissional, ReceitaVersao, ReceitaMidia, PontosTransacao, Favorito, PlanoAlimentarItem, Notificacao } from '@prisma/client';
+import {
+  NivelDificuldade,
+  StatusAprovacao,
+  Usuario,
+  Profissional,
+  ReceitaVersao,
+  ReceitaMidia,
+  PontosTransacao,
+  Favorito,
+  PlanoAlimentarItem,
+  Notificacao,
+} from '@prisma/client';
 import { ReceitaIngredienteDTO } from './receita-ingrediente';
 
 export class ReceitaDto {

@@ -1,5 +1,12 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsInt, IsNotEmpty, IsString, IsUUID, MaxLength, NotEquals } from "class-validator";
+import { ApiProperty } from '@nestjs/swagger';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  IsUUID,
+  MaxLength,
+  NotEquals,
+} from 'class-validator';
 
 export class AjustePontosDto {
   @IsUUID()
@@ -12,7 +19,8 @@ export class AjustePontosDto {
   @IsInt()
   @NotEquals(0)
   @ApiProperty({
-    description: 'Quantidade de pontos do ajuste (positivo credita, negativo debita)',
+    description:
+      'Quantidade de pontos do ajuste (positivo credita, negativo debita)',
     example: -10,
   })
   pontos!: number;

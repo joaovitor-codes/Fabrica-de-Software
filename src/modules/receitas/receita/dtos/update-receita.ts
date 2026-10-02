@@ -1,4 +1,16 @@
-import { NivelDificuldade, StatusAprovacao, Usuario, Profissional, ReceitaVersao, ReceitaMidia, ReceitaIngrediente, PontosTransacao, Favorito, PlanoAlimentarItem, Notificacao } from '@prisma/client';
+import {
+  NivelDificuldade,
+  StatusAprovacao,
+  Usuario,
+  Profissional,
+  ReceitaVersao,
+  ReceitaMidia,
+  ReceitaIngrediente,
+  PontosTransacao,
+  Favorito,
+  PlanoAlimentarItem,
+  Notificacao,
+} from '@prisma/client';
 
 export class UpdateReceitaDto {
   nome!: string;

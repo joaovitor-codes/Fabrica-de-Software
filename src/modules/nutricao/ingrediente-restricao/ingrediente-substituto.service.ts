@@ -1,9 +1,15 @@
-import { ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "../../../common/prisma/prisma.service";
-import { RegraNutricionalService } from "./regra-nutricional.service";
-import { IaService } from "../../ia/ia.service";
-import { SugestaoSubstituto } from "../../ia/dtos/ia";
-import { IngredienteDTO } from "../ingrediente/dtos/ingrediente";
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../../../common/prisma/prisma.service';
+import { RegraNutricionalService } from './regra-nutricional.service';
+import { IaService } from '../../ia/ia.service';
+import { SugestaoSubstituto } from '../../ia/dtos/ia';
+import { IngredienteDTO } from '../ingrediente/dtos/ingrediente';
 
 @Injectable()
 export class IngredienteSubstitutoService {
@@ -15,18 +21,25 @@ export class IngredienteSubstitutoService {
     private readonly iaService: IaService,
   ) {}
 
-  private async validarIngredienteRestricao(ingredienteId: string, restricaoId: string) {
+  private async validarIngredienteRestricao(
+    ingredienteId: string,
+    restricaoId: string,
+  ) {
     const [ingrediente, restricao] = await Promise.all([
-        this.prismaService.ingrediente.findUnique({ where: { id: ingredienteId } }),
-        this.prismaService.restricaoAlimentar.findUnique({ where: { id: restricaoId } }),
-    ])
+      this.prismaService.ingrediente.findUnique({
+        where: { id: ingredienteId },
+      }),
+      this.prismaService.restricaoAlimentar.findUnique({
+        where: { id: restricaoId },
+      }),
+    ]);
 
     if (!ingrediente) {
-        throw new NotFoundException(`Ingrediente não encontrado.`);
+      throw new NotFoundException(`Ingrediente não encontrado.`);
     }
 
     if (!restricao) {
-        throw new NotFoundException(`Restrição alimentar não encontrada.`);
+      throw new NotFoundException(`Restrição alimentar não encontrada.`);
     }
 
     return { ingrediente, restricao };
@@ -42,61 +55,78 @@ export class IngredienteSubstitutoService {
     });
   }
 
-  async gerarSubstituto(ingredienteId: string, restricaoId: string){
-    const { ingrediente, restricao } = await this.validarIngredienteRestricao(ingredienteId, restricaoId);
+  async gerarSubstituto(ingredienteId: string, restricaoId: string) {
+    const { ingrediente, restricao } = await this.validarIngredienteRestricao(
+      ingredienteId,
+      restricaoId,
+    );
 
     const jaExiste = await this.prismaService.ingredienteSubstituto.findFirst({
-        where: { ingredienteOrigemId: ingredienteId, restricaoId },
+      where: { ingredienteOrigemId: ingredienteId, restricaoId },
     });
 
     if (jaExiste) {
-        throw new ConflictException(`Já existe um substituto para esse ingrediente e restrição`);
+      throw new ConflictException(
+        `Já existe um substituto para esse ingrediente e restrição`,
+      );
     }
 
-    const sugestoes = await this.iaService.encontrarSubstituto(ingrediente.nome, restricao.nome);
+    const sugestoes = await this.iaService.encontrarSubstituto(
+      ingrediente.nome,
+      restricao.nome,
+    );
 
     const criados = await this.prismaService.$transaction(async (tx) => {
-        const resultados: Array<{ ingredienteId: string; vinculo: unknown}> = [];
+      const resultados: Array<{ ingredienteId: string; vinculo: unknown }> = [];
 
-        for (let index =0; index < sugestoes.length; index++){
-            const sugestao = sugestoes[index];
+      for (let index = 0; index < sugestoes.length; index++) {
+        const sugestao = sugestoes[index];
 
-            const novoIngrediente = await tx.ingrediente.create({
-                data: this.mapSugestaoParaIngrediente(sugestao),
-            });
+        const novoIngrediente = await tx.ingrediente.create({
+          data: this.mapSugestaoParaIngrediente(sugestao),
+        });
 
-            const vinculo = await tx.ingredienteSubstituto.create({
-                data: {
-                    ingredienteOrigemId: ingredienteId, restricaoId,
-                    ingredienteDestinoId: novoIngrediente.id,
-                    prioridade: index,
-                    observacao: sugestao.justificativa,
-                },
-                include: { restricao: true, ingredienteDestino: true },
-            });
+        const vinculo = await tx.ingredienteSubstituto.create({
+          data: {
+            ingredienteOrigemId: ingredienteId,
+            restricaoId,
+            ingredienteDestinoId: novoIngrediente.id,
+            prioridade: index,
+            observacao: sugestao.justificativa,
+          },
+          include: { restricao: true, ingredienteDestino: true },
+        });
 
-            resultados.push({ ingredienteId: novoIngrediente.id, vinculo });
-        }
-        return resultados;
+        resultados.push({ ingredienteId: novoIngrediente.id, vinculo });
+      }
+      return resultados;
     });
 
-    for(const criado of criados){
-        await this.regraNutricionalService.avaliarIngrediente(criado.ingredienteId);
+    for (const criado of criados) {
+      await this.regraNutricionalService.avaliarIngrediente(
+        criado.ingredienteId,
+      );
     }
 
-    return criados.map(c => c.vinculo);
+    return criados.map((c) => c.vinculo);
   }
 
   private parseNumeroSeguro(valor: string): number {
     const numero = parseFloat(valor.replace(',', '.'));
-    if(isNaN(numero)){
-        this.logger.error(`Valor nutricional inválido recebido da IA: "${valor}"`);
-        throw new InternalServerErrorException(`Valor nutricional inválido recebido da IA: "${valor}"`);
+    if (isNaN(numero)) {
+      this.logger.error(
+        `Valor nutricional inválido recebido da IA: "${valor}"`,
+      );
+      throw new InternalServerErrorException(
+        `Valor nutricional inválido recebido da IA: "${valor}"`,
+      );
     }
     return numero;
   }
 
-   private mapSugestaoParaIngrediente(sugestao: SugestaoSubstituto): IngredienteDTO {
+  private mapSugestaoParaIngrediente(
+    sugestao: SugestaoSubstituto,
+  ): IngredienteDTO {
     return {
       nome: sugestao.nome,
       caloriasKcal: this.parseNumeroSeguro(sugestao.caloriasKcal),

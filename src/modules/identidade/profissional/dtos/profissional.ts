@@ -1,5 +1,11 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 export class createProfissionalDto {
   @IsString()
@@ -24,7 +30,8 @@ export class createProfissionalDto {
   @IsString()
   @ApiPropertyOptional({
     description: 'Biografia do profissional',
-    example: 'Sou um nutricionista apaixonado por ajudar as pessoas a alcançarem seus objetivos de saúde e bem-estar.',
+    example:
+      'Sou um nutricionista apaixonado por ajudar as pessoas a alcançarem seus objetivos de saúde e bem-estar.',
   })
   bio?: string;
 
@@ -51,14 +58,16 @@ export class UpdateProfissionalDto {
   @IsString()
   @ApiPropertyOptional({
     description: 'Biografia do profissional',
-    example: 'Sou um nutricionista apaixonado por ajudar as pessoas a alcançarem seus objetivos de saúde e bem-estar.',
+    example:
+      'Sou um nutricionista apaixonado por ajudar as pessoas a alcançarem seus objetivos de saúde e bem-estar.',
   })
   bio?: string;
 
   @IsOptional()
   @IsUUID()
   @ApiPropertyOptional({
-    description: 'ID da clínica associada ao profissional. Envie null para desassociar.',
+    description:
+      'ID da clínica associada ao profissional. Envie null para desassociar.',
     example: '123e4567-e89b-12d3-a456-426614174000',
     nullable: true,
   })

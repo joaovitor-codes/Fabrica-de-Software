@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { VincularIngredienteRestricaoDto } from './dtos/ingrediente-restricao';
@@ -29,8 +33,13 @@ export class IngredienteRestricaoService {
         data: { ingredienteId, restricaoId: dto.restricaoId },
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('Ingrediente já vinculado a esta restrição');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Ingrediente já vinculado a esta restrição',
+        );
       }
       throw error;
     }
@@ -59,11 +68,13 @@ export class IngredienteRestricaoService {
         },
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
         throw new NotFoundException('Vínculo não encontrado');
       }
       throw error;
     }
   }
-
 }

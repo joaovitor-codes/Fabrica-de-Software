@@ -1,13 +1,22 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { IsEnum, IsNumber, IsOptional } from 'class-validator';
-import { CampoNutricionalRegra, OperadorRegraNutricional } from '@prisma/client';
+import {
+  CampoNutricionalRegra,
+  OperadorRegraNutricional,
+} from '@prisma/client';
 
 export class CreateRestricaoRegraNutricionalDto {
-  @ApiProperty({ enum: CampoNutricionalRegra, example: CampoNutricionalRegra.sodio_mg })
+  @ApiProperty({
+    enum: CampoNutricionalRegra,
+    example: CampoNutricionalRegra.sodio_mg,
+  })
   @IsEnum(CampoNutricionalRegra)
   campoNutricional!: CampoNutricionalRegra;
 
-  @ApiProperty({ enum: OperadorRegraNutricional, example: OperadorRegraNutricional.maior_que })
+  @ApiProperty({
+    enum: OperadorRegraNutricional,
+    example: OperadorRegraNutricional.maior_que,
+  })
   @IsEnum(OperadorRegraNutricional)
   operador!: OperadorRegraNutricional;
 
@@ -22,4 +31,6 @@ export class CreateRestricaoRegraNutricionalDto {
   valorLimite?: number;
 }
 
-export class UpdateRestricaoRegraNutricionalDto extends PartialType(CreateRestricaoRegraNutricionalDto) {}
+export class UpdateRestricaoRegraNutricionalDto extends PartialType(
+  CreateRestricaoRegraNutricionalDto,
+) {}

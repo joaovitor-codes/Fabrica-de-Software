@@ -1,5 +1,12 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateEnderecoDto {
   @ApiPropertyOptional({ example: '01310-100' })
@@ -56,7 +63,8 @@ export class CreateEnderecoDto {
   principal?: boolean;
 
   @ApiPropertyOptional({
-    description: 'ID do usuário dono do endereço (exclusivo com clinicaId — informe apenas um dos dois)',
+    description:
+      'ID do usuário dono do endereço (exclusivo com clinicaId — informe apenas um dos dois)',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()
@@ -64,7 +72,8 @@ export class CreateEnderecoDto {
   usuarioId?: string;
 
   @ApiPropertyOptional({
-    description: 'ID da clínica dona do endereço (exclusivo com usuarioId — informe apenas um dos dois)',
+    description:
+      'ID da clínica dona do endereço (exclusivo com usuarioId — informe apenas um dos dois)',
     example: '123e4567-e89b-12d3-a456-426614174001',
   })
   @IsOptional()

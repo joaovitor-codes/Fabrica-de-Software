@@ -5,6 +5,6 @@ import { TagSintomasController } from './tag-sintomas.controller';
 @Module({
   providers: [TagSintomasService],
   controllers: [TagSintomasController],
-  exports: [TagSintomasService]
+  exports: [TagSintomasService],
 })
 export class TagSintomasModule {}

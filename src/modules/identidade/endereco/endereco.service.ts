@@ -1,125 +1,134 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateEnderecoDto, UpdateEnderecoDto } from './dtos/endereco';
 
 @Injectable()
 export class EnderecoService {
-    constructor(private readonly prismaService: PrismaService) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
-    private validarDono(usuarioId?: string | null, clinicaId?: string | null): void {
-        if (!!usuarioId === !!clinicaId) {
-            throw new BadRequestException(
-                'Informe exatamente um dono para o endereço: usuarioId ou clinicaId',
-            );
-        }
+  private validarDono(
+    usuarioId?: string | null,
+    clinicaId?: string | null,
+  ): void {
+    if (!!usuarioId === !!clinicaId) {
+      throw new BadRequestException(
+        'Informe exatamente um dono para o endereço: usuarioId ou clinicaId',
+      );
+    }
+  }
+
+  async create(dto: CreateEnderecoDto) {
+    if (!dto) {
+      throw new BadRequestException('Corpo da requisição inválido');
     }
 
-    async create(dto: CreateEnderecoDto) {
-        if (!dto) {
-            throw new BadRequestException('Corpo da requisição inválido');
-        }
+    this.validarDono(dto.usuarioId, dto.clinicaId);
 
-        this.validarDono(dto.usuarioId, dto.clinicaId);
+    return this.prismaService.endereco.create({
+      data: {
+        cep: dto.cep,
+        logradouro: dto.logradouro,
+        numero: dto.numero,
+        complemento: dto.complemento,
+        bairro: dto.bairro,
+        cidade: dto.cidade,
+        estado: dto.estado,
+        pais: dto.pais,
+        principal: dto.principal,
+        usuarioId: dto.usuarioId,
+        clinicaId: dto.clinicaId,
+      },
+    });
+  }
 
-        return this.prismaService.endereco.create({
-            data: {
-                cep: dto.cep,
-                logradouro: dto.logradouro,
-                numero: dto.numero,
-                complemento: dto.complemento,
-                bairro: dto.bairro,
-                cidade: dto.cidade,
-                estado: dto.estado,
-                pais: dto.pais,
-                principal: dto.principal,
-                usuarioId: dto.usuarioId,
-                clinicaId: dto.clinicaId,
-            },
-        });
+  async findAll(page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.prismaService.endereco.findMany({
+        skip,
+        take: limit,
+      }),
+      this.prismaService.endereco.count(),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        last_page: Math.ceil(total / limit),
+        limit,
+      },
+    };
+  }
+
+  async findByClinica(clinicaId: string) {
+    return this.prismaService.endereco.findMany({
+      where: { clinicaId },
+    });
+  }
+
+  async findOne(id: string) {
+    const endereco = await this.prismaService.endereco.findUnique({
+      where: { id },
+    });
+
+    if (!endereco) {
+      throw new NotFoundException('Endereço não encontrado');
     }
 
-    async findAll(page: number = 1, limit: number = 10) {
-        const skip = (page - 1) * limit;
+    return endereco;
+  }
 
-        const [data, total] = await Promise.all([
-            this.prismaService.endereco.findMany({
-                skip,
-                take: limit,
-            }),
-            this.prismaService.endereco.count(),
-        ]);
-
-        return {
-            data,
-            meta: {
-                total,
-                page,
-                last_page: Math.ceil(total / limit),
-                limit,
-            },
-        };
+  async update(id: string, dto: UpdateEnderecoDto) {
+    if (!dto) {
+      throw new BadRequestException('Corpo da requisição inválido');
     }
 
-    async findByClinica(clinicaId: string) {
-        return this.prismaService.endereco.findMany({
-            where: { clinicaId },
-        });
+    const endereco = await this.findOne(id);
+
+    if (dto.usuarioId !== undefined || dto.clinicaId !== undefined) {
+      const usuarioId =
+        dto.usuarioId !== undefined ? dto.usuarioId : endereco.usuarioId;
+      const clinicaId =
+        dto.clinicaId !== undefined ? dto.clinicaId : endereco.clinicaId;
+      this.validarDono(usuarioId, clinicaId);
     }
 
-    async findOne(id: string) {
-        const endereco = await this.prismaService.endereco.findUnique({
-            where: { id },
-        });
+    return this.prismaService.endereco.update({
+      where: { id },
+      data: {
+        cep: dto.cep,
+        logradouro: dto.logradouro,
+        numero: dto.numero,
+        complemento: dto.complemento,
+        bairro: dto.bairro,
+        cidade: dto.cidade,
+        estado: dto.estado,
+        pais: dto.pais,
+        principal: dto.principal,
+        usuarioId: dto.usuarioId,
+        clinicaId: dto.clinicaId,
+      },
+    });
+  }
 
-        if (!endereco) {
-            throw new NotFoundException('Endereço não encontrado');
-        }
+  async remove(id: string): Promise<void> {
+    await this.findOne(id);
 
-        return endereco;
-    }
+    await this.prismaService.endereco.delete({
+      where: { id },
+    });
+  }
 
-    async update(id: string, dto: UpdateEnderecoDto) {
-        if (!dto) {
-            throw new BadRequestException('Corpo da requisição inválido');
-        }
-
-        const endereco = await this.findOne(id);
-
-        if (dto.usuarioId !== undefined || dto.clinicaId !== undefined) {
-            const usuarioId = dto.usuarioId !== undefined ? dto.usuarioId : endereco.usuarioId;
-            const clinicaId = dto.clinicaId !== undefined ? dto.clinicaId : endereco.clinicaId;
-            this.validarDono(usuarioId, clinicaId);
-        }
-
-        return this.prismaService.endereco.update({
-            where: { id },
-            data: {
-                cep: dto.cep,
-                logradouro: dto.logradouro,
-                numero: dto.numero,
-                complemento: dto.complemento,
-                bairro: dto.bairro,
-                cidade: dto.cidade,
-                estado: dto.estado,
-                pais: dto.pais,
-                principal: dto.principal,
-                usuarioId: dto.usuarioId,
-                clinicaId: dto.clinicaId,
-            },
-        });
-    }
-
-    async remove(id: string): Promise<void> {
-        await this.findOne(id);
-
-        await this.prismaService.endereco.delete({
-            where: { id },
-        });
-    }
-
-    async findByUserId(usuarioId: string) {
-        return this.prismaService.endereco.findMany({
-            where: { usuarioId },
-        });
-    }
+  async findByUserId(usuarioId: string) {
+    return this.prismaService.endereco.findMany({
+      where: { usuarioId },
+    });
+  }
 }

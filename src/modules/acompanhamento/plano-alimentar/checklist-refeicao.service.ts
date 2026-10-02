@@ -1,114 +1,131 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "../../../common/prisma/prisma.service";
-import { MarcarCheckListDto } from "./dtos/checklist-refeicao";
-import { TipoUsuario } from "@prisma/client";
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../../../common/prisma/prisma.service';
+import { MarcarCheckListDto } from './dtos/checklist-refeicao';
+import { TipoUsuario } from '@prisma/client';
 
 @Injectable()
 export class ChecklistRefeicaoService {
-    constructor(
-        private readonly prismaService: PrismaService
-    ){}
+  constructor(private readonly prismaService: PrismaService) {}
 
-    private async verificarItemPaciente(itemId: string, pacienteId: string){
-        const item = await this.prismaService.planoAlimentarItem.findUnique({
-            where: { id: itemId },
-            include: { planoAlimentar: true }
-        });
+  private async verificarItemPaciente(itemId: string, pacienteId: string) {
+    const item = await this.prismaService.planoAlimentarItem.findUnique({
+      where: { id: itemId },
+      include: { planoAlimentar: true },
+    });
 
-        if(!item){
-            throw new NotFoundException(`Item do plano alimentar não encontrado`);
-        }
-
-        if(item.planoAlimentar.pacienteId !== pacienteId){
-            throw new ForbiddenException(`Item do plano alimentar não pertence ao paciente`);
-        }
-
-        return item;
+    if (!item) {
+      throw new NotFoundException(`Item do plano alimentar não encontrado`);
     }
 
-    async marcarCheckList(itemId: string, pacienteId: string, dto: MarcarCheckListDto){
-        await this.verificarItemPaciente(itemId, pacienteId);
-
-        return this.prismaService.checklistRefeicao.upsert({
-            where: {
-                planoAlimentarItemId_dataReferencia: {
-                    planoAlimentarItemId: itemId,
-                    dataReferencia: new Date(dto.dataReferencial)
-                },
-            },
-            create: {
-                planoAlimentarItemId: itemId,
-                pacienteId,
-                dataReferencia: new Date(dto.dataReferencial),
-                concluido: dto.concluido,
-                concluidoEm: dto.concluido ? new Date() : null
-            },
-            update: {
-                concluido: dto.concluido,
-                concluidoEm: dto.concluido ? new Date() : null
-            },
-        })
+    if (item.planoAlimentar.pacienteId !== pacienteId) {
+      throw new ForbiddenException(
+        `Item do plano alimentar não pertence ao paciente`,
+      );
     }
 
-    async findAll(itemId: string, usuarioId: string, tipoUsuario: TipoUsuario){
-        const item = await this.prismaService.planoAlimentarItem.findUnique({
-            where: { id: itemId },
-            include: { planoAlimentar: true },
-        });
+    return item;
+  }
 
-        if(!item){
-            throw new NotFoundException(`Item do plano alimentar não encontrado`);
-        }
-        
-        if(tipoUsuario !== TipoUsuario.admin){
-            const [profissional, paciente] = await Promise.all([
-                this.prismaService.profissional.findUnique({ where: { usuarioId } }),
-                this.prismaService.paciente.findUnique({ where: { usuarioId } })
-            ]);
+  async marcarCheckList(
+    itemId: string,
+    pacienteId: string,
+    dto: MarcarCheckListDto,
+  ) {
+    await this.verificarItemPaciente(itemId, pacienteId);
 
-            const ehProfissionalDono = profissional?.id === item.planoAlimentar.profissionalId;
-            const ehPacienteDono = paciente?.id === item.planoAlimentar.pacienteId;
+    return this.prismaService.checklistRefeicao.upsert({
+      where: {
+        planoAlimentarItemId_dataReferencia: {
+          planoAlimentarItemId: itemId,
+          dataReferencia: new Date(dto.dataReferencial),
+        },
+      },
+      create: {
+        planoAlimentarItemId: itemId,
+        pacienteId,
+        dataReferencia: new Date(dto.dataReferencial),
+        concluido: dto.concluido,
+        concluidoEm: dto.concluido ? new Date() : null,
+      },
+      update: {
+        concluido: dto.concluido,
+        concluidoEm: dto.concluido ? new Date() : null,
+      },
+    });
+  }
 
-            if(!ehProfissionalDono && !ehPacienteDono){
-                throw new ForbiddenException(`Item do plano alimentar não pertence ao usuário`);
-            }
-        }
+  async findAll(itemId: string, usuarioId: string, tipoUsuario: TipoUsuario) {
+    const item = await this.prismaService.planoAlimentarItem.findUnique({
+      where: { id: itemId },
+      include: { planoAlimentar: true },
+    });
 
-        return this.prismaService.checklistRefeicao.findMany({
-            where: { planoAlimentarItemId: itemId },
-            orderBy: { dataReferencia: 'desc' }
-        })
+    if (!item) {
+      throw new NotFoundException(`Item do plano alimentar não encontrado`);
     }
 
-    async updateCheckList(itemId: string, pacienteId: string, dto: MarcarCheckListDto){
-        await this.verificarItemPaciente(itemId, pacienteId);
-        
-        const checklist = await this.prismaService.checklistRefeicao.findUnique({
-            where: {
-                planoAlimentarItemId_dataReferencia: {
-                    planoAlimentarItemId: itemId,
-                    dataReferencia: new Date(dto.dataReferencial)
-                }
-            }
-        });
+    if (tipoUsuario !== TipoUsuario.admin) {
+      const [profissional, paciente] = await Promise.all([
+        this.prismaService.profissional.findUnique({ where: { usuarioId } }),
+        this.prismaService.paciente.findUnique({ where: { usuarioId } }),
+      ]);
 
-        if(!checklist){
-            throw new NotFoundException(`Checklist não encontrado para o item do plano alimentar na data ${dto.dataReferencial}`);
-        }
+      const ehProfissionalDono =
+        profissional?.id === item.planoAlimentar.profissionalId;
+      const ehPacienteDono = paciente?.id === item.planoAlimentar.pacienteId;
 
-        const updatedChecklist = await this.prismaService.checklistRefeicao.update({
-            where: {
-                planoAlimentarItemId_dataReferencia: {
-                    planoAlimentarItemId: itemId,
-                    dataReferencia: new Date(dto.dataReferencial)
-                }
-            },
-            data: {
-                concluido: dto.concluido,
-                concluidoEm: dto.concluido ? new Date() : null
-            }
-        })
-
-        return updatedChecklist;
+      if (!ehProfissionalDono && !ehPacienteDono) {
+        throw new ForbiddenException(
+          `Item do plano alimentar não pertence ao usuário`,
+        );
+      }
     }
+
+    return this.prismaService.checklistRefeicao.findMany({
+      where: { planoAlimentarItemId: itemId },
+      orderBy: { dataReferencia: 'desc' },
+    });
+  }
+
+  async updateCheckList(
+    itemId: string,
+    pacienteId: string,
+    dto: MarcarCheckListDto,
+  ) {
+    await this.verificarItemPaciente(itemId, pacienteId);
+
+    const checklist = await this.prismaService.checklistRefeicao.findUnique({
+      where: {
+        planoAlimentarItemId_dataReferencia: {
+          planoAlimentarItemId: itemId,
+          dataReferencia: new Date(dto.dataReferencial),
+        },
+      },
+    });
+
+    if (!checklist) {
+      throw new NotFoundException(
+        `Checklist não encontrado para o item do plano alimentar na data ${dto.dataReferencial}`,
+      );
+    }
+
+    const updatedChecklist = await this.prismaService.checklistRefeicao.update({
+      where: {
+        planoAlimentarItemId_dataReferencia: {
+          planoAlimentarItemId: itemId,
+          dataReferencia: new Date(dto.dataReferencial),
+        },
+      },
+      data: {
+        concluido: dto.concluido,
+        concluidoEm: dto.concluido ? new Date() : null,
+      },
+    });
+
+    return updatedChecklist;
+  }
 }

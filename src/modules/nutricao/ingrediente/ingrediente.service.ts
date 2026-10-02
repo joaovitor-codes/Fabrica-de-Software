@@ -41,10 +41,10 @@ export class IngredienteService {
       skip: (page - 1) * limit,
       take: limit,
     });
-    if(!ingredientes || ingredientes.length === 0){
+    if (!ingredientes || ingredientes.length === 0) {
       throw new NotFoundException('Nenhum ingrediente encontrado.');
     }
-    
+
     return ingredientes;
   }
 
@@ -56,8 +56,8 @@ export class IngredienteService {
     const ingrediente = await this.prismaService.ingrediente.findUnique({
       where: { id },
       include: {
-        restricoes: true
-      }
+        restricoes: true,
+      },
     });
     return ingrediente;
   }

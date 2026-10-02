@@ -8,7 +8,15 @@ import { IngredienteSubstitutoService } from './ingrediente-substituto.service';
 @Module({
   imports: [IaModule],
   controllers: [IngredienteRestricaoController],
-  providers: [IngredienteRestricaoService, RegraNutricionalService, IngredienteSubstitutoService],
-  exports: [IngredienteRestricaoService, RegraNutricionalService, IngredienteSubstitutoService],
+  providers: [
+    IngredienteRestricaoService,
+    RegraNutricionalService,
+    IngredienteSubstitutoService,
+  ],
+  exports: [
+    IngredienteRestricaoService,
+    RegraNutricionalService,
+    IngredienteSubstitutoService,
+  ],
 })
 export class IngredienteRestricaoModule {}

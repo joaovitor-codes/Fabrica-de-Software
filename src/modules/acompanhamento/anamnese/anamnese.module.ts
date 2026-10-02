@@ -14,6 +14,6 @@ import { AnamneseRespostaService } from './anamnese-resposta.service';
     AnamneseRespostaService,
     AnamneseService,
   ],
-  controllers: [AnamneseController]
+  controllers: [AnamneseController],
 })
 export class AnamneseModule {}

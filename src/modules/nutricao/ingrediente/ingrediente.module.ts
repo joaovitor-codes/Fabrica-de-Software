@@ -7,6 +7,6 @@ import { IngredienteRestricaoModule } from '../ingrediente-restricao/ingrediente
   imports: [IngredienteRestricaoModule],
   controllers: [IngredienteController],
   providers: [IngredienteService],
-  exports: [IngredienteService]
+  exports: [IngredienteService],
 })
 export class IngredienteModule {}

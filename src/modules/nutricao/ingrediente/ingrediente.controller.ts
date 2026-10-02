@@ -1,16 +1,32 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe, BadRequestException, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  ParseUUIDPipe,
+  BadRequestException,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { IngredienteService } from './ingrediente.service';
 import { UpdateIngredienteDto } from './dtos/update-ingrediente';
 import { AuthGuard } from '../../../auth/auth.guard';
 import { IngredienteDTO } from './dtos/ingrediente';
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
 
-const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+const uuidPipe = (mensagem: string) =>
+  new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
     exceptionFactory: () => new BadRequestException(mensagem),
-});
-
+  });
 
 @Controller('api/ingrediente')
 export class IngredienteController {
@@ -25,9 +41,14 @@ export class IngredienteController {
   }
 
   @ApiOperation({ summary: 'Retorna todos os ingredientes paginados' })
-  @ApiOkResponse({ description: 'Lista de ingredientes retornada com sucesso.' })
+  @ApiOkResponse({
+    description: 'Lista de ingredientes retornada com sucesso.',
+  })
   @Get('page/:page/limit/:limit')
-  async findAll(@Param('page', ParseIntPipe) page: number, @Param('limit', ParseIntPipe) limit: number) {
+  async findAll(
+    @Param('page', ParseIntPipe) page: number,
+    @Param('limit', ParseIntPipe) limit: number,
+  ) {
     return await this.ingredienteService.findAll(page, limit);
   }
 
@@ -42,7 +63,10 @@ export class IngredienteController {
   @ApiOkResponse({ description: 'Ingrediente atualizado com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id', uuidPipe('ID Ingrediente inválido')) id: string, @Body() updateIngredienteDto: UpdateIngredienteDto) {
+  async update(
+    @Param('id', uuidPipe('ID Ingrediente inválido')) id: string,
+    @Body() updateIngredienteDto: UpdateIngredienteDto,
+  ) {
     return await this.ingredienteService.update(id, updateIngredienteDto);
   }
 

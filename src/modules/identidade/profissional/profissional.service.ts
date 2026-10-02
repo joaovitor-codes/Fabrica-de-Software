@@ -6,7 +6,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
-import { createProfissionalDto, UpdateProfissionalDto } from './dtos/profissional';
+import {
+  createProfissionalDto,
+  UpdateProfissionalDto,
+} from './dtos/profissional';
 import { Prisma, StatusAprovacao, TipoUsuario } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CreateUsuarioDto } from '../usuario/dtos/usuario';
@@ -15,7 +18,8 @@ import { ClinicasService } from '../clinicas/clinicas.service';
 @Injectable()
 export class ProfissionalService {
   constructor(
-    private readonly prismaService: PrismaService, private readonly clinicaService: ClinicasService
+    private readonly prismaService: PrismaService,
+    private readonly clinicaService: ClinicasService,
   ) {}
 
   async profissionalExists(id: string): Promise<boolean> {
@@ -25,14 +29,19 @@ export class ProfissionalService {
     return !!profissional;
   }
 
-  async solicitarCadastroProfissional(userId: string, dto: createProfissionalDto) {
+  async solicitarCadastroProfissional(
+    userId: string,
+    dto: createProfissionalDto,
+  ) {
     if (dto.clinicaId) {
-      const clinicaExiste = await this.clinicaService.clinicaExists(dto.clinicaId);
+      const clinicaExiste = await this.clinicaService.clinicaExists(
+        dto.clinicaId,
+      );
       if (!clinicaExiste) {
         throw new NotFoundException('Clínica não encontrada');
       }
     }
-    
+
     const usuario = await this.prismaService.usuario.findUnique({
       where: { id: userId },
       include: { profissional: true },
@@ -44,9 +53,10 @@ export class ProfissionalService {
 
     if (usuario.profissional) {
       if (usuario.profissional.statusAprovacao !== StatusAprovacao.rejeitado) {
-        throw new ConflictException('Já existe uma solicitação profissional pendente ou aprovada para este usuário');
+        throw new ConflictException(
+          'Já existe uma solicitação profissional pendente ou aprovada para este usuário',
+        );
       }
-      
 
       return this.prismaService.profissional.update({
         where: { id: usuario.profissional.id },
@@ -156,7 +166,11 @@ export class ProfissionalService {
     };
   }
 
-  async findAll(page: number = 1, limit: number = 10, statusAprovacao?: StatusAprovacao) {
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    statusAprovacao?: StatusAprovacao,
+  ) {
     const skip = (page - 1) * limit;
     const where = statusAprovacao ? { statusAprovacao } : {};
 
@@ -197,7 +211,9 @@ export class ProfissionalService {
     });
 
     if (!profissional) {
-      throw new NotFoundException('Você ainda não possui cadastro profissional');
+      throw new NotFoundException(
+        'Você ainda não possui cadastro profissional',
+      );
     }
 
     return profissional;
@@ -215,7 +231,10 @@ export class ProfissionalService {
         include: { clinica: true },
       });
     } catch (error: any) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
         throw new NotFoundException('Profissional não encontrado');
       }
       throw error;
@@ -263,7 +282,10 @@ export class ProfissionalService {
     });
   }
 
-  async criarNovoPacienteAssociado(data: CreateUsuarioDto, profissionalId: string) {
+  async criarNovoPacienteAssociado(
+    data: CreateUsuarioDto,
+    profissionalId: string,
+  ) {
     await this.exigirProfissionalAprovado(profissionalId);
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
@@ -274,7 +296,9 @@ export class ProfissionalService {
           data: {
             nome: data.name,
             tipoUsuario: TipoUsuario.paciente,
-            dataNascimento: data.dataNascimento ? new Date(data.dataNascimento) : undefined,
+            dataNascimento: data.dataNascimento
+              ? new Date(data.dataNascimento)
+              : undefined,
             fotoPerfilUrl: data.fotoPerfilUrl,
             conta: {
               create: {
@@ -296,7 +320,11 @@ export class ProfissionalService {
         return { usuario, paciente };
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && (error.meta?.target as string | string[] | undefined)?.includes('email')) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        (error.meta?.target as string | string[] | undefined)?.includes('email')
+      ) {
         throw new ConflictException('Email já está em uso');
       }
       throw new BadRequestException(
@@ -307,8 +335,8 @@ export class ProfissionalService {
 
   async listarPacientesDoProfissional(profissionalId: string) {
     return this.prismaService.paciente.findMany({
-      where: { 
-        profissionalId: profissionalId 
+      where: {
+        profissionalId: profissionalId,
       },
       include: {
         usuario: {
@@ -318,18 +346,18 @@ export class ProfissionalService {
             dataNascimento: true,
             conta: {
               select: {
-                email: true
-              }
-            }
-          }
+                email: true,
+              },
+            },
+          },
         },
-        dadosSocioeconomicos: true, 
+        dadosSocioeconomicos: true,
       },
       orderBy: {
         usuario: {
-          nome: 'asc' 
-        }
-      }
+          nome: 'asc',
+        },
+      },
     });
   }
 }

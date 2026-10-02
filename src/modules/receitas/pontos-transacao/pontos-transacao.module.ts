@@ -5,6 +5,6 @@ import { PontosTransacaoController } from './pontos-transacao.controller';
 @Module({
   controllers: [PontosTransacaoController],
   providers: [PontosTransacaoService],
-  exports: [PontosTransacaoService]
+  exports: [PontosTransacaoService],
 })
 export class PontosTransacaoModule {}

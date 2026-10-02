@@ -1,36 +1,44 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 
 @Injectable()
 export class AnamneseAcessoService {
-    constructor(private readonly prismaService: PrismaService) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
-    async resolverProfissionalPorUsuario(usuarioId: string){
-        const profissional = await this.prismaService.profissional.findUnique({
-            where: { usuarioId },
-        });
+  async resolverProfissionalPorUsuario(usuarioId: string) {
+    const profissional = await this.prismaService.profissional.findUnique({
+      where: { usuarioId },
+    });
 
-        if(!profissional){
-            throw new NotFoundException('Você ainda não possui cadastro profissional');
-        }
-
-        return profissional;
+    if (!profissional) {
+      throw new NotFoundException(
+        'Você ainda não possui cadastro profissional',
+      );
     }
 
-    async resolverAnamneseDoProfissional(anamneseId: string, usuarioId: string){
-        const [anamnese, profissional] = await Promise.all([
-            this.prismaService.anamnese.findUnique({ where: { id: anamneseId } }),
-            this.resolverProfissionalPorUsuario(usuarioId),
-        ]);
+    return profissional;
+  }
 
-        if(!anamnese){
-            throw new NotFoundException('Anamnese não encontrada');
-        }
+  async resolverAnamneseDoProfissional(anamneseId: string, usuarioId: string) {
+    const [anamnese, profissional] = await Promise.all([
+      this.prismaService.anamnese.findUnique({ where: { id: anamneseId } }),
+      this.resolverProfissionalPorUsuario(usuarioId),
+    ]);
 
-        if(anamnese.profissionalId !== profissional.id){
-            throw new ForbiddenException('Você só pode gerenciar respostas de anamneses que você criou.');
-        }
-
-        return anamnese;
+    if (!anamnese) {
+      throw new NotFoundException('Anamnese não encontrada');
     }
+
+    if (anamnese.profissionalId !== profissional.id) {
+      throw new ForbiddenException(
+        'Você só pode gerenciar respostas de anamneses que você criou.',
+      );
+    }
+
+    return anamnese;
+  }
 }

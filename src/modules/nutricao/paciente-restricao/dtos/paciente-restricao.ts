@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { Gravidade } from '@prisma/client';
 
@@ -7,7 +12,11 @@ export class VincularPacienteRestricaoDto {
   @IsUUID()
   restricaoId!: string;
 
-  @ApiPropertyOptional({ enum: Gravidade, example: Gravidade.moderada, default: Gravidade.moderada })
+  @ApiPropertyOptional({
+    enum: Gravidade,
+    example: Gravidade.moderada,
+    default: Gravidade.moderada,
+  })
   @IsOptional()
   @IsEnum(Gravidade)
   gravidade?: Gravidade;

@@ -44,17 +44,17 @@ const receitaStorage = diskStorage({
   },
 });
 
-const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+const uuidPipe = (mensagem: string) =>
+  new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
     exceptionFactory: () => new BadRequestException(mensagem),
-});
-
+  });
 
 @Controller('api/receita')
 export class ReceitaController {
   constructor(private readonly receitaService: ReceitaService) {}
-  
+
   @ApiOperation({ summary: 'Cria uma nova receita' })
   @ApiCreatedResponse({ description: 'Receita criada com sucesso.' })
   @UseGuards(AuthGuard)
@@ -65,7 +65,7 @@ export class ReceitaController {
   ) {
     return await this.receitaService.create(receita, req.user.sub);
   }
-  
+
   @ApiOperation({ summary: 'Retorna uma receita pelo nome' })
   @ApiOkResponse({ description: 'Objeto da receita.' })
   @Get('/nome')
@@ -77,22 +77,24 @@ export class ReceitaController {
   @ApiCreatedResponse({ description: 'Mídia enviada com sucesso.' })
   @UseGuards(AuthGuard)
   @Post(':id/midias')
-  @UseInterceptors(FileFieldsInterceptor(
-    [
-      { name: 'image', maxCount: 1 },
-      { name: 'video', maxCount: 1 },
-    ],
-    { storage: receitaStorage },
-  ))
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'image', maxCount: 1 },
+        { name: 'video', maxCount: 1 },
+      ],
+      { storage: receitaStorage },
+    ),
+  )
   async uploadMedia(
     @Param('id', uuidPipe('ID inválido')) id: string,
     @UploadedFiles()
-    files: { image?: Express.Multer.File[], video?: Express.Multer.File[] },
+    files: { image?: Express.Multer.File[]; video?: Express.Multer.File[] },
     @Body('tipo') tipo: TipoMidia,
     @Body('ordem') ordem = 0,
   ) {
     const file = files.image?.[0] ?? files.video?.[0];
-    if(!file) {
+    if (!file) {
       throw new BadRequestException('file is required');
     }
     return await this.receitaService.uploadMedia(id, file, tipo, Number(ordem));
@@ -112,7 +114,9 @@ export class ReceitaController {
     return await this.receitaService.findSuggestions();
   }
 
-  @ApiOperation({ summary: 'Retorna as receitas favoritas do usuário autenticado' })
+  @ApiOperation({
+    summary: 'Retorna as receitas favoritas do usuário autenticado',
+  })
   @ApiOkResponse({ description: 'Lista de receitas favoritas.' })
   @UseGuards(AuthGuard)
   @Get('favoritos')
@@ -148,7 +152,6 @@ export class ReceitaController {
   async findOne(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.receitaService.findOne(id);
   }
-
 
   @ApiOperation({ summary: 'Retorna os ingredientes de uma receita pelo ID' })
   @ApiOkResponse({ description: 'Array de ingredientes da receita.' })
@@ -194,7 +197,10 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita aprovada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id/aprovar')
-  async aprovarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request: RequestAutenticado) {
+  async aprovarReceita(
+    @Param('id', uuidPipe('ID inválido')) id: string,
+    @Request() request: RequestAutenticado,
+  ) {
     return await this.receitaService.aprovarReceita(id, request.user.sub);
   }
 
@@ -202,7 +208,10 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita rejeitada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id/rejeitar')
-  async rejeitarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request: RequestAutenticado) {
+  async rejeitarReceita(
+    @Param('id', uuidPipe('ID inválido')) id: string,
+    @Request() request: RequestAutenticado,
+  ) {
     return await this.receitaService.rejeitarReceita(id, request.user.sub);
   }
 

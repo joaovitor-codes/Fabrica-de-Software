@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { createAnamneseDto } from './dtos/anamnese';
 import { TipoUsuario } from '@prisma/client';
@@ -7,133 +12,154 @@ import { validarCamposPorTipoResposta } from './anamnese-resposta.util';
 
 @Injectable()
 export class AnamneseService {
-    private readonly logger = new Logger(AnamneseService.name);
+  private readonly logger = new Logger(AnamneseService.name);
 
-    constructor(
-        private readonly prismaService: PrismaService,
-        private readonly anamneseAcessoService: AnamneseAcessoService,
-    ) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly anamneseAcessoService: AnamneseAcessoService,
+  ) {}
 
-    async createAnamnese(data: createAnamneseDto, usuarioId: string){
-        try{
-            const [paciente, profissional] = await Promise.all([
-                this.prismaService.paciente.findUnique({ where: { id: data.pacienteId } }),
-                this.anamneseAcessoService.resolverProfissionalPorUsuario(usuarioId),
-            ]);
+  async createAnamnese(data: createAnamneseDto, usuarioId: string) {
+    try {
+      const [paciente, profissional] = await Promise.all([
+        this.prismaService.paciente.findUnique({
+          where: { id: data.pacienteId },
+        }),
+        this.anamneseAcessoService.resolverProfissionalPorUsuario(usuarioId),
+      ]);
 
-            if(!paciente){
-                throw new NotFoundException('Paciente não encontrado');
-            }
+      if (!paciente) {
+        throw new NotFoundException('Paciente não encontrado');
+      }
 
-            if(paciente.profissionalId !== profissional.id){
-                throw new ForbiddenException('Você não tem permissão para criar uma anamnese para este paciente.');
-            }
+      if (paciente.profissionalId !== profissional.id) {
+        throw new ForbiddenException(
+          'Você não tem permissão para criar uma anamnese para este paciente.',
+        );
+      }
 
-            if(data.respostas?.length){
-                const perguntas = await this.prismaService.anamnesePergunta.findMany({
-                    where: { id: { in: data.respostas.map((resposta) => resposta.perguntaId) } },
-                });
-                const perguntaPorId = new Map(perguntas.map((pergunta) => [pergunta.id, pergunta]));
+      if (data.respostas?.length) {
+        const perguntas = await this.prismaService.anamnesePergunta.findMany({
+          where: {
+            id: { in: data.respostas.map((resposta) => resposta.perguntaId) },
+          },
+        });
+        const perguntaPorId = new Map(
+          perguntas.map((pergunta) => [pergunta.id, pergunta]),
+        );
 
-                for(const resposta of data.respostas){
-                    const pergunta = perguntaPorId.get(resposta.perguntaId);
-                    if(!pergunta){
-                        throw new NotFoundException(`Pergunta ${resposta.perguntaId} não encontrada`);
-                    }
-                    validarCamposPorTipoResposta(pergunta.tipoResposta, resposta);
-                }
-            }
-
-            const anamnese = await this.prismaService.anamnese.create({
-                data: {
-                    pacienteId: data.pacienteId,
-                    profissionalId: profissional.id,
-                    observacoesGerais: data.observacoesGerais,
-                    respostas: data.respostas?.length
-                        ? {
-                            create: data.respostas.map((resposta) => ({
-                                perguntaId: resposta.perguntaId,
-                                respostaTexto: resposta.respostaTexto,
-                                respostaNumero: resposta.respostaNumero,
-                                opcaoId: resposta.opcaoId,
-                            })),
-                        }
-                        : undefined
-                },
-                include: { respostas: true },
-            });
-
-            return anamnese;
-        }catch(error){
-            this.logger.error('Erro ao criar anamnese:', error);
-            throw error;
+        for (const resposta of data.respostas) {
+          const pergunta = perguntaPorId.get(resposta.perguntaId);
+          if (!pergunta) {
+            throw new NotFoundException(
+              `Pergunta ${resposta.perguntaId} não encontrada`,
+            );
+          }
+          validarCamposPorTipoResposta(pergunta.tipoResposta, resposta);
         }
+      }
+
+      const anamnese = await this.prismaService.anamnese.create({
+        data: {
+          pacienteId: data.pacienteId,
+          profissionalId: profissional.id,
+          observacoesGerais: data.observacoesGerais,
+          respostas: data.respostas?.length
+            ? {
+                create: data.respostas.map((resposta) => ({
+                  perguntaId: resposta.perguntaId,
+                  respostaTexto: resposta.respostaTexto,
+                  respostaNumero: resposta.respostaNumero,
+                  opcaoId: resposta.opcaoId,
+                })),
+              }
+            : undefined,
+        },
+        include: { respostas: true },
+      });
+
+      return anamnese;
+    } catch (error) {
+      this.logger.error('Erro ao criar anamnese:', error);
+      throw error;
     }
+  }
 
-    async getAnamneseById(id: string, usuarioId: string, tipoUsuario: TipoUsuario){
-        try{
-            const anamnese = await this.prismaService.anamnese.findUnique({
-                where: { id },
-                include: { respostas: true },
-            });
+  async getAnamneseById(
+    id: string,
+    usuarioId: string,
+    tipoUsuario: TipoUsuario,
+  ) {
+    try {
+      const anamnese = await this.prismaService.anamnese.findUnique({
+        where: { id },
+        include: { respostas: true },
+      });
 
-            if(!anamnese){
-                throw new NotFoundException('Anamnese não encontrada');
-            }
+      if (!anamnese) {
+        throw new NotFoundException('Anamnese não encontrada');
+      }
 
-            if(tipoUsuario !== TipoUsuario.admin){
-                const [profissional, paciente] = await Promise.all([
-                    this.prismaService.profissional.findUnique({ where: { usuarioId } }),
-                    this.prismaService.paciente.findUnique({ where: { usuarioId } }),
-                ]);
+      if (tipoUsuario !== TipoUsuario.admin) {
+        const [profissional, paciente] = await Promise.all([
+          this.prismaService.profissional.findUnique({ where: { usuarioId } }),
+          this.prismaService.paciente.findUnique({ where: { usuarioId } }),
+        ]);
 
-                const ehProfissionalDono = profissional?.id === anamnese.profissionalId;
-                const ehPacienteDono = paciente?.id === anamnese.pacienteId;
+        const ehProfissionalDono = profissional?.id === anamnese.profissionalId;
+        const ehPacienteDono = paciente?.id === anamnese.pacienteId;
 
-                if(!ehProfissionalDono && !ehPacienteDono){
-                    throw new ForbiddenException('Você não tem permissão para acessar esta anamnese.');
-                }
-            }
-
-            return anamnese;
-        }catch(error){
-            this.logger.error('Erro ao buscar anamnese:', error);
-            throw error;
+        if (!ehProfissionalDono && !ehPacienteDono) {
+          throw new ForbiddenException(
+            'Você não tem permissão para acessar esta anamnese.',
+          );
         }
+      }
+
+      return anamnese;
+    } catch (error) {
+      this.logger.error('Erro ao buscar anamnese:', error);
+      throw error;
     }
+  }
 
+  async getAnamnesesByPacienteId(
+    pacienteId: string,
+    usuarioId: string,
+    tipoUsuario: TipoUsuario,
+  ) {
+    try {
+      if (tipoUsuario !== TipoUsuario.admin) {
+        const [profissional, paciente, pacienteAlvo] = await Promise.all([
+          this.prismaService.profissional.findUnique({ where: { usuarioId } }),
+          this.prismaService.paciente.findUnique({ where: { usuarioId } }),
+          this.prismaService.paciente.findUnique({ where: { id: pacienteId } }),
+        ]);
 
-    async getAnamnesesByPacienteId(pacienteId: string, usuarioId: string, tipoUsuario: TipoUsuario){
-        try{
-            if(tipoUsuario !== TipoUsuario.admin){
-                const [profissional, paciente, pacienteAlvo] = await Promise.all([
-                    this.prismaService.profissional.findUnique({ where: { usuarioId } }),
-                    this.prismaService.paciente.findUnique({ where: { usuarioId } }),
-                    this.prismaService.paciente.findUnique({ where: { id: pacienteId } }),
-                ]);
-
-                if(!pacienteAlvo){
-                    throw new NotFoundException('Paciente não encontrado');
-                }
-
-                const ehProfissionalDono = profissional?.id === pacienteAlvo.profissionalId;
-                const ehPacienteDono = paciente?.id === pacienteAlvo.id;
-
-                if(!ehProfissionalDono && !ehPacienteDono){
-                    throw new ForbiddenException('Você não tem permissão para acessar as anamneses deste paciente.');
-                }
-            }
-
-            const anamneses = await this.prismaService.anamnese.findMany({
-                where: { pacienteId },
-                include: { respostas: true },
-            });
-
-            return anamneses;
-        }catch(error){
-            this.logger.error('Erro ao buscar anamneses por paciente:', error);
-            throw error;
+        if (!pacienteAlvo) {
+          throw new NotFoundException('Paciente não encontrado');
         }
-    }
 
+        const ehProfissionalDono =
+          profissional?.id === pacienteAlvo.profissionalId;
+        const ehPacienteDono = paciente?.id === pacienteAlvo.id;
+
+        if (!ehProfissionalDono && !ehPacienteDono) {
+          throw new ForbiddenException(
+            'Você não tem permissão para acessar as anamneses deste paciente.',
+          );
+        }
+      }
+
+      const anamneses = await this.prismaService.anamnese.findMany({
+        where: { pacienteId },
+        include: { respostas: true },
+      });
+
+      return anamneses;
+    } catch (error) {
+      this.logger.error('Erro ao buscar anamneses por paciente:', error);
+      throw error;
+    }
+  }
 }

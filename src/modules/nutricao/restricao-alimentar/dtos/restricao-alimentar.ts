@@ -12,10 +12,14 @@ export class CreateRestricaoAlimentarDto {
   @IsEnum(TipoRestricao)
   tipo!: TipoRestricao;
 
-  @ApiPropertyOptional({ example: 'Intolerância à lactose presente em laticínios' })
+  @ApiPropertyOptional({
+    example: 'Intolerância à lactose presente em laticínios',
+  })
   @IsOptional()
   @IsString()
   descricao?: string;
 }
 
-export class UpdateRestricaoAlimentarDto extends PartialType(CreateRestricaoAlimentarDto) {}
+export class UpdateRestricaoAlimentarDto extends PartialType(
+  CreateRestricaoAlimentarDto,
+) {}

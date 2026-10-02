@@ -4,6 +4,6 @@ import { DiarioDeSintomasController } from './diario-de-sintomas.controller';
 
 @Module({
   providers: [DiarioDeSintomasService],
-  controllers: [DiarioDeSintomasController]
+  controllers: [DiarioDeSintomasController],
 })
 export class DiarioDeSintomasModule {}

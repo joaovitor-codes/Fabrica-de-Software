@@ -9,6 +9,6 @@ import { PontosTransacaoModule } from '../../receitas/pontos-transacao/pontos-tr
 @Module({
   imports: [ClinicasModule, PontosTransacaoModule],
   providers: [ProfissionalService, PacientesService, UsuarioService],
-  controllers: [ProfissionalController]
+  controllers: [ProfissionalController],
 })
 export class ProfissionalModule {}

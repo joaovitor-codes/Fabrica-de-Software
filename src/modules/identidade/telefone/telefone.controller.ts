@@ -1,15 +1,32 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { TelefoneService } from './telefone.service';
 import { CreateTelefoneDto, UpdateTelefoneDto } from './dtos/telefone';
 import { AuthGuard } from '../../../auth/auth.guard';
 
-const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+const uuidPipe = (mensagem: string) =>
+  new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
     exceptionFactory: () => new BadRequestException(mensagem),
-});
-
+  });
 
 @ApiTags('Telefone')
 @Controller('api/telefone')
@@ -45,7 +62,10 @@ export class TelefoneController {
   @ApiOkResponse({ description: 'Telefone atualizado com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id', uuidPipe('ID inválido')) id: string, @Body() updateTelefoneDto: UpdateTelefoneDto) {
+  async update(
+    @Param('id', uuidPipe('ID inválido')) id: string,
+    @Body() updateTelefoneDto: UpdateTelefoneDto,
+  ) {
     return this.telefoneService.update(id, updateTelefoneDto);
   }
 

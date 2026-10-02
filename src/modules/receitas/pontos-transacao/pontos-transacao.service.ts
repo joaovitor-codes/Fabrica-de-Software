@@ -1,114 +1,140 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { PontosTransacao, Prisma, TipoTransacaoPontos } from '@prisma/client';
 import { AjustePontosDto } from './dtos/ajuste-pontos';
 
 @Injectable()
 export class PontosTransacaoService {
-    constructor(
-        private readonly prismaService: PrismaService,
-    ){}
+  constructor(private readonly prismaService: PrismaService) {}
 
-    async createPontoTransacao(profissionalId: string, tipoTransacao: TipoTransacaoPontos, pontos: number, descricao: string, tx?: Prisma.TransactionClient): Promise<PontosTransacao>{
-        if (!tx) {
-            return this.prismaService.$transaction((novaTx) =>
-                this.createPontoTransacao(profissionalId, tipoTransacao, pontos, descricao, novaTx),
-            );
-        }
-
-        try {
-            const transacaoCriada = await tx.pontosTransacao.create({
-                data: {
-                    profissionalId,
-                    tipo: tipoTransacao,
-                    pontos,
-                    descricao
-                }
-            });
-
-            await tx.profissional.update({
-                where: {
-                    id: profissionalId
-                },
-                data: {
-                    pontosIncentivo: {
-                        increment: pontos
-                    }
-                }
-            });
-
-            return transacaoCriada;
-        } catch (error) {
-            if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003'){
-                throw new NotFoundException('Profissional não encontrado');
-            }
-            throw error;
-        }
+  async createPontoTransacao(
+    profissionalId: string,
+    tipoTransacao: TipoTransacaoPontos,
+    pontos: number,
+    descricao: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<PontosTransacao> {
+    if (!tx) {
+      return this.prismaService.$transaction((novaTx) =>
+        this.createPontoTransacao(
+          profissionalId,
+          tipoTransacao,
+          pontos,
+          descricao,
+          novaTx,
+        ),
+      );
     }
 
-    async exigirProfissionalExistente(profissionalId: string){
-        const profissional = await this.prismaService.profissional.findUnique({
-            where: { id: profissionalId }
-        });
+    try {
+      const transacaoCriada = await tx.pontosTransacao.create({
+        data: {
+          profissionalId,
+          tipo: tipoTransacao,
+          pontos,
+          descricao,
+        },
+      });
 
-        if(!profissional){
-            throw new NotFoundException('Profissional não encontrado');
-        }
+      await tx.profissional.update({
+        where: {
+          id: profissionalId,
+        },
+        data: {
+          pontosIncentivo: {
+            increment: pontos,
+          },
+        },
+      });
 
-        return profissional;
+      return transacaoCriada;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw new NotFoundException('Profissional não encontrado');
+      }
+      throw error;
+    }
+  }
+
+  async exigirProfissionalExistente(profissionalId: string) {
+    const profissional = await this.prismaService.profissional.findUnique({
+      where: { id: profissionalId },
+    });
+
+    if (!profissional) {
+      throw new NotFoundException('Profissional não encontrado');
     }
 
-    async getSaldo(profissionalId: string): Promise<number>{
-        const saldo = await this.prismaService.pontosTransacao.aggregate({
-            where: { profissionalId },
-            _sum: { pontos: true },
-        });
+    return profissional;
+  }
 
-        return saldo._sum.pontos || 0;
-    }
+  async getSaldo(profissionalId: string): Promise<number> {
+    const saldo = await this.prismaService.pontosTransacao.aggregate({
+      where: { profissionalId },
+      _sum: { pontos: true },
+    });
 
-    async historicoTransacoes(profissionalId: string, page: number = 1, limit: number = 10){
-        const skip = (page - 1) * limit;
+    return saldo._sum.pontos || 0;
+  }
 
-        const [data, total] = await Promise.all([
-            this.prismaService.pontosTransacao.findMany({
-                where: { profissionalId },
-                skip,
-                take: limit,
-                orderBy: { createdAt: 'desc' },
-            }),
-            this.prismaService.pontosTransacao.count({
-                where: { profissionalId },
-            }),
-        ]);
+  async historicoTransacoes(
+    profissionalId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    const skip = (page - 1) * limit;
 
-        return {
-            data,
-            meta: { total, page, last_page: Math.ceil(total / limit), limit },
-        };
-    }
+    const [data, total] = await Promise.all([
+      this.prismaService.pontosTransacao.findMany({
+        where: { profissionalId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prismaService.pontosTransacao.count({
+        where: { profissionalId },
+      }),
+    ]);
 
-    async ajusteManual(adminId: string, dto: AjustePontosDto): Promise<PontosTransacao>{
-        return this.prismaService.$transaction(async (tx) => {
-            const transacao = await this.createPontoTransacao(
-                dto.profissionalId,
-                TipoTransacaoPontos.ajuste_manual,
-                dto.pontos,
-                `${dto.descricao} (ajuste realizado pelo admin ${adminId})`,
-                tx,
-            );
+    return {
+      data,
+      meta: { total, page, last_page: Math.ceil(total / limit), limit },
+    };
+  }
 
-            const profissional = await tx.profissional.findUnique({
-                where: { id: dto.profissionalId },
-                select: { pontosIncentivo: true },
-            });
+  async ajusteManual(
+    adminId: string,
+    dto: AjustePontosDto,
+  ): Promise<PontosTransacao> {
+    return this.prismaService.$transaction(async (tx) => {
+      const transacao = await this.createPontoTransacao(
+        dto.profissionalId,
+        TipoTransacaoPontos.ajuste_manual,
+        dto.pontos,
+        `${dto.descricao} (ajuste realizado pelo admin ${adminId})`,
+        tx,
+      );
 
-            // lançar erro aqui desfaz a transação criada e o update do saldo
-            if(profissional!.pontosIncentivo < 0){
-                throw new BadRequestException('O ajuste deixaria o saldo do profissional negativo');
-            }
+      const profissional = await tx.profissional.findUnique({
+        where: { id: dto.profissionalId },
+        select: { pontosIncentivo: true },
+      });
 
-            return transacao;
-        });
-    }
+      // lançar erro aqui desfaz a transação criada e o update do saldo
+      if (profissional!.pontosIncentivo < 0) {
+        throw new BadRequestException(
+          'O ajuste deixaria o saldo do profissional negativo',
+        );
+      }
+
+      return transacao;
+    });
+  }
 }

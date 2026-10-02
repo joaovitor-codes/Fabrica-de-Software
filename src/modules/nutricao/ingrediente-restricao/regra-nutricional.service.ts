@@ -17,7 +17,10 @@ type CampoDecimalIngrediente =
 
 // Liga o enum de banco (snake_case, estável) ao nome do campo real em
 // Ingrediente (camelCase, gerado pelo Prisma Client).
-const CAMPO_INGREDIENTE: Record<CampoNutricionalRegra, CampoDecimalIngrediente> = {
+const CAMPO_INGREDIENTE: Record<
+  CampoNutricionalRegra,
+  CampoDecimalIngrediente
+> = {
   [CampoNutricionalRegra.calorias_kcal]: 'caloriasKcal',
   [CampoNutricionalRegra.proteinas_g]: 'proteinasG',
   [CampoNutricionalRegra.carboidratos_g]: 'carboidratosG',
@@ -26,7 +29,10 @@ const CAMPO_INGREDIENTE: Record<CampoNutricionalRegra, CampoDecimalIngrediente> 
   [CampoNutricionalRegra.sodio_mg]: 'sodioMg',
 };
 
-const COMPARADORES: Record<OperadorRegraNutricional, (valor: number, limite: number) => boolean> = {
+const COMPARADORES: Record<
+  OperadorRegraNutricional,
+  (valor: number, limite: number) => boolean
+> = {
   [OperadorRegraNutricional.maior_que]: (valor, limite) => valor > limite,
   [OperadorRegraNutricional.maior_igual]: (valor, limite) => valor >= limite,
   [OperadorRegraNutricional.menor_que]: (valor, limite) => valor < limite,
@@ -35,7 +41,9 @@ const COMPARADORES: Record<OperadorRegraNutricional, (valor: number, limite: num
 
 type ResultadoRegra = 'atende' | 'nao_atende' | 'pendente';
 
-type RegraComLimite = Prisma.RestricaoRegraNutricionalGetPayload<Record<string, never>>;
+type RegraComLimite = Prisma.RestricaoRegraNutricionalGetPayload<
+  Record<string, never>
+>;
 type IngredienteRow = Prisma.IngredienteGetPayload<Record<string, never>>;
 
 /**
@@ -71,8 +79,14 @@ export class RegraNutricionalService {
       where: { valorLimite: { not: null } },
     });
 
-    for (const [restricaoId, regrasDaRestricao] of this.agruparPorRestricao(regras)) {
-      await this.avaliarRestricaoParaIngrediente(ingrediente, restricaoId, regrasDaRestricao);
+    for (const [restricaoId, regrasDaRestricao] of this.agruparPorRestricao(
+      regras,
+    )) {
+      await this.avaliarRestricaoParaIngrediente(
+        ingrediente,
+        restricaoId,
+        regrasDaRestricao,
+      );
     }
   }
 
@@ -83,16 +97,19 @@ export class RegraNutricionalService {
    * vínculo válido criado por outra regra da mesma restrição.
    */
   async aplicarRegraATodosIngredientes(regraId: string): Promise<void> {
-    const regra = await this.prismaService.restricaoRegraNutricional.findUnique({
-      where: { id: regraId },
-    });
+    const regra = await this.prismaService.restricaoRegraNutricional.findUnique(
+      {
+        where: { id: regraId },
+      },
+    );
     if (!regra) {
       return;
     }
 
-    const regrasDaRestricao = await this.prismaService.restricaoRegraNutricional.findMany({
-      where: { restricaoId: regra.restricaoId, valorLimite: { not: null } },
-    });
+    const regrasDaRestricao =
+      await this.prismaService.restricaoRegraNutricional.findMany({
+        where: { restricaoId: regra.restricaoId, valorLimite: { not: null } },
+      });
     if (regrasDaRestricao.length === 0) {
       return;
     }
@@ -100,11 +117,17 @@ export class RegraNutricionalService {
     const ingredientes = await this.prismaService.ingrediente.findMany();
 
     for (const ingrediente of ingredientes) {
-      await this.avaliarRestricaoParaIngrediente(ingrediente, regra.restricaoId, regrasDaRestricao);
+      await this.avaliarRestricaoParaIngrediente(
+        ingrediente,
+        regra.restricaoId,
+        regrasDaRestricao,
+      );
     }
   }
 
-  private agruparPorRestricao(regras: RegraComLimite[]): Map<string, RegraComLimite[]> {
+  private agruparPorRestricao(
+    regras: RegraComLimite[],
+  ): Map<string, RegraComLimite[]> {
     const grupos = new Map<string, RegraComLimite[]>();
     for (const regra of regras) {
       const grupo = grupos.get(regra.restricaoId) ?? [];
@@ -126,10 +149,14 @@ export class RegraNutricionalService {
     restricaoId: string,
     regras: RegraComLimite[],
   ): Promise<void> {
-    const resultados = regras.map((regra) => this.avaliarRegra(ingrediente, regra));
+    const resultados = regras.map((regra) =>
+      this.avaliarRegra(ingrediente, regra),
+    );
 
     const algumaAtende = resultados.some((resultado) => resultado === 'atende');
-    const todasNaoAtendem = resultados.every((resultado) => resultado === 'nao_atende');
+    const todasNaoAtendem = resultados.every(
+      (resultado) => resultado === 'nao_atende',
+    );
 
     const chave = {
       ingredienteId_restricaoId: { ingredienteId: ingrediente.id, restricaoId },
@@ -164,7 +191,10 @@ export class RegraNutricionalService {
     // pra confirmar que é seguro) — mantém como está até revisão manual.
   }
 
-  private avaliarRegra(ingrediente: IngredienteRow, regra: RegraComLimite): ResultadoRegra {
+  private avaliarRegra(
+    ingrediente: IngredienteRow,
+    regra: RegraComLimite,
+  ): ResultadoRegra {
     if (regra.valorLimite === null) {
       return 'pendente';
     }
@@ -184,6 +214,8 @@ export class RegraNutricionalService {
       return 'pendente';
     }
 
-    return comparar(valorCampo.toNumber(), regra.valorLimite.toNumber()) ? 'atende' : 'nao_atende';
+    return comparar(valorCampo.toNumber(), regra.valorLimite.toNumber())
+      ? 'atende'
+      : 'nao_atende';
   }
 }

@@ -5,6 +5,6 @@ import { TelefoneController } from './telefone.controller';
 @Module({
   providers: [TelefoneService],
   controllers: [TelefoneController],
-  exports: [TelefoneService]
+  exports: [TelefoneService],
 })
 export class TelefoneModule {}

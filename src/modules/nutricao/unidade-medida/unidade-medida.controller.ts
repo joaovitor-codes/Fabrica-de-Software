@@ -1,16 +1,31 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  ParseUUIDPipe,
+  BadRequestException,
+} from '@nestjs/common';
 import { UnidadeMedidaService } from './unidade-medida.service';
 import { UnidadeMedidaDto } from './dtos/unidade-medida';
 import { UpdateUnidadeMedidaDto } from './dtos/update-unidade-medida';
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
 import { AuthGuard } from '../../../auth/auth.guard';
 
-const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
+const uuidPipe = (mensagem: string) =>
+  new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
     exceptionFactory: () => new BadRequestException(mensagem),
-});
-
+  });
 
 @Controller('/api/unidade-medida')
 export class UnidadeMedidaController {
@@ -42,7 +57,10 @@ export class UnidadeMedidaController {
   @ApiOkResponse({ description: 'Unidade de medida atualizada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id')
-  async update(@Param('id', uuidPipe('ID inválido')) id: string, @Body() updateUnidadeMedidaDto: UpdateUnidadeMedidaDto) {
+  async update(
+    @Param('id', uuidPipe('ID inválido')) id: string,
+    @Body() updateUnidadeMedidaDto: UpdateUnidadeMedidaDto,
+  ) {
     return await this.unidadeMedidaService.update(id, updateUnidadeMedidaDto);
   }
 
