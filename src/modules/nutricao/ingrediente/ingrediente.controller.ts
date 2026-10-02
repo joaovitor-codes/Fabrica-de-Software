@@ -19,6 +19,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 
 const uuidPipe = (mensagem: string) =>
@@ -34,6 +35,7 @@ export class IngredienteController {
 
   @ApiOperation({ summary: 'Cria um novo ingrediente na base' })
   @ApiCreatedResponse({ description: 'Ingrediente criado com sucesso.' })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Post()
   async create(@Body() createIngredienteDto: IngredienteDTO) {
@@ -61,6 +63,7 @@ export class IngredienteController {
 
   @ApiOperation({ summary: 'Atualiza um ingrediente específico pelo ID' })
   @ApiOkResponse({ description: 'Ingrediente atualizado com sucesso.' })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Patch(':id')
   async update(
@@ -72,6 +75,7 @@ export class IngredienteController {
 
   @ApiOperation({ summary: 'Remove um ingrediente específico pelo ID' })
   @ApiOkResponse({ description: 'Ingrediente removido com sucesso.' })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Delete(':id')
   async remove(@Param('id', uuidPipe('ID Ingrediente inválido')) id: string) {

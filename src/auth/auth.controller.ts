@@ -20,7 +20,12 @@ import {
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import type { RequestAutenticado } from './auth.types';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request as ExpressRequest, Response } from 'express';
 
@@ -101,6 +106,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Endpoint para obter informações do usuário autenticado',
   })
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Get('me')
   async me(@Request() request: RequestAutenticado) {

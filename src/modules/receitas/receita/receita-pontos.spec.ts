@@ -78,15 +78,17 @@ describe('ReceitaService - pontos na aprovação/rejeição', () => {
     statusAprovacao: StatusAprovacao.aprovado,
   };
   let receitaId: string;
+  let cache: { del: jest.Mock };
 
   beforeEach(async () => {
+    cache = { del: jest.fn() };
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         ReceitaService,
         PontosTransacaoService,
         { provide: PrismaService, useClass: FakePrismaService },
         { provide: UsuarioService, useValue: {} },
-        { provide: CacheService, useValue: {} },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile();
 
@@ -118,6 +120,7 @@ describe('ReceitaService - pontos na aprovação/rejeição', () => {
       }),
     ]);
     expect(prisma.transactionCalls).toBe(1);
+    expect(cache.del).toHaveBeenCalledWith('receitas:all');
   });
 
   it('rejeita a receita e credita 5 pontos na mesma transação', async () => {
@@ -132,6 +135,7 @@ describe('ReceitaService - pontos na aprovação/rejeição', () => {
       }),
     ]);
     expect(prisma.transactionCalls).toBe(1);
+    expect(cache.del).toHaveBeenCalledWith('receitas:all');
   });
 
   it('desfaz a aprovação da receita se a criação dos pontos falhar', async () => {

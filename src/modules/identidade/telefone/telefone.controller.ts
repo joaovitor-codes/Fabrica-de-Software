@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -20,6 +21,9 @@ import {
 import { TelefoneService } from './telefone.service';
 import { CreateTelefoneDto, UpdateTelefoneDto } from './dtos/telefone';
 import { AuthGuard } from '../../../auth/auth.guard';
+import { RolesGuard } from '../../../auth/roles.guard';
+import { Roles } from '../../../auth/roles.decorator';
+import { TipoUsuario } from '@prisma/client';
 
 const uuidPipe = (mensagem: string) =>
   new ParseUUIDPipe({
@@ -28,14 +32,18 @@ const uuidPipe = (mensagem: string) =>
     exceptionFactory: () => new BadRequestException(mensagem),
   });
 
+// Rotas genéricas, sem checagem de dono: só admin. Usuário e clínica
+// gerenciam os próprios dados pelas rotas de usuario/me e clinicas.
 @ApiTags('Telefone')
+@ApiBearerAuth()
+@UseGuards(AuthGuard, RolesGuard)
+@Roles(TipoUsuario.admin)
 @Controller('api/telefone')
 export class TelefoneController {
   constructor(private readonly telefoneService: TelefoneService) {}
 
   @ApiOperation({ summary: 'Cria um novo telefone a um usuario ou clinica' })
   @ApiCreatedResponse({ description: 'Telefone criado com sucesso.' })
-  @UseGuards(AuthGuard)
   @Post()
   async create(@Body() createTelefoneDto: CreateTelefoneDto) {
     return this.telefoneService.create(createTelefoneDto);
@@ -60,7 +68,6 @@ export class TelefoneController {
 
   @ApiOperation({ summary: 'Atualiza um telefone específico pelo ID' })
   @ApiOkResponse({ description: 'Telefone atualizado com sucesso.' })
-  @UseGuards(AuthGuard)
   @Patch(':id')
   async update(
     @Param('id', uuidPipe('ID inválido')) id: string,
@@ -71,7 +78,6 @@ export class TelefoneController {
 
   @ApiOperation({ summary: 'Remove um telefone específico pelo ID' })
   @ApiOkResponse({ description: 'Telefone removido com sucesso.' })
-  @UseGuards(AuthGuard)
   @Delete(':id')
   async remove(@Param('id', uuidPipe('ID inválido')) id: string) {
     return this.telefoneService.remove(id);

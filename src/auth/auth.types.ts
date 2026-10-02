@@ -16,3 +16,8 @@ export type UsuarioAutenticado = Usuario & { sub: string };
 export interface RequestAutenticado extends Request {
   user: UsuarioAutenticado;
 }
+
+/** Request de uma rota com OptionalAuthGuard: `user` só existe se havia token válido. */
+export interface RequestOpcional extends Request {
+  user?: UsuarioAutenticado;
+}
