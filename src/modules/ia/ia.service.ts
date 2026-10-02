@@ -85,4 +85,36 @@ export class IaService {
 
     return opcoes.map((o) => ({ ...o, nutrientesVerificados: false }));
   }
+
+  /**
+   * Classifica um lote de ingredientes quanto às restrições informadas, para
+   * a curadoria (scripts/curadoria-alergenos.ts). Devolve o JSON cru: quem
+   * chama valida com `interpretarClassificacaoIa`. Só vão nomes de
+   * ingrediente e de restrição, nenhum dado de paciente.
+   */
+  async classificarRestricoes(
+    ingredientes: string[],
+    restricoes: { nome: string; criterio: string }[],
+  ): Promise<unknown> {
+    const prompt = `Você classifica ingredientes de uma plataforma de nutrição no Brasil
+        quanto a restrições alimentares. Um erro que deixe passar um alérgeno
+        é grave; na dúvida, marque como incerto.
+
+        Restrições (use exatamente estes nomes):
+        ${restricoes.map((r) => `- ${r.nome}: ${r.criterio}`).join('\n        ')}
+
+        Ingredientes (nomes da Tabela TACO ou cadastrados por usuários):
+        ${ingredientes.map((nome, i) => `${i}. ${nome}`).join('\n        ')}
+
+        Para cada ingrediente, diga quais restrições ele fere, considerando a
+        composição típica do alimento no Brasil (ex: pão francês leva trigo,
+        maionese leva ovo, "leite de coco" não é leite animal). Se depende da
+        receita ou da marca e pode conter, coloque em "incertos".
+
+        Responda APENAS um JSON, sem texto adicional, com todos os ingredientes,
+        inclusive os que não ferem nenhuma restrição (listas vazias):
+        {"itens": [{"i": 0, "contem": ["..."], "incertos": ["..."]}]}`;
+
+    return this.perguntarJson(prompt);
+  }
 }

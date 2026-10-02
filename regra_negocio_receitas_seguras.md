@@ -91,18 +91,40 @@ Onde a IA **não** entra: no filtro de exibição (Fases 1 e 3). Ele roda em tod
 
 ## Fase 0: curadoria dos alérgenos principais
 
-Pré-requisito para a Fase 1. Sem isso, quase nenhum ingrediente está revisado e o filtro estrito esconderia praticamente todas as receitas.
+Pré-requisito para a Fase 1. Sem isso, nenhum ingrediente está revisado e o filtro estrito esconde praticamente todas as receitas.
 
-1. Migration com `Ingrediente.restricoesRevisadasEm`.
-2. Garantir que existam em `RestricaoAlimentar` os alérgenos principais: leite, ovo, amendoim, castanhas, trigo/glúten, soja, peixe e frutos do mar. Os nomes seguem a lista de alergênicos da RDC nº 26/2015 da ANVISA.
-3. Novo script `scripts/curadoria-alergenos.ts` (fora da API, no mesmo estilo do `import-taco.ts`) que gera os candidatos combinando duas fontes:
-   - matching por palavra-chave, com o dicionário como config estática dentro do script, como decidido em `regra_negocio.md`;
-   - classificação por IA, em lotes de ingredientes, que pega os casos que a palavra-chave perde. Exemplos: "pão francês" contém trigo, "chocolate ao leite" contém leite, "maionese" contém ovo. A IA também diz quando **não tem certeza**.
-4. O script exporta os candidatos para CSV, marcando a fonte (palavra-chave, IA ou as duas) e a incerteza. Candidatos em que as duas fontes concordam são revisados primeiro; os casos de incerteza, com mais cuidado. A revisão continua fora do banco.
-5. Um segundo modo do script lê o CSV revisado, insere os vínculos em `IngredienteRestricao` (`origem = automatico_confirmado_curadoria`) e preenche `restricoesRevisadasEm` de todo ingrediente que passou pela revisão, com ou sem vínculo.
-6. Endpoint `PATCH /api/ingrediente/:id/restricoes/revisado` (admin e profissional) para revisar ingredientes criados depois, inclusive os gerados pela IA.
+**Já feito no PR do filtro**: a migration de `Ingrediente.restricoesRevisadasEm` e o endpoint `PATCH /api/ingrediente/:id/restricoes/revisado` (admin e profissional), para revisar ingredientes criados depois, inclusive os gerados pela IA.
 
-Vale como regra: a IA só gera candidato e nunca grava vínculo direto. Para alergia, um falso negativo (alérgeno não vinculado) é o erro grave. Por isso, na dúvida, o candidato entra na lista para revisão.
+### Restrições cobertas
+
+Ficam em `RESTRICOES_CURADORIA` (`src/modules/nutricao/ingrediente-restricao/curadoria-alergenos.ts`), com as palavras-chave e o critério passado à IA:
+
+- alergias da RDC nº 26/2015 da ANVISA que fazem sentido em receita: leite, ovo, trigo, soja, amendoim, castanhas e nozes, peixe e crustáceos;
+- intolerância à lactose (`intolerancia`) e doença celíaca (`doenca_cronica`), as restrições mais comuns que não são alergia.
+
+O dicionário de palavras-chave fica no código, não no banco, como decidido em `regra_negocio.md`. A lógica fica em `src/` (e não dentro do script) só para ter teste no Jest.
+
+### Script `scripts/curadoria-alergenos.ts`
+
+Roda em dois passos, com revisão humana no meio. O cabeçalho do script tem o uso completo.
+
+1. **`gerar`**: para cada ingrediente ainda não revisado, cruza palavra-chave com a classificação da IA (lotes de 40) e escreve um CSV com uma linha por restrição candidata.
+   - Toda candidata sai com `decisao = vincular`. Na dúvida, vincula: um falso positivo só esconde uma receita; um falso negativo expõe o paciente ao alérgeno.
+   - A coluna `atencao` marca o que precisa de olhar humano: as fontes discordam ("só palavra-chave", "só IA") ou a IA ficou incerta.
+   - Ingrediente sem candidata sai numa linha `revisado`. Ingrediente sem resposta da IA sai com uma linha `pendente`.
+   - Com `--sem-ia`, roda só com palavra-chave. Depois de 2 falhas seguidas da IA (ex: chave inválida), o script para de chamá-la.
+2. **Revisão**: o curador ajusta a coluna `decisao` (`vincular`, `descartar`, `pendente` ou `revisado`) e pode acrescentar linhas para restrições que ficaram de fora.
+3. **`aplicar`**: valida o CSV inteiro antes de gravar (decisão, restrição e ingrediente existentes). Se houver qualquer erro, não grava nada. Depois, numa transação:
+   - cria as restrições da lista que ainda não existem. As que já existem são reaproveitadas comparando o nome sem acento, e o script avisa se o tipo for diferente do esperado;
+   - insere os vínculos com `origem = automatico_confirmado_curadoria`. Vínculo que já existe, inclusive manual, fica como está; `descartar` nunca apaga vínculo;
+   - preenche `restricoesRevisadasEm` dos ingredientes sem nenhuma linha `pendente`.
+   - Com `--simular`, só valida e mostra o resumo.
+
+A IA nunca grava vínculo direto. Ela só recebe nomes de ingrediente e de restrição.
+
+### Primeira rodada (base local, 2026-10-02)
+
+603 ingredientes, todos com resposta da IA: 610 vínculos candidatos (378 pedindo atenção) e 378 ingredientes sem nenhuma restrição. A IA acertou casos que a palavra-chave erra ("chocolate amargo, sem leite" não marcado como leite; sardinha e ovo no cuscuz paulista) e foi conservadora: 288 candidatos são "IA incerta", a maioria lecitina de soja e leite/ovo em pães e massas.
 
 ## Fase 1: filtro padrão por restrições (só nativas)
 

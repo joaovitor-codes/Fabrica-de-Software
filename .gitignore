@@ -60,3 +60,6 @@ yarn.lock
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /src/generated/prisma
+
+# CSV da curadoria de alérgenos (gerado por scripts/curadoria-alergenos.ts)
+curadoria-alergenos*.csv
