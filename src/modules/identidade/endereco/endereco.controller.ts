@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -20,6 +21,9 @@ import {
 import { EnderecoService } from './endereco.service';
 import { CreateEnderecoDto, UpdateEnderecoDto } from './dtos/endereco';
 import { AuthGuard } from '../../../auth/auth.guard';
+import { RolesGuard } from '../../../auth/roles.guard';
+import { Roles } from '../../../auth/roles.decorator';
+import { TipoUsuario } from '@prisma/client';
 
 const uuidPipe = (mensagem: string) =>
   new ParseUUIDPipe({
@@ -28,14 +32,18 @@ const uuidPipe = (mensagem: string) =>
     exceptionFactory: () => new BadRequestException(mensagem),
   });
 
+// Rotas genéricas, sem checagem de dono: só admin. Usuário e clínica
+// gerenciam os próprios dados pelas rotas de usuario/me e clinicas.
 @ApiTags('Endereço')
+@ApiBearerAuth()
+@UseGuards(AuthGuard, RolesGuard)
+@Roles(TipoUsuario.admin)
 @Controller('api/endereco')
 export class EnderecoController {
   constructor(private readonly enderecoService: EnderecoService) {}
 
   @ApiOperation({ summary: 'Cria um novo endereço a um usuario ou clinica' })
   @ApiCreatedResponse({ description: 'Endereço criado com sucesso.' })
-  @UseGuards(AuthGuard)
   @Post()
   async create(@Body() createEnderecoDto: CreateEnderecoDto) {
     return this.enderecoService.create(createEnderecoDto);
@@ -60,7 +68,6 @@ export class EnderecoController {
 
   @ApiOperation({ summary: 'Atualiza um endereço específico pelo ID' })
   @ApiOkResponse({ description: 'Endereço atualizado com sucesso.' })
-  @UseGuards(AuthGuard)
   @Patch(':id')
   async update(
     @Param('id', uuidPipe('ID Endereço inválido')) id: string,
@@ -71,7 +78,6 @@ export class EnderecoController {
 
   @ApiOperation({ summary: 'Remove um endereço específico pelo ID' })
   @ApiOkResponse({ description: 'Endereço removido com sucesso.' })
-  @UseGuards(AuthGuard)
   @Delete(':id')
   async remove(@Param('id', uuidPipe('ID Endereço inválido')) id: string) {
     return this.enderecoService.remove(id);
