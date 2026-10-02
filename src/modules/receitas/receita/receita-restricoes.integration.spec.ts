@@ -65,6 +65,7 @@ const atende = (r: any, where: any = {}): boolean =>
         return valor.every((i: any) => atende(i, cond.every));
       if ('none' in cond) return !valor.some((i: any) => atende(i, cond.none));
       if ('in' in cond) return cond.in.includes(valor);
+      if ('gte' in cond) return valor !== null && valor >= cond.gte;
       if ('not' in cond) return valor !== cond.not;
       return atende(valor, cond);
     }
@@ -95,11 +96,13 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
   const leite = randomUUID();
   const gluten = randomUUID();
   const hipertensao = randomUUID();
+  const gergelim = randomUUID();
 
   const alergico = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const intolerante = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const intoleranteGrave = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const hipertensoGrave = { id: randomUUID(), tipo: TipoUsuario.paciente };
+  const alergicoGergelim = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const semRestricao = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const profissional = { id: randomUUID(), tipo: TipoUsuario.profissional };
   const autor = { id: randomUUID(), tipo: TipoUsuario.comum };
@@ -165,12 +168,14 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     tipo: TipoRestricao,
     gravidade: Gravidade,
     camposDasRegras: CampoNutricionalRegra[] = [],
+    criadaEm = new Date('2026-01-01T00:00:00Z'),
   ) => ({
     restricaoId,
     gravidade,
     paciente: { usuarioId },
     restricao: {
       tipo,
+      createdAt: criadaEm,
       regrasNutricionais: camposDasRegras.map((campoNutricional) => ({
         campoNutricional,
       })),
@@ -240,6 +245,15 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         TipoRestricao.doenca_cronica,
         Gravidade.grave,
         [CampoNutricionalRegra.sodio_mg],
+      ),
+      // Cadastrada depois que os ingredientes foram revisados.
+      restricaoDe(
+        alergicoGergelim.id,
+        gergelim,
+        TipoRestricao.alergia,
+        Gravidade.leve,
+        [],
+        new Date(Date.now() + 24 * 60 * 60 * 1000),
       ),
     );
   });
@@ -330,6 +344,15 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       // comLeite e segura: tudo revisado e com sódio informado.
       // naoRevisada: ingrediente não revisado. semDadoSodio: sódio null.
       expect(ids(res.body)).toEqual([comLeite.id, segura.id].sort());
+    });
+  });
+
+  describe('restrição criada depois da curadoria', () => {
+    it('esconde tudo: a revisão anterior não conferiu essa restrição', async () => {
+      await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .set(como(alergicoGergelim))
+        .expect(404);
     });
   });
 
