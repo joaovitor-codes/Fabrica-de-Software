@@ -83,8 +83,8 @@ docker compose up -d
 # 4. Criar as tabelas e aplicar as migrations
 npx prisma migrate reset
 
-# 5. (Opcional) Popular a base de ingredientes com a TACO
-npx ts-node scripts/import-taco.ts scripts/taco_composicao.csv
+# 5. Popular o banco com os dados de referência (ingredientes, regras, curadoria)
+npm run db:preparar
 
 # 6. Rodar a API em modo desenvolvimento
 npm run start:dev
@@ -96,6 +96,18 @@ Com a API no ar:
 - **Swagger (documentação interativa):** `http://localhost:3000/api/docs`
 
 > ⚠️ `npx prisma migrate reset` **apaga todos os dados** do banco local. Para aplicar só as migrations novas, use `npx prisma migrate dev`.
+
+### O que o `npm run db:preparar` faz
+
+Deixa todo banco montado a partir do repositório no mesmo estado. Pode rodar de novo a qualquer momento: nada é duplicado.
+
+| Passo | Script | O que grava |
+| --- | --- | --- |
+| 1 | `scripts/import-taco.ts` | Os ~597 ingredientes da TACO (atualiza os que já existem) |
+| 2 | `scripts/regras-nutricionais.ts` | As doenças crônicas com regra de nutriente (hoje, hipertensão: sódio > 600 mg/100 g) e os vínculos que a regra gera. Lista em `src/modules/nutricao/restricao-alimentar/regras-padrao.ts` |
+| 3 | `scripts/curadoria-alergenos.ts aplicar` | Os alérgenos revisados de `scripts/curadoria-alergenos-revisado.csv`. Se o arquivo ainda não existe, o passo é pulado |
+
+A ordem importa: o import grava os ingredientes sem passar pelas regras, então as regras rodam depois e reavaliam tudo. Detalhes em `regra_negocio_receitas_seguras.md`.
 
 ## Variáveis de ambiente
 

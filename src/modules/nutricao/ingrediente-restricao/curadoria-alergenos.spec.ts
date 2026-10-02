@@ -7,6 +7,7 @@ import {
   interpretarClassificacaoIa,
   montarLinhas,
   planejarAplicacao,
+  resolverIngredientes,
 } from './curadoria-alergenos';
 
 describe('curadoria de alérgenos', () => {
@@ -233,5 +234,97 @@ describe('curadoria de alérgenos', () => {
         'linha 5: decisão "talvez" inválida (use vincular, descartar, pendente, revisado)',
       ]);
     });
+  });
+
+  describe('resolverIngredientes', () => {
+    const idPorCodigo = new Map([['TACO-4-1', 'id-local-1']]);
+    const idsExistentes = new Set(['id-local-1', 'id-usuario']);
+
+    it('usa o código da fonte no lugar do id do banco de origem', () => {
+      const { linhas, erros } = resolverIngredientes(
+        [
+          {
+            ingrediente_id: 'id-de-outro-banco',
+            codigo_fonte_externo: 'TACO-4-1',
+            decisao: 'revisado',
+          },
+        ],
+        idPorCodigo,
+        idsExistentes,
+      );
+
+      expect(erros).toEqual([]);
+      expect(linhas[0]?.ingrediente_id).toBe('id-local-1');
+    });
+
+    it('código que não existe neste banco é erro', () => {
+      const { erros } = resolverIngredientes(
+        [{ ingrediente_id: 'x', codigo_fonte_externo: 'TACO-4-999' }],
+        idPorCodigo,
+        idsExistentes,
+      );
+
+      expect(erros).toEqual([
+        'linha 2: código TACO-4-999 não existe neste banco',
+      ]);
+    });
+
+    it('sem código: vale o id no banco de origem e é ignorado nos outros', () => {
+      const resolucao = resolverIngredientes(
+        [
+          { ingrediente_id: 'id-usuario', codigo_fonte_externo: '' },
+          { ingrediente_id: 'id-de-outro-banco', codigo_fonte_externo: '' },
+        ],
+        idPorCodigo,
+        idsExistentes,
+      );
+
+      expect(resolucao.erros).toEqual([]);
+      expect(resolucao.ignoradas).toBe(1);
+      expect(resolucao.linhas.map((l) => l?.ingrediente_id ?? null)).toEqual([
+        'id-usuario',
+        null,
+      ]);
+    });
+
+    it('CSV antigo, sem a coluna do código, continua funcionando', () => {
+      const { linhas, ignoradas } = resolverIngredientes(
+        [{ ingrediente_id: 'id-usuario', decisao: 'revisado' }],
+        idPorCodigo,
+        idsExistentes,
+      );
+
+      expect(ignoradas).toBe(0);
+      expect(linhas[0]?.ingrediente_id).toBe('id-usuario');
+    });
+
+    it('linha ignorada não muda a numeração dos erros do plano', () => {
+      const { linhas } = resolverIngredientes(
+        [
+          { ingrediente_id: 'id-de-outro-banco', decisao: 'revisado' },
+          { ingrediente_id: 'id-usuario', decisao: 'talvez' },
+        ],
+        idPorCodigo,
+        idsExistentes,
+      );
+
+      expect(planejarAplicacao(linhas, []).erros).toEqual([
+        'linha 3: decisão "talvez" inválida (use vincular, descartar, pendente, revisado)',
+      ]);
+    });
+  });
+
+  it('o CSV gerado leva o código da fonte', () => {
+    const linhas = montarLinhas(
+      { id: 'i1', nome: 'Ovo, de galinha', codigoFonteExterno: 'TACO-4-488' },
+      ['Alergia a ovo'],
+      { contem: ['Alergia a ovo'], incertos: [] },
+    );
+
+    const [lida] = parse(gerarCsv(linhas), {
+      columns: true,
+      bom: true,
+    });
+    expect(lida.codigo_fonte_externo).toBe('TACO-4-488');
   });
 });

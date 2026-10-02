@@ -15,11 +15,17 @@
 //        pendente   não sabe ainda: o ingrediente NÃO é marcado como revisado
 //        revisado   linha sem restrição: ingrediente analisado, nada a vincular
 //      Para uma restrição que ficou de fora, adicione uma linha com o mesmo
-//      ingrediente_id, a restrição e `vincular`.
+//      ingrediente_id e codigo_fonte_externo, a restrição e `vincular`.
 //
 //   3. aplicar: grava os vínculos e marca os ingredientes como revisados.
-//        npx ts-node scripts/curadoria-alergenos.ts aplicar revisado.csv [--simular]
-//      --simular  valida e mostra o resumo sem gravar nada
+//        npx ts-node scripts/curadoria-alergenos.ts aplicar revisado.csv [--simular] [--se-existir]
+//      --simular     valida e mostra o resumo sem gravar nada
+//      --se-existir  sem o arquivo, só avisa e sai sem erro (usado pelo
+//                    `npm run db:preparar`)
+//
+// O CSV revisado versionado fica em scripts/curadoria-alergenos-revisado.csv.
+// Os ingredientes são achados pelo codigo_fonte_externo (ex: TACO-4-123), que
+// é o mesmo em todo banco; o ingrediente_id só serve no banco de origem.
 //
 // A IA nunca grava vínculo direto: tudo passa pelo CSV revisado.
 
@@ -27,7 +33,7 @@ import 'dotenv/config';
 import { PrismaClient, RestricaoAlimentar } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { parse } from 'csv-parse/sync';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { IaService } from '../src/modules/ia/ia.service';
 import {
   ClassificacaoIa,
@@ -39,6 +45,7 @@ import {
   montarLinhas,
   normalizar,
   planejarAplicacao,
+  resolverIngredientes,
 } from '../src/modules/nutricao/ingrediente-restricao/curadoria-alergenos';
 
 const prisma = new PrismaClient();
@@ -50,12 +57,12 @@ const SAIDA_PADRAO = 'curadoria-alergenos.csv';
 
 const USO = `Uso:
   npx ts-node scripts/curadoria-alergenos.ts gerar [saida.csv] [--sem-ia] [--todos]
-  npx ts-node scripts/curadoria-alergenos.ts aplicar revisado.csv [--simular]`;
+  npx ts-node scripts/curadoria-alergenos.ts aplicar revisado.csv [--simular] [--se-existir]`;
 
 async function gerar(saida: string, usarIa: boolean, todos: boolean) {
   const ingredientes = await prisma.ingrediente.findMany({
     where: todos ? {} : { restricoesRevisadasEm: null },
-    select: { id: true, nome: true },
+    select: { id: true, nome: true, codigoFonteExterno: true },
     orderBy: { nome: 'asc' },
   });
   console.log(`ingredientes a analisar: ${ingredientes.length}`);
@@ -137,7 +144,12 @@ async function gerar(saida: string, usarIa: boolean, todos: boolean) {
   console.log('\nRevise a coluna "decisao" e rode o passo "aplicar".');
 }
 
-async function aplicar(caminho: string, simular: boolean) {
+async function aplicar(caminho: string, simular: boolean, seExistir: boolean) {
+  if (seExistir && !existsSync(caminho)) {
+    console.log(`${caminho} não existe: curadoria não aplicada.`);
+    return;
+  }
+
   const linhasCsv: Record<string, string>[] = parse(
     readFileSync(caminho, 'utf-8'),
     {
@@ -153,28 +165,24 @@ async function aplicar(caminho: string, simular: boolean) {
   const doBanco = await prisma.restricaoAlimentar.findMany({
     include: { regrasNutricionais: { select: { id: true } } },
   });
-  const plano = planejarAplicacao(linhasCsv, [
+  const ingredientes = await prisma.ingrediente.findMany({
+    select: { id: true, codigoFonteExterno: true },
+  });
+  const resolucao = resolverIngredientes(
+    linhasCsv,
+    new Map(
+      ingredientes
+        .filter((i) => i.codigoFonteExterno)
+        .map((i) => [i.codigoFonteExterno!, i.id]),
+    ),
+    new Set(ingredientes.map((i) => i.id)),
+  );
+
+  const plano = planejarAplicacao(resolucao.linhas, [
     ...doBanco.map((r) => r.nome),
     ...RESTRICOES_CURADORIA.map((r) => r.nome),
   ]);
-
-  const ids = [
-    ...new Set([
-      ...plano.revisados,
-      ...plano.pendentes,
-      ...plano.vinculos.map((v) => v.ingredienteId),
-    ]),
-  ];
-  const existentes = await prisma.ingrediente.findMany({
-    where: { id: { in: ids } },
-    select: { id: true },
-  });
-  const idsExistentes = new Set(existentes.map((i) => i.id));
-  for (const id of ids) {
-    if (!idsExistentes.has(id)) {
-      plano.erros.push(`ingrediente ${id} não existe no banco`);
-    }
-  }
+  plano.erros.unshift(...resolucao.erros);
 
   if (plano.erros.length > 0) {
     console.error('CSV com erros, nada foi gravado:');
@@ -222,6 +230,11 @@ async function aplicar(caminho: string, simular: boolean) {
   console.log(`vínculos a gravar:              ${plano.vinculos.length}`);
   console.log(`ingredientes marcados revisados: ${plano.revisados.length}`);
   console.log(`ingredientes pendentes:         ${plano.pendentes.length}`);
+  if (resolucao.ignoradas > 0) {
+    console.log(
+      `linhas ignoradas:               ${resolucao.ignoradas} (ingrediente sem código, de outro banco)`,
+    );
+  }
 
   if (simular) {
     console.log('\n--simular: nada foi gravado.');
@@ -278,7 +291,11 @@ async function main() {
       flags.includes('--todos'),
     );
   } else if (comando === 'aplicar' && arquivo) {
-    await aplicar(arquivo, flags.includes('--simular'));
+    await aplicar(
+      arquivo,
+      flags.includes('--simular'),
+      flags.includes('--se-existir'),
+    );
   } else {
     console.error(USO);
     process.exitCode = 1;

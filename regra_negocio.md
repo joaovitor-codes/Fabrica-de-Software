@@ -85,8 +85,9 @@ Feito:
 
 Pendente:
 1. Revisar o CSV da curadoria (nutricionista) e aplicar.
-2. Cadastrar a regra de hipertensão (`sodio_mg > 600`) em cada ambiente: ela está decidida aqui, mas não existe em seed.
-3. Preencher `valorLimite` de diabetes assim que houver validação clínica.
+2. Preencher o limite de diabetes assim que houver validação clínica e acrescentá-lo a `REGRAS_PADRAO`.
+
+A regra de hipertensão (`sodio_mg > 600`) está em `REGRAS_PADRAO` (`src/modules/nutricao/restricao-alimentar/regras-padrao.ts`) e é criada em cada banco pelo `npm run db:preparar`.
 
 ## Fora de escopo desta frente (sem mudança)
 
