@@ -14,6 +14,9 @@ import {
 import { IngredienteService } from './ingrediente.service';
 import { UpdateIngredienteDto } from './dtos/update-ingrediente';
 import { AuthGuard } from '../../../auth/auth.guard';
+import { RolesGuard } from '../../../auth/roles.guard';
+import { Roles } from '../../../auth/roles.decorator';
+import { TipoUsuario } from '@prisma/client';
 import { IngredienteDTO } from './dtos/ingrediente';
 import {
   ApiCreatedResponse,
@@ -64,7 +67,8 @@ export class IngredienteController {
   @ApiOperation({ summary: 'Atualiza um ingrediente específico pelo ID' })
   @ApiOkResponse({ description: 'Ingrediente atualizado com sucesso.' })
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Patch(':id')
   async update(
     @Param('id', uuidPipe('ID Ingrediente inválido')) id: string,
@@ -76,7 +80,8 @@ export class IngredienteController {
   @ApiOperation({ summary: 'Remove um ingrediente específico pelo ID' })
   @ApiOkResponse({ description: 'Ingrediente removido com sucesso.' })
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Delete(':id')
   async remove(@Param('id', uuidPipe('ID Ingrediente inválido')) id: string) {
     return await this.ingredienteService.remove(id);

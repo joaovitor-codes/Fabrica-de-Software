@@ -9,14 +9,10 @@ import {
   CreateRestricaoAlimentarDto,
   UpdateRestricaoAlimentarDto,
 } from './dtos/restricao-alimentar';
-import { IngredienteService } from '../ingrediente/ingrediente.service';
 
 @Injectable()
 export class RestricaoAlimentarService {
-  constructor(
-    private readonly prismaService: PrismaService,
-    private readonly ingredienteService: IngredienteService,
-  ) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
   async create(dto: CreateRestricaoAlimentarDto) {
     try {
@@ -117,27 +113,5 @@ export class RestricaoAlimentarService {
       }
       throw error;
     }
-  }
-
-  async ingredienteEhCompativel(
-    ingredienteId: string,
-    restricaoId: string,
-  ): Promise<boolean> {
-    const ingrediente = await this.prismaService.ingrediente.findUnique({
-      where: { id: ingredienteId },
-      include: { restricoes: true },
-    });
-
-    if (!ingrediente) {
-      throw new NotFoundException('Ingrediente não encontrado');
-    }
-
-    const restricaos = ingrediente.restricoes;
-
-    if (restricaos.some((r) => r.ingredienteId === restricaoId)) {
-      return false;
-    }
-
-    return true;
   }
 }

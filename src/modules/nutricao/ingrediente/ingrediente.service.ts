@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { IngredienteDTO } from './dtos/ingrediente';
 import { UpdateIngredienteDto } from './dtos/update-ingrediente';
 import { PrismaService } from '../../../common/prisma/prisma.service';
@@ -63,13 +68,35 @@ export class IngredienteService {
   }
 
   async update(id: string, updateIngredienteDto: UpdateIngredienteDto) {
-    const ingredienteExists = await this.alreadyExists(id);
-    if (!ingredienteExists) {
+    const atual = await this.prismaService.ingrediente.findUnique({
+      where: { id },
+      select: { nome: true },
+    });
+    if (!atual) {
       throw new NotFoundException('Ingrediente não encontrado.');
     }
+
+    // Campos copiados um a um: o body não pode marcar o ingrediente como
+    // revisado nem mexer em codigoFonteExterno.
+    const nomeMudou =
+      updateIngredienteDto.nome !== undefined &&
+      updateIngredienteDto.nome !== atual.nome;
+
     const ingredienteUpdated = await this.prismaService.ingrediente.update({
       where: { id },
-      data: updateIngredienteDto,
+      data: {
+        nome: updateIngredienteDto.nome,
+        caloriasKcal: updateIngredienteDto.caloriasKcal,
+        proteinasG: updateIngredienteDto.proteinasG,
+        carboidratosG: updateIngredienteDto.carboidratosG,
+        gordurasG: updateIngredienteDto.gordurasG,
+        fibrasG: updateIngredienteDto.fibrasG,
+        sodioMg: updateIngredienteDto.sodioMg,
+        fonteDados: updateIngredienteDto.fonteDados,
+        // Outro nome é outro alimento: volta para a fila de curadoria. Os
+        // nutrientes não precisam disso, a regra nutricional reavalia abaixo.
+        ...(nomeMudou ? { restricoesRevisadasEm: null } : {}),
+      },
     });
 
     await this.regraNutricionalService.avaliarIngrediente(id);
@@ -85,9 +112,21 @@ export class IngredienteService {
     if (!ingredienteExists) {
       throw new NotFoundException('Ingrediente não encontrado.');
     }
-    await this.prismaService.ingrediente.delete({
-      where: { id },
-    });
+    try {
+      await this.prismaService.ingrediente.delete({
+        where: { id },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw new ConflictException(
+          'Não é possível remover: o ingrediente é usado em receitas, restrições ou substitutos',
+        );
+      }
+      throw error;
+    }
     return { success: 'Ingrediente removido com sucesso.' };
   }
 }
