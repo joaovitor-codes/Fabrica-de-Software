@@ -63,6 +63,7 @@ class FakePrismaService {
       this.profissionais.find((p) => p.usuarioId === where.usuarioId) ?? null,
   };
   receitaIngrediente = { deleteMany: async () => ({}) };
+  receitaAdaptacao = { deleteMany: async () => ({}) };
   receitaMidia = {
     deleteMany: async () => ({}),
     create: async ({ data }: any) => {

@@ -585,6 +585,7 @@ model RestricaoAlimentar {
   campanhasPublicitarias CampanhaPublicitaria[]
   regrasNutricionais     RestricaoRegraNutricional[]
   ingredienteSubstitutos IngredienteSubstituto[]
+  receitaAdaptacoes      ReceitaAdaptacao[]
 
   @@map("restricoes_alimentares")
 }
@@ -773,10 +774,40 @@ model Receita {
   favoritos             Favorito[]
   planoAlimentarItens   PlanoAlimentarItem[]
   notificacoes          Notificacao[]
+  // Adaptações feitas a partir desta receita.
+  adaptacoes            ReceitaAdaptacao[]   @relation("AdaptacaoOrigem")
+  // Preenchido quando esta receita é a versão adaptada de outra.
+  adaptacaoDe           ReceitaAdaptacao?    @relation("AdaptacaoAdaptada")
 
   @@index([status])
   @@index([criadoPor])
   @@map("receitas")
+}
+
+// Liga uma receita à versão adaptada dela para uma restrição (Fase 2 de
+// regra_negocio_receitas_seguras.md). A adaptada é uma Receita comum: a
+// verificação é a aprovação dela (pendente = não verificada).
+model ReceitaAdaptacao {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receitaOrigemId   String   @map("receita_origem_id") @db.Uuid
+  // versaoAtual da origem na hora da adaptação: origem editada depois
+  // deixa a adaptação desatualizada.
+  versaoOrigem      Int      @map("versao_origem")
+  receitaAdaptadaId String   @unique @map("receita_adaptada_id") @db.Uuid
+  restricaoId       String   @map("restricao_id") @db.Uuid
+  // Para o profissional que verifica: o que mudou e o que conferir.
+  resumoIa          String?  @map("resumo_ia") @db.Text
+  // [{ ingredienteOrigemId, acao: "substituir" | "remover", ingredienteDestinoId? }]
+  // Na aprovação, as substituições viram IngredienteSubstituto.
+  trocas            Json
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  receitaOrigem   Receita            @relation("AdaptacaoOrigem", fields: [receitaOrigemId], references: [id])
+  receitaAdaptada Receita            @relation("AdaptacaoAdaptada", fields: [receitaAdaptadaId], references: [id])
+  restricao       RestricaoAlimentar @relation(fields: [restricaoId], references: [id])
+
+  @@unique([receitaOrigemId, restricaoId])
+  @@map("receita_adaptacoes")
 }
 
 model ReceitaVersao {

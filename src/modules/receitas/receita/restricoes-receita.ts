@@ -189,29 +189,11 @@ export async function restricoesVioladas(
     where: { receitaId: { in: receitaIds } },
     select: {
       receitaId: true,
-      ingrediente: {
-        select: {
-          id: true,
-          nome: true,
-          restricoesRevisadasEm: true,
-          caloriasKcal: true,
-          proteinasG: true,
-          carboidratosG: true,
-          gordurasG: true,
-          fibrasG: true,
-          sodioMg: true,
-          restricoes: {
-            where: {
-              restricaoId: { in: restricoes.map((r) => r.restricaoId) },
-            },
-            select: { restricaoId: true },
-          },
-        },
-      },
+      ingrediente: { select: selecaoIngrediente(restricoes) },
     },
   });
 
-  const porReceita = new Map<string, (typeof itens)[number]['ingrediente'][]>();
+  const porReceita = new Map<string, IngredienteAvaliado[]>();
   for (const { receitaId, ingrediente } of itens) {
     porReceita.set(receitaId, [
       ...(porReceita.get(receitaId) ?? []),
@@ -220,38 +202,105 @@ export async function restricoesVioladas(
   }
 
   for (const [receitaId, ingredientes] of porReceita) {
-    const resumo = (i: { id: string; nome: string }) => ({
-      id: i.id,
-      nome: i.nome,
-    });
-    const violadas = restricoes
-      .map((r) => ({
-        id: r.restricaoId,
-        nome: r.nome,
-        estrita: r.estrita,
-        contem: ingredientes
-          .filter((i) =>
-            i.restricoes.some((v) => v.restricaoId === r.restricaoId),
-          )
-          .map(resumo),
-        naoRevisados: ingredientes
-          .filter(
-            (i) =>
-              !i.restricoesRevisadasEm || i.restricoesRevisadasEm < r.criadaEm,
-          )
-          .map(resumo),
-        semDado: ingredientes
-          .filter((i) => r.campos.some((campo) => i[campo] === null))
-          .map(resumo),
-      }))
-      .filter(
-        (v) =>
-          v.contem.length > 0 ||
-          v.naoRevisados.length > 0 ||
-          v.semDado.length > 0,
-      );
-    resultado.set(receitaId, violadas);
+    resultado.set(receitaId, avaliarIngredientes(ingredientes, restricoes));
   }
 
   return resultado;
+}
+
+/** Campos que a avaliação precisa de cada ingrediente. */
+const selecaoIngrediente = (restricoes: RestricaoDoPaciente[]) => ({
+  id: true,
+  nome: true,
+  restricoesRevisadasEm: true,
+  caloriasKcal: true,
+  proteinasG: true,
+  carboidratosG: true,
+  gordurasG: true,
+  fibrasG: true,
+  sodioMg: true,
+  restricoes: {
+    where: { restricaoId: { in: restricoes.map((r) => r.restricaoId) } },
+    select: { restricaoId: true },
+  },
+});
+
+type IngredienteAvaliado = {
+  id: string;
+  nome: string;
+  restricoesRevisadasEm: Date | null;
+  restricoes: { restricaoId: string }[];
+} & Record<CampoIngrediente, unknown>;
+
+/** O que uma lista de ingredientes fere, por restrição (sem consulta). */
+export function avaliarIngredientes(
+  ingredientes: IngredienteAvaliado[],
+  restricoes: RestricaoDoPaciente[],
+): RestricaoViolada[] {
+  const resumo = (i: { id: string; nome: string }) => ({
+    id: i.id,
+    nome: i.nome,
+  });
+  return restricoes
+    .map((r) => ({
+      id: r.restricaoId,
+      nome: r.nome,
+      estrita: r.estrita,
+      contem: ingredientes
+        .filter((i) =>
+          i.restricoes.some((v) => v.restricaoId === r.restricaoId),
+        )
+        .map(resumo),
+      naoRevisados: ingredientes
+        .filter(
+          (i) =>
+            !i.restricoesRevisadasEm || i.restricoesRevisadasEm < r.criadaEm,
+        )
+        .map(resumo),
+      semDado: ingredientes
+        .filter((i) => r.campos.some((campo) => i[campo] === null))
+        .map(resumo),
+    }))
+    .filter(
+      (v) =>
+        v.contem.length > 0 ||
+        v.naoRevisados.length > 0 ||
+        v.semDado.length > 0,
+    );
+}
+
+/** Como restricoesVioladas, mas para uma lista de ingredientes ainda não gravada. */
+export async function violacoesDosIngredientes(
+  prisma: PrismaService,
+  ingredienteIds: string[],
+  restricoes: RestricaoDoPaciente[],
+): Promise<RestricaoViolada[]> {
+  if (ingredienteIds.length === 0 || restricoes.length === 0) {
+    return [];
+  }
+  const ingredientes = await prisma.ingrediente.findMany({
+    where: { id: { in: ingredienteIds } },
+    select: selecaoIngrediente(restricoes),
+  });
+  return avaliarIngredientes(ingredientes, restricoes);
+}
+
+/**
+ * Ingredientes da base seguros para a restrição, para a IA escolher
+ * substitutos: revisados depois da criação da restrição, com o dado das
+ * regras nutricionais e sem vínculo com ela.
+ */
+export function ingredientesSegurosPara(
+  prisma: PrismaService,
+  restricao: RestricaoDoPaciente,
+) {
+  return prisma.ingrediente.findMany({
+    where: {
+      restricoesRevisadasEm: { gte: restricao.criadaEm },
+      ...Object.fromEntries(restricao.campos.map((c) => [c, { not: null }])),
+      restricoes: { none: { restricaoId: restricao.restricaoId } },
+    },
+    select: { id: true, nome: true },
+    orderBy: { nome: 'asc' },
+  });
 }

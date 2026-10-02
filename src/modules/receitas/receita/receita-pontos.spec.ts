@@ -59,6 +59,21 @@ class FakePrismaService {
     },
   };
 
+  adaptacoes = new Map<string, any>();
+  substitutos: any[] = [];
+
+  receitaAdaptacao = {
+    findUnique: async ({ where }: any) =>
+      this.adaptacoes.get(where.receitaAdaptadaId) ?? null,
+  };
+
+  ingredienteSubstituto = {
+    createMany: async ({ data }: any) => {
+      this.substitutos.push(...data);
+      return { count: data.length };
+    },
+  };
+
   pontosTransacao = {
     create: async ({ data }: any) => {
       const transacao = { id: randomUUID(), ...data };
@@ -123,6 +138,30 @@ describe('ReceitaService - pontos na aprovação/rejeição', () => {
     ]);
     expect(prisma.transactionCalls).toBe(1);
     expect(cache.del).toHaveBeenCalledWith('receitas:all');
+  });
+
+  it('aprovar uma adaptação transforma as substituições em substitutos curados', async () => {
+    prisma.adaptacoes.set(receitaId, {
+      restricaoId: 'alergia-leite',
+      trocas: [
+        {
+          ingredienteOrigemId: 'leite',
+          acao: 'substituir',
+          ingredienteDestinoId: 'bebida-aveia',
+        },
+        { ingredienteOrigemId: 'sal', acao: 'remover' },
+      ],
+    });
+
+    await service.aprovarReceita(receitaId, profissional.usuarioId);
+
+    expect(prisma.substitutos).toEqual([
+      expect.objectContaining({
+        ingredienteOrigemId: 'leite',
+        ingredienteDestinoId: 'bebida-aveia',
+        restricaoId: 'alergia-leite',
+      }),
+    ]);
   });
 
   it('rejeita a receita e credita 5 pontos na mesma transação', async () => {

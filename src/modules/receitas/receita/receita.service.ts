@@ -118,7 +118,7 @@ export class ReceitaService {
    * tem. Falha da IA não impede salvar a receita: volta lista vazia e fica
    * no log.
    */
-  private async verificarIngredientesOcultos(
+  async verificarIngredientesOcultos(
     modoPreparo: string | null | undefined,
     nomesIngredientes: string[],
   ): Promise<string[]> {
@@ -305,6 +305,18 @@ export class ReceitaService {
     return this.prismaService.receita.findMany({
       where: { status: StatusReceita.pendente, deletedAt: null },
       orderBy: { createdAt: 'asc' },
+      // Adaptação pendente = adaptação a verificar: o profissional vê de
+      // qual receita veio, para qual restrição e o resumo da IA.
+      include: {
+        adaptacaoDe: {
+          select: {
+            resumoIa: true,
+            trocas: true,
+            restricao: { select: { id: true, nome: true } },
+            receitaOrigem: { select: { id: true, nome: true } },
+          },
+        },
+      },
     });
   }
 
@@ -701,6 +713,32 @@ export class ReceitaService {
         tx,
       );
 
+      // Adaptação verificada: as substituições que a IA fez viram
+      // substitutos curados. Na próxima adaptação do mesmo ingrediente para
+      // a mesma restrição, a IA recebe estes como preferidos.
+      const adaptacao = await tx.receitaAdaptacao.findUnique({
+        where: { receitaAdaptadaId: id },
+        select: { restricaoId: true, trocas: true },
+      });
+      if (adaptacao) {
+        const substituicoes = (
+          adaptacao.trocas as unknown as {
+            ingredienteOrigemId: string;
+            acao: string;
+            ingredienteDestinoId?: string;
+          }[]
+        ).filter((t) => t.acao === 'substituir' && t.ingredienteDestinoId);
+        await tx.ingredienteSubstituto.createMany({
+          data: substituicoes.map((t) => ({
+            ingredienteOrigemId: t.ingredienteOrigemId,
+            ingredienteDestinoId: t.ingredienteDestinoId!,
+            restricaoId: adaptacao.restricaoId,
+            observacao: `Aprovado na adaptação da receita "${receita.nome}"`,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
       return {
         success: 'Receita aprovada com sucesso.',
         data: receitaAprovada,
@@ -789,6 +827,11 @@ export class ReceitaService {
         return;
       }
 
+      // A ligação de adaptação sai; a outra receita (origem ou adaptada)
+      // continua existindo por conta própria.
+      await tx.receitaAdaptacao.deleteMany({
+        where: { OR: [{ receitaOrigemId: id }, { receitaAdaptadaId: id }] },
+      });
       await tx.receitaVersao.deleteMany({ where: { receitaId: id } });
       await tx.receitaMidia.deleteMany({ where: { receitaId: id } });
       await tx.receitaIngrediente.deleteMany({ where: { receitaId: id } });
@@ -820,22 +863,55 @@ export class ReceitaService {
   }
 
   /**
-   * filtroBase mais as restrições estritas (alergia ou grave) do paciente:
-   * a receita aprovada que fere alguma delas some. O autor continua vendo as
-   * próprias. Regras em regra_negocio_receitas_seguras.md.
+   * filtroBase mais as restrições do paciente:
+   * - a receita aprovada que fere uma restrição estrita (alergia ou grave)
+   *   some; o autor continua vendo as próprias;
+   * - a adaptação ainda não verificada aparece para quem tem a restrição
+   *   dela como leve/moderada, e para quem pediu, exceto se a restrição for
+   *   estrita para ele: aí só depois da verificação.
+   * Regras em regra_negocio_receitas_seguras.md.
    */
   private filtroVisibilidade(
     usuario: UsuarioAutenticado | undefined,
     restricoes: RestricaoDoPaciente[],
   ): Prisma.ReceitaWhereInput {
-    const estritas = restricoes.filter((r) => r.estrita);
-    if (!usuario || estritas.length === 0) {
+    if (
+      !usuario ||
+      usuario.tipoUsuario === TipoUsuario.admin ||
+      usuario.tipoUsuario === TipoUsuario.profissional
+    ) {
       return this.filtroBase(usuario);
     }
+
+    const estritas = restricoes.filter((r) => r.estrita);
+    const flexiveis = restricoes.filter((r) => !r.estrita);
+    const segura = clausulaSegura(estritas);
     return {
       OR: [
-        { status: StatusReceita.aprovada, ...clausulaSegura(estritas) },
-        { criadoPor: usuario.id },
+        { status: StatusReceita.aprovada, ...segura },
+        { criadoPor: usuario.id, adaptacaoDe: { is: null } },
+        {
+          criadoPor: usuario.id,
+          adaptacaoDe: {
+            is: {
+              restricaoId: { notIn: estritas.map((r) => r.restricaoId) },
+            },
+          },
+          ...segura,
+        },
+        ...(flexiveis.length > 0
+          ? [
+              {
+                status: StatusReceita.pendente,
+                adaptacaoDe: {
+                  is: {
+                    restricaoId: { in: flexiveis.map((r) => r.restricaoId) },
+                  },
+                },
+                ...segura,
+              },
+            ]
+          : []),
       ],
     };
   }
@@ -889,8 +965,18 @@ export class ReceitaService {
     if (estritas.length > 0) {
       const existe = await this.prismaService.receita.findFirst({
         where: { id, ...this.filtroBase(usuario) },
-        select: { id: true, ingredientesNaoListados: true },
+        select: {
+          id: true,
+          status: true,
+          ingredientesNaoListados: true,
+          adaptacaoDe: { select: { id: true } },
+        },
       });
+      if (existe?.adaptacaoDe && existe.status === StatusReceita.pendente) {
+        throw new ForbiddenException(
+          'Esta adaptação ainda não foi verificada por um profissional',
+        );
+      }
       if (existe) {
         const violadas = await restricoesVioladas(
           this.prismaService,

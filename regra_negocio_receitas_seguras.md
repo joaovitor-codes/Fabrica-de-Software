@@ -162,54 +162,55 @@ Entrega: o paciente com restrições deixa de ver receitas que as violam. Ainda 
 
 ## Fase 2: adaptação por IA
 
-Entrega: o usuário pede a versão adaptada de uma receita para uma restrição e recebe na hora.
+Entrega: o usuário pede a versão adaptada de uma receita para uma restrição. Quem tem a restrição como leve/moderada recebe na hora; quem tem como estrita (alergia ou grave), depois que um profissional verifica.
+
+**Andamento**: implementada. Código em `src/modules/receitas/receita/`: `adaptacao.ts` (leitura da resposta da IA, sem banco), `adaptacao-receita.service.ts` e `adaptacao-receita.controller.ts`; prompt em `IaService.adaptarReceita`.
 
 ### Modelagem
 
 A receita adaptada é uma `Receita` comum, com ingredientes próprios. Por isso continua funcionando com alertas, favoritos e plano alimentar sem nenhum código especial.
 
-**A verificação reaproveita o fluxo de aprovação que já existe**: adaptada `pendente` = não verificada, adaptada `aprovada` = verificada. Assim, a fila (`findPendentes`), as regras de quem pode aprovar e os pontos do profissional continuam valendo sem duplicar nada. A tabela nova só guarda a ligação:
+**A verificação reaproveita o fluxo de aprovação que já existe**: adaptada `pendente` = não verificada, adaptada `aprovada` = verificada. A fila (`GET /pendentes`), as regras de quem pode aprovar e os pontos do profissional continuam valendo. A tabela `ReceitaAdaptacao` só guarda a ligação:
 
-```prisma
-model ReceitaAdaptacao {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  receitaOrigemId   String   @map("receita_origem_id") @db.Uuid
-  versaoOrigem      Int      @map("versao_origem")
-  receitaAdaptadaId String   @unique @map("receita_adaptada_id") @db.Uuid
-  restricaoId       String   @map("restricao_id") @db.Uuid
-  resumoIa          String?  @map("resumo_ia") @db.Text
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+- `receitaOrigemId`, `receitaAdaptadaId` (único), `restricaoId`, com `@@unique([receitaOrigemId, restricaoId])`: uma adaptação por par, que é o que permite reaproveitá-la.
+- `versaoOrigem`: a `versaoAtual` da origem na hora da adaptação. Origem editada depois deixa a adaptação desatualizada: o próximo pedido gera outra, e a antiga sai de circulação (`deletedAt`, para não sumir de planos que a usam).
+- `resumoIa`: o que mudou e o que conferir, para quem verifica.
+- `trocas` (JSON): `[{ ingredienteOrigemId, acao: "substituir" | "remover", ingredienteDestinoId? }]`.
 
-  @@unique([receitaOrigemId, restricaoId])
-  @@map("receita_adaptacoes")
-}
-```
+### Fluxo `POST /api/receita/:id/adaptar { restricaoId }`
 
-- `@@unique([receitaOrigemId, restricaoId])` garante só uma adaptação por par, que é o que permite reaproveitá-la.
-- `versaoOrigem` guarda a `versaoAtual` da original no momento da adaptação. Se a original for editada depois, a adaptação fica desatualizada e é gerada de novo no próximo pedido, substituindo a antiga.
+Exige login. Pode pedir quem consegue ver a receita (aprovada ou própria; profissional e admin, qualquer uma).
 
-### Mudanças no código existente
+1. Já existe adaptação desta versão da receita para a restrição → devolve a existente, sem chamar a IA.
+2. A receita já é segura para a restrição → responde `jaSegura`, sem adaptar.
+3. **Ingredientes a trocar**: os que contêm a restrição, os não revisados e os sem o dado da regra nutricional. Sem trocar os dois últimos, a adaptada continuaria escondida (ex: o azeite sem sódio informado, na hipertensão).
+4. **A IA escolhe só entre candidatos da base**, recebidos por índice: ingredientes revisados, com o dado da regra e sem vínculo com a restrição. Substitutos curados (`IngredienteSubstituto`) vão como preferidos. Para cada ingrediente a trocar, a IA **substitui** (com a quantidade na mesma unidade) ou **remove** (ex: sal). Reduzir a quantidade não adianta com a regra atual (ver "Decisões em aberto"). Esse fluxo não usa o `gerarSubstituto`, que cria ingredientes a partir de texto livre.
+5. A IA reescreve o modo de preparo e escreve o `resumoIa`.
+6. **Checagem determinística**: a lista nova não pode ferir a restrição, e o modo de preparo reescrito não pode citar ingrediente fora dela (checagem da Fase 1). Resposta da IA fora do formato, que não trate todos os ingredientes a trocar, ou que falhe na checagem → 422, nada gravado.
+7. Grava, numa transação, a `Receita` adaptada (`pendente`, `criadoPor` = quem pediu, mesmos tempo, porções e aviso de contaminação cruzada) e a `ReceitaAdaptacao`.
+8. Restrição estrita para quem pediu → a resposta não traz a receita, só o aviso de que ela fica disponível depois da verificação.
 
-- **`filtroVisibilidade`**: hoje uma receita `pendente` só é vista pelo autor. Abrir uma exceção: adaptada `pendente` também é vista por quem tem a restrição dela como **flexível**.
-- **`findPendentes`**: incluir a `ReceitaAdaptacao` e o `resumoIa`, para o profissional saber que é uma adaptação e ver a original ao lado.
-- **`remove`**: hoje apaga a receita e as tabelas filhas. Passa a apagar também as `ReceitaAdaptacao` em que ela é origem ou adaptada. Se a original for apagada, as adaptadas continuam como receitas independentes.
-- **`ReceitaModule`**: importar o `IaModule`.
+### Quem vê a adaptação ainda não verificada
 
-### Fluxo `POST /receitas/:id/adaptar { restricaoId }`
+No `filtroVisibilidade`:
+- quem tem a restrição dela como leve/moderada;
+- quem pediu, **exceto** se a restrição for estrita para ele;
+- profissional e admin (curadoria).
 
-Exige login. Qualquer tipo de usuário pode pedir.
-
-1. Se já existir uma `ReceitaAdaptacao` para o par, com `versaoOrigem` igual à versão atual, devolve a existente, sem chamar a IA.
-2. Se a receita já for nativa segura para a restrição, devolve a própria receita.
-3. Para cada ingrediente vinculado à restrição, procura um substituto primeiro em `IngredienteSubstituto`, preferindo destinos com `restricoesRevisadasEm`. Só recorre à IA se não encontrar. **A IA escolhe dentro da base de `Ingrediente`**: o prompt recebe uma lista de candidatos da base que não têm vínculo com a restrição. Uma resposta fora da lista é descartada. Esse fluxo **não** usa o `gerarSubstituto`, porque ele cria ingredientes novos a partir de texto livre.
-4. A IA ajusta as quantidades quando a troca não for 1:1 (ex: farinha de trigo por farinha de arroz), reescreve o `modoPreparo` e gera o `resumoIa` para a verificação. O texto reescrito também passa pela checagem de ingredientes ocultos da Fase 1.
-5. **Checagem determinística**: a receita adaptada passa pelo mesmo teste "nenhum ingrediente vinculado". Se falhar, nada é gravado e a resposta é um erro.
-6. Grava a `Receita` adaptada (`status = pendente`, `criadoPor` = quem pediu, mesmo `avisoContaminacaoCruzada` da original) e a `ReceitaAdaptacao`, numa transação.
-7. Se a restrição for estrita para quem pediu, responde que a adaptação foi criada, mas só fica disponível depois da verificação.
+Em todos os casos, a adaptada também precisa ser segura para as outras restrições estritas do paciente. Quem pediu e tem a restrição como estrita recebe 403 "ainda não foi verificada" ao abrir pelo link.
 
 ### Aprendizado
 
-Quando uma adaptação é aprovada, os substitutos que a IA escolheu viram linhas em `IngredienteSubstituto`. Na próxima adaptação com o mesmo ingrediente e a mesma restrição, o substituto curado é usado e a IA nem é chamada para essa troca. Isso entra no `aprovarReceita`, só quando a receita tem `ReceitaAdaptacao`.
+Quando a adaptada é aprovada, as substituições de `trocas` viram `IngredienteSubstituto` (sem duplicar). Na próxima adaptação com o mesmo ingrediente e a mesma restrição, a IA recebe esses substitutos como preferidos.
+
+### Teste com a IA real (base local, 2026-10-03)
+
+| Paciente | Receita | O que a IA fez | Disponível |
+| --- | --- | --- | --- |
+| Carla, hipertensão grave | Arroz com feijão | removeu o sal | depois da verificação; aprovada, apareceu na lista dela |
+| Ana, alergia a leite | Bolo simples | leite → extrato de soja | depois da verificação |
+| Bruno, lactose moderada | Vitamina de banana | leite → extrato de soja | na hora |
+| Carla, hipertensão grave | Frango com salada | azeite (sem sódio informado) → abacate | depois da verificação |
 
 ## Fase 3: substituição da original pela adaptada
 
