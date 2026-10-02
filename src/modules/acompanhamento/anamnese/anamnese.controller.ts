@@ -18,6 +18,7 @@ import { RolesGuard } from '../../../auth/roles.guard';
 import { Roles } from '../../../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
@@ -150,7 +151,7 @@ export class AnamneseController {
     @Roles(TipoUsuario.profissional)
     @Post(':anamneseId/respostas')
     async criarResposta(
-        @Request() request,
+        @Request() request: RequestAutenticado,
         @Param('anamneseId', uuidPipe('ID de anamnese inválido')) anamneseId: string,
         @Body() dto: createAnamneseRespostaDto,
     ) {
@@ -162,7 +163,7 @@ export class AnamneseController {
     @Roles(TipoUsuario.profissional)
     @Patch('respostas/:id')
     async atualizarResposta(
-        @Request() request,
+        @Request() request: RequestAutenticado,
         @Param('id', uuidPipe('ID de resposta inválido')) id: string,
         @Body() dto: updateAnamneseRespostaDto,
     ) {
@@ -173,7 +174,7 @@ export class AnamneseController {
     @ApiOkResponse({ description: 'Resposta removida com sucesso.' })
     @Roles(TipoUsuario.profissional)
     @Delete('respostas/:id')
-    async removerResposta(@Request() request, @Param('id', uuidPipe('ID de resposta inválido')) id: string) {
+    async removerResposta(@Request() request: RequestAutenticado, @Param('id', uuidPipe('ID de resposta inválido')) id: string) {
         return this.anamneseRespostaService.deleteAnamneseResposta(id, request.user.sub);
     }
 
@@ -185,21 +186,21 @@ export class AnamneseController {
     @ApiCreatedResponse({ description: 'Anamnese criada com sucesso.' })
     @Roles(TipoUsuario.profissional)
     @Post()
-    async criarAnamnese(@Request() request, @Body() dto: createAnamneseDto) {
+    async criarAnamnese(@Request() request: RequestAutenticado, @Body() dto: createAnamneseDto) {
         return this.anamneseService.createAnamnese(dto, request.user.sub);
     }
 
     @ApiOperation({ summary: 'Retorna uma anamnese pelo ID (profissional dono, paciente dono ou admin)' })
     @ApiOkResponse({ description: 'Anamnese retornada com sucesso.' })
     @Get(':id')
-    async buscarAnamnese(@Request() request, @Param('id', uuidPipe('ID de anamnese inválido')) id: string) {
+    async buscarAnamnese(@Request() request: RequestAutenticado, @Param('id', uuidPipe('ID de anamnese inválido')) id: string) {
         return this.anamneseService.getAnamneseById(id, request.user.sub, request.user.tipoUsuario);
     }
 
     @ApiOperation({ summary: 'Retorna todas as anamneses de um paciente (profissional dono, paciente dono ou admin)' })
     @ApiOkResponse({ description: 'Anamneses retornadas com sucesso.' })
     @Get('paciente/:pacienteId')
-    async getAnamnesesByPacienteId(@Request() request, @Param('pacienteId', uuidPipe('ID de paciente inválido')) pacienteId: string) {
+    async getAnamnesesByPacienteId(@Request() request: RequestAutenticado, @Param('pacienteId', uuidPipe('ID de paciente inválido')) pacienteId: string) {
         return this.anamneseService.getAnamnesesByPacienteId(pacienteId, request.user.sub, request.user.tipoUsuario);
     }
 }

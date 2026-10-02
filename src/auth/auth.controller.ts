@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Request, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Request, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import {
     ConfirmPasswordResetDto,
     RefreshTokenDto,
@@ -10,9 +10,10 @@ import {
 } from './dtos/auth';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
+import type { RequestAutenticado } from './auth.types';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import type { Response } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 
 const ACCESS_TOKEN_COOKIE = 'access_token';
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
@@ -33,7 +34,7 @@ export class AuthController {
     @Throttle({ default: { ttl: 900_000, limit: 5 } })
     @ApiOperation({ summary: 'Endpoint para fazer login' })
     @Post('signin')
-    async signin(@Body() body: SignInDto, @Request() request, @Res({ passthrough: true }) response: Response){
+    async signin(@Body() body: SignInDto, @Request() request: ExpressRequest, @Res({ passthrough: true }) response: Response){
         const tokens = await this.authService.signIn(body, this.sessionMetadata(request));
         this.setAuthCookies(response, tokens);
         return tokens;
@@ -70,7 +71,7 @@ export class AuthController {
     @ApiOperation({ summary: 'Endpoint para obter informações do usuário autenticado' })
     @UseGuards(AuthGuard)
     @Get('me')
-    async me(@Request() request){
+    async me(@Request() request: RequestAutenticado){
         return this.authService.me(request.user.sub);
     }
 
@@ -78,8 +79,8 @@ export class AuthController {
     @ApiOperation({ summary: 'Endpoint para atualizar o token de acesso'})
     @ApiResponse({ status: 200, description: 'Token atualizado com sucesso' })
     @Post('refresh')
-    async refresh(@Body() body: RefreshTokenDto, @Request() request, @Res({ passthrough: true }) response: Response){
-        const refreshToken = body.refreshToken || request.cookies?.[REFRESH_TOKEN_COOKIE];
+    async refresh(@Body() body: RefreshTokenDto, @Request() request: ExpressRequest, @Res({ passthrough: true }) response: Response){
+        const refreshToken = this.refreshTokenDe(body, request);
         const tokens = await this.authService.refreshToken(refreshToken, this.sessionMetadata(request));
         this.setAuthCookies(response, tokens);
         return tokens;
@@ -88,15 +89,28 @@ export class AuthController {
     @ApiOperation({ summary: 'Revoga a sessão associada ao refresh token' })
     @ApiResponse({ status: 200, description: 'Sessão revogada com sucesso' })
     @Post('logout')
-    async logout(@Body() body: RefreshTokenDto, @Request() request, @Res({ passthrough: true }) response: Response){
-        const refreshToken = body.refreshToken || request.cookies?.[REFRESH_TOKEN_COOKIE];
+    async logout(@Body() body: RefreshTokenDto, @Request() request: ExpressRequest, @Res({ passthrough: true }) response: Response){
+        const refreshToken = this.refreshTokenDe(body, request);
         const result = await this.authService.logout(refreshToken);
         response.clearCookie(ACCESS_TOKEN_COOKIE, this.cookieOptions());
         response.clearCookie(REFRESH_TOKEN_COOKIE, this.cookieOptions());
         return result;
     }
 
-    private sessionMetadata(request: any){
+    private refreshTokenDe(body: RefreshTokenDto, request: ExpressRequest): string {
+        const refreshToken = body.refreshToken || this.cookie(request, REFRESH_TOKEN_COOKIE);
+        if (!refreshToken) {
+            throw new UnauthorizedException('Refresh token inválido');
+        }
+        return refreshToken;
+    }
+
+    private cookie(request: ExpressRequest, nome: string): string | undefined {
+        const cookies = request.cookies as Record<string, string | undefined> | undefined;
+        return cookies?.[nome];
+    }
+
+    private sessionMetadata(request: ExpressRequest){
         return {
             userAgent: request.headers['user-agent'],
             ipAddress: request.ip,

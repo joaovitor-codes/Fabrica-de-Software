@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { CreateClinicaDto, UpdateClinicaDto } from './dtos/clinicas';
 
 @Injectable()
@@ -57,8 +58,8 @@ export class ClinicasService {
                     porte: dto.porte,
                 },
             });
-        }catch(error: any){
-            if(error.code === 'P2002' && error.meta?.target?.includes('cnpj')) {
+        }catch(error){
+            if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && (error.meta?.target as string | string[] | undefined)?.includes('cnpj')) {
                 throw new ConflictException('Já existe uma clínica cadastrada com este CNPJ');
             }
             throw error
@@ -97,8 +98,8 @@ export class ClinicasService {
                     porte: dto.porte,
                 },
             });
-        }catch(error: any){
-            if(error.code === 'P2002' && error.meta?.target?.includes('cnpj')) {
+        }catch(error){
+            if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && (error.meta?.target as string | string[] | undefined)?.includes('cnpj')) {
                 throw new ConflictException('Já existe uma clínica cadastrada com este CNPJ');
             }
             throw error

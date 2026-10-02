@@ -1,7 +1,7 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ConfigService } from '@nestjs/config';
-import { RespostaSubstituto, SugestaoSubstituto } from './dtos/ia';
+import { RespostaSubstituto } from './dtos/ia';
 
 @Injectable()
 export class IaService {

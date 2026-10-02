@@ -7,6 +7,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { TipoUsuario } from '@prisma/client';
 import { Roles } from '../../../auth/roles.decorator';
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
@@ -30,7 +31,7 @@ export class DiarioDeSintomasController {
     async criarDiarioDeSintomas(
         @Param('pacienteId', uuidPipe('ID invalido')) pacienteId: string,
         @Body() dto: CreateDiarioSintomasDto,
-        @Request() request,
+        @Request() request: RequestAutenticado,
     ){
         return await this.diarioDeSintomasService.criarDiarioDeSintomas(pacienteId, dto, request.user.sub, request.user.tipoUsuario);
     }
@@ -42,7 +43,7 @@ export class DiarioDeSintomasController {
     async getDiario(
         @Param('diarioId', uuidPipe('ID invalido')) diarioId: string,
         @Param('pacienteId', uuidPipe('ID invalido')) pacienteId: string,
-        @Request() request,
+        @Request() request: RequestAutenticado,
     ){
         return await this.diarioDeSintomasService.getDiario(diarioId, pacienteId, request.user.sub, request.user.tipoUsuario);
     }
@@ -55,7 +56,7 @@ export class DiarioDeSintomasController {
         @Param('pacienteId', uuidPipe('ID invalido')) pacienteId: string,
         @Param('page', ParseIntPipe) page: number,
         @Param('limit', ParseIntPipe) limit: number,
-        @Request() request,
+        @Request() request: RequestAutenticado,
     ){
         return await this.diarioDeSintomasService.findAllPorPacienteId(pacienteId, request.user.sub, request.user.tipoUsuario, page, limit);
     }

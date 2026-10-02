@@ -13,6 +13,7 @@ import { ComentarioRefeicaoService } from "./comentario-refeicao.service";
 import { MarcarCheckListDto } from "./dtos/checklist-refeicao";
 import { CreateComentarioRefeicaoDto } from "./dtos/comentario-refeicao";
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
@@ -34,7 +35,7 @@ export class PlanoAlimentarController {
   @ApiCreatedResponse({ description: 'Plano alimentar criado com sucesso.' })
   @Roles(TipoUsuario.profissional)
   @Post('/pacientes/:pacienteId')
-  async createPlanoAlimentar(@Body() planoAlimentarDto: PlanoAlimentarDto, @Request() req, @Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string) {
+  async createPlanoAlimentar(@Body() planoAlimentarDto: PlanoAlimentarDto, @Request() req: RequestAutenticado, @Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string) {
     const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
     return await this.planoAlimentarService.createPlanoAlimentar(planoAlimentarDto, profissional.id, pacienteId);
   }
@@ -46,7 +47,7 @@ export class PlanoAlimentarController {
   async adicionarItemAoPlano(
     @Param('id', uuidPipe('ID do plano alimentar inválido')) id: string,
     @Body() dto: PlanoAlimentarItemDto,
-    @Request() req,
+    @Request() req: RequestAutenticado,
   ) {
     const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
     return this.planoAlimentarService.adicionarItemAoPlano(id, dto, profissional.id);
@@ -56,7 +57,7 @@ export class PlanoAlimentarController {
   @ApiOkResponse({ description: 'Lista de planos alimentares do paciente.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional, TipoUsuario.paciente)
   @Get('pacientes/:pacienteId')
-  async findPlanosDoPaciente(@Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string, @Request() req) {
+  async findPlanosDoPaciente(@Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string, @Request() req: RequestAutenticado) {
     return this.planoAlimentarService.findPlanosDoPaciente(pacienteId, req.user.sub, req.user.tipoUsuario);
   }
 
@@ -64,7 +65,7 @@ export class PlanoAlimentarController {
   @ApiOkResponse({ description: 'Plano alimentar com seus itens.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional, TipoUsuario.paciente)
   @Get(':id')
-  async findPlanoAlimentar(@Param('id', uuidPipe('ID do plano alimentar inválido')) id: string, @Request() req) {
+  async findPlanoAlimentar(@Param('id', uuidPipe('ID do plano alimentar inválido')) id: string, @Request() req: RequestAutenticado) {
     return this.planoAlimentarService.findPlanoAlimentar(id, req.user.sub, req.user.tipoUsuario);
   }
 
@@ -75,7 +76,7 @@ export class PlanoAlimentarController {
   async updatePlanoAlimentar(
     @Param('id', uuidPipe('ID do plano alimentar inválido')) id: string,
     @Body() dto: UpdatePlanoAlimentarDto,
-    @Request() req,
+    @Request() req: RequestAutenticado,
   ) {
     const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
     return this.planoAlimentarService.updatePlanoAlimentar(id, dto, profissional.id);
@@ -88,7 +89,7 @@ export class PlanoAlimentarController {
   async updateItemDoPlano(
     @Param('itemId', uuidPipe('ID do item inválido')) itemId: string,
     @Body() dto: UpdatePlanoAlimentarItemDto,
-    @Request() req,
+    @Request() req: RequestAutenticado,
   ) {
     const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
     return this.planoAlimentarService.updateItemDoPlano(itemId, dto, profissional.id);
@@ -98,7 +99,7 @@ export class PlanoAlimentarController {
   @ApiOkResponse({ description: 'Item removido com sucesso.' })
   @Roles(TipoUsuario.profissional)
   @Delete('itens/:itemId')
-  async deleteItemDoPlano(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
+  async deleteItemDoPlano(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req: RequestAutenticado) {
     const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
     return this.planoAlimentarService.deleteItemDoPlano(itemId, profissional.id);
   }
@@ -110,7 +111,7 @@ export class PlanoAlimentarController {
   async marcarChecklist(
     @Param('itemId', uuidPipe('ID do item inválido')) itemId: string,
     @Body() dto: MarcarCheckListDto,
-    @Request() req,
+    @Request() req: RequestAutenticado,
   ) {
     const paciente = await this.pacientesService.getPacienteByUserId(req.user.sub);
     return this.checklistRefeicaoService.marcarCheckList(itemId, paciente.id, dto);
@@ -120,7 +121,7 @@ export class PlanoAlimentarController {
   @ApiOkResponse({ description: 'Histórico de checklist.' })
   @Roles(TipoUsuario.admin, TipoUsuario.paciente, TipoUsuario.profissional)
   @Get('itens/:itemId/checklist')
-  async findChecklist(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
+  async findChecklist(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req: RequestAutenticado) {
     return this.checklistRefeicaoService.findAll(itemId, req.user.sub, req.user.tipoUsuario);
   }
 
@@ -131,7 +132,7 @@ export class PlanoAlimentarController {
   async criarComentario(
     @Param('itemId', uuidPipe('ID do item inválido')) itemId: string,
     @Body() dto: CreateComentarioRefeicaoDto,
-    @Request() req,
+    @Request() req: RequestAutenticado,
   ) {
     const paciente = await this.pacientesService.getPacienteByUserId(req.user.sub);
     return this.comentarioRefeicaoService.criarComentario(itemId, paciente.id, req.user.sub, dto);
@@ -141,7 +142,7 @@ export class PlanoAlimentarController {
   @ApiOkResponse({ description: 'Lista de comentários.' })
   @Roles(TipoUsuario.admin, TipoUsuario.paciente, TipoUsuario.profissional)
   @Get('itens/:itemId/comentarios')
-  async findComentarios(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
+  async findComentarios(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req: RequestAutenticado) {
     return this.comentarioRefeicaoService.findAll(itemId, req.user.sub, req.user.tipoUsuario);
   }
 
@@ -149,7 +150,7 @@ export class PlanoAlimentarController {
   @ApiOkResponse({ description: 'Plano alimentar removido com sucesso.' })
   @Roles(TipoUsuario.admin, TipoUsuario.profissional)
   @Delete(':id')
-  async deletePlanoAlimentar(@Param('id', uuidPipe('ID do plano alimentar inválido')) id: string, @Request() req) {
+  async deletePlanoAlimentar(@Param('id', uuidPipe('ID do plano alimentar inválido')) id: string, @Request() req: RequestAutenticado) {
     return this.planoAlimentarService.deletePlanoAlimentar(id, req.user.sub, req.user.tipoUsuario);
   }
 
@@ -160,7 +161,7 @@ export class PlanoAlimentarController {
   async atualizarChecklist(
     @Param('itemId', uuidPipe('ID do item inválido')) itemId: string,
     @Body() dto: MarcarCheckListDto,
-    @Request() req,
+    @Request() req: RequestAutenticado,
   ) {
     const paciente = await this.pacientesService.getPacienteByUserId(req.user.sub);
     return this.checklistRefeicaoService.updateCheckList(itemId, paciente.id, dto);

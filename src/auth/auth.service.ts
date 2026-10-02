@@ -10,7 +10,7 @@ import {
 } from './dtos/auth';
 import { PrismaService } from '../common/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 
@@ -363,14 +363,14 @@ export class AuthService {
             tokenType: 'access',
         };
         const accessToken = this.jwtService.sign(payload, {
-            expiresIn: (this.configService.get<string>('JWT_EXPIRES_IN') || '1h') as any,
+            expiresIn: (this.configService.get<string>('JWT_EXPIRES_IN') || '1h') as JwtSignOptions['expiresIn'],
         });
         const refreshToken = this.jwtService.sign({
             sub: usuario.id,
             tokenType: 'refresh',
             sid: currentSessionId,
         }, {
-            expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d') as any,
+            expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d') as JwtSignOptions['expiresIn'],
         });
         const decodedRefresh = this.jwtService.decode(refreshToken) as { exp: number };
         const sessionData = {

@@ -295,8 +295,8 @@ export class ProfissionalService {
 
         return { usuario, paciente };
       });
-    } catch (error: any) {
-      if (error?.code === 'P2002' && error?.meta?.target?.includes('email')) {
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && (error.meta?.target as string | string[] | undefined)?.includes('email')) {
         throw new ConflictException('Email já está em uso');
       }
       throw new BadRequestException(

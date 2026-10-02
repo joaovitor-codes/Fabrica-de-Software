@@ -7,6 +7,7 @@ import { Roles } from '../../../auth/roles.decorator';
 import { PontosTransacaoService } from './pontos-transacao.service';
 import { AjustePontosDto } from './dtos/ajuste-pontos';
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
@@ -48,7 +49,7 @@ export class PontosTransacaoController {
     @ApiOperation({ summary: 'Realizar um ajuste manual nos pontos de um profissional' })
     @ApiCreatedResponse({ description: 'Ajuste de pontos realizado com sucesso.' })
     @Post('ajuste')
-    async ajusteManual(@Request() request, @Body() dto: AjustePontosDto){
+    async ajusteManual(@Request() request: RequestAutenticado, @Body() dto: AjustePontosDto){
         return this.pontosTransacaoService.ajusteManual(request.user.sub, dto);
     }
 }

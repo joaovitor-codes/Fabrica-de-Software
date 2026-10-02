@@ -11,6 +11,7 @@ import { CreateUsuarioDto } from '../usuario/dtos/usuario';
 import { ClinicasService } from '../clinicas/clinicas.service';
 import { PontosTransacaoService } from '../../receitas/pontos-transacao/pontos-transacao.service';
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
@@ -33,7 +34,7 @@ export class ProfissionalController {
   @ApiResponse({ description: 'Retorna a lista de pacientes vinculados ao profissional.' })
   @Roles(TipoUsuario.profissional)
   @Get('meus-pacientes')
-  async listarMeusPacientes(@Request() request) {
+  async listarMeusPacientes(@Request() request: RequestAutenticado) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
     return this.profissionalService.listarPacientesDoProfissional(profissional.id);
   }
@@ -42,7 +43,7 @@ export class ProfissionalController {
   @ApiResponse({ description: 'Retorna os dados da clínica vinculada ao profissional.' })
   @Roles(TipoUsuario.profissional)
   @Get('minha-clinica')
-  async minhaClinica(@Request() request) {
+  async minhaClinica(@Request() request: RequestAutenticado) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
     
     if (!profissional.clinicaId) {
@@ -56,7 +57,7 @@ export class ProfissionalController {
   @ApiResponse({ description: 'Retorna o saldo de pontos de incentivo do profissional.' })
   @Roles(TipoUsuario.profissional)
   @Get('pontos/saldo')
-  async getSaldo(@Request() request) {
+  async getSaldo(@Request() request: RequestAutenticado) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
     await this.profissionalService.exigirProfissionalAprovado(profissional.id);
     const saldo = await this.pontosTransacaoService.getSaldo(profissional.id);
@@ -68,7 +69,7 @@ export class ProfissionalController {
   @ApiResponse({ description: 'Retorna o histórico paginado de transações de pontos do profissional.' })
   @Roles(TipoUsuario.profissional)
   @Get('pontos/historico')
-  async historicoTransacoes(@Request() request, @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number, @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number) {
+  async historicoTransacoes(@Request() request: RequestAutenticado, @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number, @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
     await this.profissionalService.exigirProfissionalAprovado(profissional.id);
 
@@ -79,7 +80,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional criada com sucesso, aguardando aprovação.' })
   @Roles(TipoUsuario.comum)
   @Post('solicitar')
-  async solicitarCadastro(@Request() request, @Body() dto: createProfissionalDto) {
+  async solicitarCadastro(@Request() request: RequestAutenticado, @Body() dto: createProfissionalDto) {
     return this.profissionalService.solicitarCadastroProfissional(request.user.sub, dto);
   }
 
@@ -95,7 +96,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Paciente criado com sucesso e associado ao profissional.' })
   @Roles(TipoUsuario.profissional)
   @Post('paciente')
-  async criarPaciente(@Request() request, @Body() dto: CreateUsuarioDto) {
+  async criarPaciente(@Request() request: RequestAutenticado, @Body() dto: CreateUsuarioDto) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
     return this.profissionalService.criarNovoPacienteAssociado(dto, profissional.id);
   }
@@ -104,7 +105,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Clínica Desassociada com sucesso ao profissional.' })
   @Roles(TipoUsuario.profissional)
   @Post('clinica/desassociar')
-  async desassociarClinica(@Request() request) {
+  async desassociarClinica(@Request() request: RequestAutenticado) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
 
     if (!profissional.clinicaId) {
@@ -118,7 +119,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional aprovada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':id/aprovar')
-  async aprovar(@Request() request, @Param('id', uuidPipe('ID inválido')) id: string) {
+  async aprovar(@Request() request: RequestAutenticado, @Param('id', uuidPipe('ID inválido')) id: string) {
     return this.profissionalService.aprovarCadastroProfissional(request.user.sub, id);
   }
 
@@ -126,7 +127,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Solicitação de cadastro profissional rejeitada com sucesso.' })
   @Roles(TipoUsuario.admin)
   @Post(':id/rejeitar')
-  async rejeitar(@Request() request, @Param('id', uuidPipe('ID inválido')) id: string) {
+  async rejeitar(@Request() request: RequestAutenticado, @Param('id', uuidPipe('ID inválido')) id: string) {
     return this.profissionalService.rejeitarCadastroProfissional(request.user.sub, id);
   }
 
@@ -134,7 +135,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Paciente vinculado ao profissional com sucesso.' })
   @Roles(TipoUsuario.profissional)
   @Post('paciente/:pacienteId/associar')
-  async associarPaciente(@Request() request, @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string) {
+  async associarPaciente(@Request() request: RequestAutenticado, @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
 
     return this.profissionalService.associarPaciente(profissional.id, pacienteId);
@@ -152,7 +153,7 @@ export class ProfissionalController {
   @ApiCreatedResponse({ description: 'Clínica Associada com sucesso ao profissional.' })
   @Roles(TipoUsuario.profissional)
   @Post('clinica/associar/:id')
-  async associarClinica(@Request() request, @Param('id', uuidPipe('ID inválido')) id: string) {
+  async associarClinica(@Request() request: RequestAutenticado, @Param('id', uuidPipe('ID inválido')) id: string) {
     const profissional = await this.profissionalService.findByUsuarioId(request.user.sub);
 
     if (profissional.clinicaId) {

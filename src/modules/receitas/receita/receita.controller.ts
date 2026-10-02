@@ -28,9 +28,9 @@ import {
   ApiOkResponse,
   ApiOperation,
 } from '@nestjs/swagger';
-import { IngredienteDTO } from '../../nutricao/ingrediente/dtos/ingrediente';
 import { TipoMidia } from '@prisma/client';
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uploadDirectory = join(process.cwd(), 'uploads', 'receitas');
 const receitaStorage = diskStorage({
   destination: (_req, file, callback) => {
@@ -61,8 +61,7 @@ export class ReceitaController {
   @Post()
   async create(
     @Body() receita: ReceitaDto,
-    @Request() req,
-    @Body('ingredientes') ingredientes: IngredienteDTO[],
+    @Request() req: RequestAutenticado,
   ) {
     return await this.receitaService.create(receita, req.user.sub);
   }
@@ -117,7 +116,7 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Lista de receitas favoritas.' })
   @UseGuards(AuthGuard)
   @Get('favoritos')
-  async findFavorites(@Request() request) {
+  async findFavorites(@Request() request: RequestAutenticado) {
     return await this.receitaService.findFavorites(request.user.sub);
   }
 
@@ -127,7 +126,7 @@ export class ReceitaController {
   @Post(':id/favorito')
   async addFavorite(
     @Param('id', uuidPipe('ID inválido')) id: string,
-    @Request() request,
+    @Request() request: RequestAutenticado,
   ) {
     return await this.receitaService.addFavorite(id, request.user.sub);
   }
@@ -138,7 +137,7 @@ export class ReceitaController {
   @Delete(':id/favorito')
   async removeFavorite(
     @Param('id', uuidPipe('ID inválido')) id: string,
-    @Request() request,
+    @Request() request: RequestAutenticado,
   ) {
     return await this.receitaService.removeFavorite(id, request.user.sub);
   }
@@ -186,7 +185,7 @@ export class ReceitaController {
   async update(
     @Param('id', uuidPipe('ID inválido')) id: string,
     @Body() receita: UpdateReceitaDto,
-    @Request() request,
+    @Request() request: RequestAutenticado,
   ) {
     return await this.receitaService.update(id, receita, request.user.sub);
   }
@@ -195,7 +194,7 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita aprovada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id/aprovar')
-  async aprovarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request) {
+  async aprovarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request: RequestAutenticado) {
     return await this.receitaService.aprovarReceita(id, request.user.sub);
   }
 
@@ -203,7 +202,7 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Receita rejeitada com sucesso.' })
   @UseGuards(AuthGuard)
   @Patch(':id/rejeitar')
-  async rejeitarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request) {
+  async rejeitarReceita(@Param('id', uuidPipe('ID inválido')) id: string, @Request() request: RequestAutenticado) {
     return await this.receitaService.rejeitarReceita(id, request.user.sub);
   }
 

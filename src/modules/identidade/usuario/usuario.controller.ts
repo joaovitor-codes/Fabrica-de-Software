@@ -11,6 +11,7 @@ import { UpdateEnderecoDto } from '../endereco/dtos/endereco';
 import { CreateTelefoneDto, UpdateTelefoneDto } from '../telefone/dtos/telefone';
 import { TelefoneService } from '../telefone/telefone.service';
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
@@ -39,7 +40,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Cria um endereço vinculado ao usuário autenticado' })
     @ApiCreatedResponse({ description: 'Endereço do usuário criado com sucesso.' })
     @Post('me/endereco')
-    async adicionarMeuEndereco(@Request() request, @Body() createUsuarioEnderecoDto: CreateUsuarioEnderecoDto) {
+    async adicionarMeuEndereco(@Request() request: RequestAutenticado, @Body() createUsuarioEnderecoDto: CreateUsuarioEnderecoDto) {
         const userId = request.user.sub;
 
         return this.enderecoService.create({
@@ -51,7 +52,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Obtém os endereços do usuário autenticado' })
     @ApiOkResponse({ description: 'Endereços do usuário.' })
     @Get('me/enderecos')
-    async meusEnderecos(@Request() request) {
+    async meusEnderecos(@Request() request: RequestAutenticado) {
         const userId = request.user.sub;
         return this.enderecoService.findByUserId(userId);
     }
@@ -59,7 +60,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Atualiza as informações do usuário autenticado' })
     @ApiOkResponse({ description: 'Usuário atualizado com sucesso.' })
     @Patch('me') 
-    async updateMe(@Request() request, @Body() updateUsuarioDto: UpdateUsuarioDto) {
+    async updateMe(@Request() request: RequestAutenticado, @Body() updateUsuarioDto: UpdateUsuarioDto) {
         const userId = request.user.sub; 
         return this.usuarioService.update(userId, updateUsuarioDto);
     }
@@ -67,14 +68,14 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Desativa um usuário específico' })
     @ApiOkResponse({ description: 'Usuário desativado com sucesso.' })
     @Post('desativar')
-    async desativar(@Request() request){
+    async desativar(@Request() request: RequestAutenticado){
         return this.usuarioService.desativar(request.user.sub);
     }
 
     @ApiOperation({ summary:'Lista todos os telefones do usuario autenticado.'})
     @ApiOkResponse({ description: 'Telefones listados com sucesso.'})
     @Get('me/telefone')
-    async listarMeusTelefones(@Request() request){
+    async listarMeusTelefones(@Request() request: RequestAutenticado){
         const userId = request.user.sub;
         return await this.telefoneService.listarTelefones(userId);
     }
@@ -82,7 +83,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Adiciona um telefone ao usuario autenticado.' })
     @ApiCreatedResponse({ description: 'Novo telefone adicionado com sucesso.' })
     @Post('me/telefone')
-    async adicionarMeuTelefone(@Request() request, @Body() createTelefoneDto: CreateTelefoneDto){
+    async adicionarMeuTelefone(@Request() request: RequestAutenticado, @Body() createTelefoneDto: CreateTelefoneDto){
         const userId = request.user.sub;
 
         return await this.telefoneService.create({
@@ -134,7 +135,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Remove um endereço específico do usuário autenticado' })
     @ApiOkResponse({ description: 'Endereço removido com sucesso.'})
     @Delete('me/endereco/:enderecoId')
-    async removerMeuEndereco(@Request() request, @Param('enderecoId', uuidPipe('ID inválido')) enderecoId: string) {
+    async removerMeuEndereco(@Request() request: RequestAutenticado, @Param('enderecoId', uuidPipe('ID inválido')) enderecoId: string) {
         const userId = request.user.sub;
         const endereco = await this.enderecoService.findOne(enderecoId);
 
@@ -148,7 +149,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Edita um endereço específico do usuário autenticado' })
     @ApiOkResponse({ description: 'Endereço editado com sucesso.'})
     @Patch('me/endereco/:enderecoId')
-    async editarMeuEndereco(@Request() request, @Param('enderecoId', uuidPipe('ID inválido')) enderecoId: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
+    async editarMeuEndereco(@Request() request: RequestAutenticado, @Param('enderecoId', uuidPipe('ID inválido')) enderecoId: string, @Body() updateEnderecoDto: UpdateEnderecoDto) {
         const userId = request.user.sub;
         const endereco = await this.enderecoService.findOne(enderecoId);
         
@@ -162,7 +163,7 @@ export class UsuarioController {
     @ApiOperation({ summary: 'Remove um telefone do usuario autenticado.' })
     @ApiOkResponse({ description: 'Telefone removido com sucesso.' })
     @Delete('me/telefone/remover/:telefoneId')
-    async removerMeuTelefone(@Request() request, @Param('telefoneId', uuidPipe('ID inválido')) telefoneId: string){
+    async removerMeuTelefone(@Request() request: RequestAutenticado, @Param('telefoneId', uuidPipe('ID inválido')) telefoneId: string){
         const userId = request.user.sub;
         const telefone = await this.telefoneService.findOne(telefoneId);
 
@@ -176,7 +177,7 @@ export class UsuarioController {
     @ApiOperation({ summary:'Edita um telefone do usuario autenticado' })
     @ApiOkResponse({ description:'Telefone editado com sucesso' })
     @Patch('me/telefone/atualizar/:telefoneId')
-    async editarMeuTelefone(@Request() request, @Param('telefoneId', uuidPipe('ID inválido')) telefoneId: string, @Body() updateTelefoneDto: UpdateTelefoneDto){
+    async editarMeuTelefone(@Request() request: RequestAutenticado, @Param('telefoneId', uuidPipe('ID inválido')) telefoneId: string, @Body() updateTelefoneDto: UpdateTelefoneDto){
         const userId = request.user.sub;
         const telefone = await this.telefoneService.findOne(telefoneId);
 

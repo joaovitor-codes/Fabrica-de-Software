@@ -7,6 +7,7 @@ import { RolesGuard } from '../../../auth/roles.guard';
 import { Roles } from '../../../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) => new ParseUUIDPipe({
     version: '4',
     errorHttpStatusCode: 400,
@@ -26,7 +27,7 @@ export class PacienteRestricaoController {
     @Roles(TipoUsuario.admin, TipoUsuario.profissional)
     @Post(':pacienteId/restricoes')
     async vincular(
-        @Request() request,
+        @Request() request: RequestAutenticado,
         @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string,
         @Body() dto: VincularPacienteRestricaoDto,
     ) {
@@ -42,7 +43,7 @@ export class PacienteRestricaoController {
     @ApiOkResponse({ description: 'Lista de restrições do paciente.' })
     @Roles(TipoUsuario.admin, TipoUsuario.profissional)
     @Get(':pacienteId/restricoes')
-    async findAll(@Request() request, @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string) {
+    async findAll(@Request() request: RequestAutenticado, @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string) {
         return this.pacienteRestricaoService.findAllByPaciente(
             request.user.sub,
             request.user.tipoUsuario,
@@ -55,7 +56,7 @@ export class PacienteRestricaoController {
     @Roles(TipoUsuario.admin, TipoUsuario.profissional)
     @Patch(':pacienteId/restricoes/:restricaoId')
     async update(
-        @Request() request,
+        @Request() request: RequestAutenticado,
         @Param('pacienteId', uuidPipe('ID Paciente inválido')) pacienteId: string,
         @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
         @Body() dto: UpdatePacienteRestricaoDto,
@@ -74,7 +75,7 @@ export class PacienteRestricaoController {
     @Roles(TipoUsuario.admin, TipoUsuario.profissional)
     @Delete(':pacienteId/restricoes/:restricaoId')
     async remove(
-        @Request() request,
+        @Request() request: RequestAutenticado,
         @Param('pacienteId', uuidPipe('ID Paciente inválido')) pacienteId: string,
         @Param('restricaoId', uuidPipe('ID Restrição inválido')) restricaoId: string,
     ) {

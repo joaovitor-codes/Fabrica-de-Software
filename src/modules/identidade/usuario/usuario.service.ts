@@ -208,7 +208,7 @@ export class UsuarioService {
         return usuario.conta.ativo;
     }
 
-    private gerarToken(usuario: {id: string; tipoUsuario: TipoUsuario }, conta?: { id: string}){
+    private gerarToken(usuario: {id: string; tipoUsuario: TipoUsuario }){
         const payload = {
             sub: usuario.id,
             tipoUsuario: usuario.tipoUsuario,
