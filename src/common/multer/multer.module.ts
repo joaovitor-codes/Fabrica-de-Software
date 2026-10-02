@@ -57,4 +57,4 @@ import { join } from "path";
   controllers: [],
   providers: [],
 })
-export class Multer {}
+export class MulterConfigModule {}

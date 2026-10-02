@@ -13,13 +13,13 @@ import { ClinicasModule } from './modules/identidade/clinicas/clinicas.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { EnderecoModule } from './modules/identidade/endereco/endereco.module';
 import { TelefoneModule } from './modules/identidade/telefone/telefone.module';
-import { MailerModuleEmail } from './common/mailer/mailer.module';
+import { MailerConfigModule } from './common/mailer/mailer.module';
 import { RestricaoAlimentarModule } from './modules/nutricao/restricao-alimentar/restricao-alimentar.module';
 import { PacienteRestricaoModule } from './modules/nutricao/paciente-restricao/paciente-restricao.module';
 import { IngredienteRestricaoModule } from './modules/nutricao/ingrediente-restricao/ingrediente-restricao.module';
 import { CacheModule } from './common/cache/cache.module';
-import { Multer } from './common/multer/multer.module';
-import { ThrottlerModul } from './common/throttler/throttler.module';
+import { MulterConfigModule } from './common/multer/multer.module';
+import { ThrottlerConfigModule } from './common/throttler/throttler.module';
 import { IaModule } from './modules/ia/ia.module';
 import { AnamneseModule } from './modules/acompanhamento/anamnese/anamnese.module';
 import { TagSintomasModule } from './modules/acompanhamento/tag-sintomas/tag-sintomas.module';
@@ -36,8 +36,8 @@ import { PontosTransacaoModule } from './modules/receitas/pontos-transacao/ponto
         abortEarly: false, 
       },
     }),
-    ThrottlerModul,
-    Multer,
+    ThrottlerConfigModule,
+    MulterConfigModule,
     CacheModule,
     AuthModule,
     UsuarioModule,
@@ -50,7 +50,7 @@ import { PontosTransacaoModule } from './modules/receitas/pontos-transacao/ponto
     PrismaModule,
     EnderecoModule,
     TelefoneModule,
-    MailerModuleEmail,
+    MailerConfigModule,
     RestricaoAlimentarModule,
     PacienteRestricaoModule,
     IngredienteRestricaoModule,

@@ -19,4 +19,4 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
     useClass: ThrottlerGuard,
   }],
 })
-export class ThrottlerModul {}
+export class ThrottlerConfigModule {}
