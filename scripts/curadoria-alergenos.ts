@@ -24,7 +24,7 @@
 // A IA nunca grava vínculo direto: tudo passa pelo CSV revisado.
 
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, RestricaoAlimentar } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { parse } from 'csv-parse/sync';
 import { readFileSync, writeFileSync } from 'fs';
@@ -150,7 +150,9 @@ async function aplicar(caminho: string, simular: boolean) {
     },
   );
 
-  const doBanco = await prisma.restricaoAlimentar.findMany();
+  const doBanco = await prisma.restricaoAlimentar.findMany({
+    include: { regrasNutricionais: { select: { id: true } } },
+  });
   const plano = planejarAplicacao(linhasCsv, [
     ...doBanco.map((r) => r.nome),
     ...RESTRICOES_CURADORIA.map((r) => r.nome),
@@ -184,7 +186,9 @@ async function aplicar(caminho: string, simular: boolean) {
   // Restrição do CSV que ainda não existe no banco é criada com o tipo da
   // config. A que já existe é reaproveitada (comparando sem acento), mesmo
   // com nome escrito diferente.
-  const porNome = new Map(doBanco.map((r) => [normalizar(r.nome), r]));
+  const porNome = new Map<string, RestricaoAlimentar>(
+    doBanco.map((r) => [normalizar(r.nome), r]),
+  );
   const usadas = [...new Set(plano.vinculos.map((v) => v.restricao))];
   const aCriar = RESTRICOES_CURADORIA.filter(
     (r) => usadas.includes(r.nome) && !porNome.has(normalizar(r.nome)),
@@ -196,6 +200,19 @@ async function aplicar(caminho: string, simular: boolean) {
         `aviso: "${existente.nome}" está no banco como ${existente.tipo}; a curadoria esperava ${r.tipo}. Mantido como está.`,
       );
     }
+  }
+
+  // A marca de revisado vale para todas as restrições que já existem. Uma
+  // restrição do banco fora desta curadoria passaria como conferida.
+  const cobertas = new Set(RESTRICOES_CURADORIA.map((r) => normalizar(r.nome)));
+  const naoCobertas = doBanco.filter(
+    (r) =>
+      !cobertas.has(normalizar(r.nome)) && r.regrasNutricionais.length === 0,
+  );
+  for (const r of naoCobertas) {
+    console.warn(
+      `aviso: "${r.nome}" não está na curadoria e não tem regra nutricional; os ingredientes marcados como revisados aqui vão contar como seguros para ela.`,
+    );
   }
 
   console.log('--- resumo ---');
@@ -229,9 +246,18 @@ async function aplicar(caminho: string, simular: boolean) {
       skipDuplicates: true,
     });
 
+    // O filtro só aceita revisão posterior à criação da restrição. A
+    // restrição criada acima ganha o horário do banco; se o relógio da
+    // máquina estiver atrás, usar `new Date()` deixaria a revisão "antes" dela.
+    const revisadoEm = new Date(
+      Math.max(
+        Date.now(),
+        ...[...porNome.values()].map((r) => r.createdAt.getTime()),
+      ),
+    );
     await tx.ingrediente.updateMany({
       where: { id: { in: plano.revisados } },
-      data: { restricoesRevisadasEm: new Date() },
+      data: { restricoesRevisadasEm: revisadoEm },
     });
 
     console.log(

@@ -635,6 +635,10 @@ export class ReceitaService {
    * Se a restrição tem regra nutricional (ex: sódio > 600 para hipertensão),
    * o ingrediente também precisa ter o dado daquele campo: sem o dado, a
    * regra não consegue vincular, e a falta de vínculo não prova nada.
+   *
+   * A revisão só vale se for posterior à criação da restrição: uma
+   * restrição cadastrada depois da curadoria (ex: gergelim) não foi
+   * conferida em ninguém, mesmo nos ingredientes já revisados.
    */
   private async filtroRestricoes(
     usuario?: UsuarioAutenticado,
@@ -655,6 +659,7 @@ export class ReceitaService {
         restricaoId: true,
         restricao: {
           select: {
+            createdAt: true,
             regrasNutricionais: {
               where: { valorLimite: { not: null } },
               select: { campoNutricional: true },
@@ -676,11 +681,15 @@ export class ReceitaService {
       ),
     );
 
+    const criadaPorUltimo = new Date(
+      Math.max(...estritas.map((r) => r.restricao.createdAt.getTime())),
+    );
+
     return {
       ingredientes: {
         every: {
           ingrediente: {
-            restricoesRevisadasEm: { not: null },
+            restricoesRevisadasEm: { gte: criadaPorUltimo },
             ...Object.fromEntries(
               [...camposDasRegras].map((campo) => [campo, { not: null }]),
             ),

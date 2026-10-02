@@ -55,7 +55,7 @@ model Ingrediente {
 
 - Fica `null` ao criar o ingrediente, por qualquer caminho.
 - É preenchido quando um curador (admin ou profissional) revisa as restrições do ingrediente, seja pelo script da Fase 0, seja por um endpoint novo `PATCH /api/ingrediente/:id/restricoes/revisado`.
-- Para restrição **estrita**, a receita só é segura se for nativa **e** se todos os ingredientes tiverem `restricoesRevisadasEm` preenchido.
+- Para restrição **estrita**, a receita só é segura se for nativa **e** se todos os ingredientes tiverem `restricoesRevisadasEm` preenchido **com data posterior à criação da restrição**. Uma restrição cadastrada depois da curadoria (ex: gergelim) não foi conferida em nenhum ingrediente; para liberá-la, rode a curadoria de novo incluindo a restrição, com `gerar --todos`.
 - Para restrição **flexível**, um ingrediente não revisado não esconde a receita, mas aparece no alerta como "não revisado".
 
 **Restrição com regra nutricional** (ex: hipertensão com "sódio > 600 mg/100 g"): para restrição estrita, o ingrediente também precisa ter o dado do campo da regra. Sem o dado, a regra fica "pendente" e não vincula; a falta de vínculo, nesse caso, não prova que o ingrediente é seguro. Isso segue a regra de segurança de `regra_negocio.md`: dado `null` nunca é tratado como abaixo do limite.
