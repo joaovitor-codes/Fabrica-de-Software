@@ -4,7 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MailerModuleEmail } from '../lib/mailer.module';
+import { MailerModuleEmail } from '../common/mailer/mailer.module';
 
 @Module({
   imports: [

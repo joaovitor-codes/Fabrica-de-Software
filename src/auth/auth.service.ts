@@ -8,7 +8,7 @@ import {
     SignUpDto,
     VerifyEmailDto,
 } from './dtos/auth';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../common/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -21,7 +21,7 @@ type SessionMetadata = {
 import { MailerService } from '@nestjs-modules/mailer';
 import { TipoUsuario } from '@prisma/client';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { CacheService } from '../cache/cache.service';
+import { CacheService } from '../common/cache/cache.service';
 
 const AUTH_ME_CACHE_TTL = 60_000;
 
