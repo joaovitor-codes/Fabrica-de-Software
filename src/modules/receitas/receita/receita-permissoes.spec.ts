@@ -5,6 +5,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { TipoMidia, TipoRestricao, TipoUsuario } from '@prisma/client';
 import { ReceitaService } from './receita.service';
+import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
 import { IngredientesReceitaService } from './ingredientes-receita.service';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { CuradoriaReceitaService } from '../curadoria/curadoria-receita.service';
@@ -98,6 +99,7 @@ describe('ReceitaService - autor ou admin e alertas', () => {
         ReceitaService,
         IngredientesReceitaService,
         VisibilidadeReceitaService,
+        { provide: AdaptacaoCatalogoService, useValue: {} },
         CuradoriaReceitaService,
         { provide: PrismaService, useClass: FakePrismaService },
         { provide: CacheService, useValue: { del: async () => {} } },

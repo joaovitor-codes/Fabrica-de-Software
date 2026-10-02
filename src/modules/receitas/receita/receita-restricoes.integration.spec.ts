@@ -19,6 +19,8 @@ import {
 } from '@prisma/client';
 import { ReceitaController } from './receita.controller';
 import { ReceitaService } from './receita.service';
+import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
+import { AdaptacaoPacienteService } from '../adaptacao/adaptacao-paciente.service';
 import { IngredientesReceitaService } from './ingredientes-receita.service';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
@@ -262,6 +264,13 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     comQueijoFora.id,
   ].sort();
 
+  // Adaptação por IA simulada: por padrão, não consegue adaptar.
+  const adaptacaoPaciente = {
+    adaptar: jest.fn(async (): Promise<unknown> => {
+      throw new Error('IA indisponível no teste');
+    }),
+  };
+
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [ReceitaController],
@@ -269,6 +278,8 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         ReceitaService,
         IngredientesReceitaService,
         VisibilidadeReceitaService,
+        AdaptacaoCatalogoService,
+        { provide: AdaptacaoPacienteService, useValue: adaptacaoPaciente },
         { provide: PrismaService, useClass: FakePrismaService },
         {
           provide: CacheService,

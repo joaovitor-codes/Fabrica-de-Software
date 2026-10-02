@@ -5,6 +5,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { NivelDificuldade, TipoUsuario } from '@prisma/client';
 import { ReceitaService } from './receita.service';
+import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
 import { IngredientesReceitaService } from './ingredientes-receita.service';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { interpretarIngredientesNaoListados } from './ingredientes-ocultos';
@@ -91,6 +92,7 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
         ReceitaService,
         IngredientesReceitaService,
         VisibilidadeReceitaService,
+        { provide: AdaptacaoCatalogoService, useValue: {} },
         { provide: PrismaService, useValue: prisma },
         { provide: CacheService, useValue: { del: async () => {} } },
         { provide: UsuarioService, useValue: { userExists: async () => true } },

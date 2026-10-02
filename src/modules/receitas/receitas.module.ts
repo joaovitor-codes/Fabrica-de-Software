@@ -9,8 +9,9 @@ import { ReceitaModule } from './receita/receita.module';
  * `api/receita`, e o Nest registra as rotas na ordem dos módulos. As rotas
  * fixas `GET favoritos` e `GET pendentes` precisam vir antes de
  * `GET :id` (ReceitaModule), senão "favoritos" cai no :id e responde 400.
- * Por isso ReceitaModule vem por último e só este módulo (e o de adaptação,
- * que vem antes dele aqui) o importa. Coberto por receitas.module.spec.ts.
+ * Por isso ReceitaModule vem por último, e nenhum outro módulo de receita o
+ * importa (ele é que importa o de adaptação). Coberto por
+ * receitas.module.spec.ts.
  */
 @Module({
   imports: [
