@@ -32,6 +32,7 @@ import {
   RestricaoDoPaciente,
   clausulaSegura,
   restricaoPorId,
+  semAdaptacoesDeOutros,
   restricoesDoPaciente,
   restricoesDoUsuario,
   restricoesVioladas,
@@ -144,7 +145,7 @@ export class ReceitaService {
    * daria erro 500 no banco (chave e FK de receita_ingredientes). Devolve os
    * ingredientes, na ordem da lista, para a checagem do modo de preparo.
    */
-  private async validarIngredientes(itens: ReceitaIngredienteDTO[]) {
+  async validarIngredientes(itens: ReceitaIngredienteDTO[]) {
     const ids = itens.map((i) => i.ingredienteId);
     const repetidos = [
       ...new Set(ids.filter((id, i) => ids.indexOf(id) !== i)),
@@ -522,6 +523,7 @@ export class ReceitaService {
         status: 'aprovada',
         deletedAt: null,
         OR: [{ nivelDificuldade: 'facil' }, { nivelDificuldade: 'medio' }],
+        AND: [this.semPrivadasDeOutros(usuario)],
         ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });
@@ -538,6 +540,7 @@ export class ReceitaService {
       where: {
         status: 'aprovada',
         deletedAt: null,
+        AND: [this.semPrivadasDeOutros(usuario)],
         ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });
@@ -720,7 +723,8 @@ export class ReceitaService {
         where: { receitaAdaptadaId: id },
         select: { restricaoId: true, trocas: true },
       });
-      if (adaptacao) {
+      const restricaoAdaptada = adaptacao?.restricaoId;
+      if (adaptacao && restricaoAdaptada) {
         const substituicoes = (
           adaptacao.trocas as unknown as {
             ingredienteOrigemId: string;
@@ -732,7 +736,7 @@ export class ReceitaService {
           data: substituicoes.map((t) => ({
             ingredienteOrigemId: t.ingredienteOrigemId,
             ingredienteDestinoId: t.ingredienteDestinoId!,
-            restricaoId: adaptacao.restricaoId,
+            restricaoId: restricaoAdaptada,
             observacao: `Aprovado na adaptação da receita "${receita.nome}"`,
           })),
           skipDuplicates: true,
@@ -849,17 +853,34 @@ export class ReceitaService {
    */
   private filtroBase(usuario?: UsuarioAutenticado): Prisma.ReceitaWhereInput {
     if (!usuario) {
-      return { status: StatusReceita.aprovada };
+      return { status: StatusReceita.aprovada, AND: [semAdaptacoesDeOutros()] };
     }
-    if (
-      usuario.tipoUsuario === TipoUsuario.admin ||
-      usuario.tipoUsuario === TipoUsuario.profissional
-    ) {
+    if (this.ehEquipe(usuario)) {
       return {};
     }
     return {
-      OR: [{ status: StatusReceita.aprovada }, { criadoPor: usuario.id }],
+      OR: [
+        {
+          status: StatusReceita.aprovada,
+          AND: [semAdaptacoesDeOutros(usuario.id)],
+        },
+        { criadoPor: usuario.id },
+      ],
     };
+  }
+
+  private ehEquipe(usuario?: UsuarioAutenticado) {
+    return (
+      usuario?.tipoUsuario === TipoUsuario.admin ||
+      usuario?.tipoUsuario === TipoUsuario.profissional
+    );
+  }
+
+  /** Para as listas só de aprovadas: esconde adaptações de outros pacientes. */
+  private semPrivadasDeOutros(
+    usuario?: UsuarioAutenticado,
+  ): Prisma.ReceitaWhereInput {
+    return this.ehEquipe(usuario) ? {} : semAdaptacoesDeOutros(usuario?.id);
   }
 
   /**
@@ -888,7 +909,11 @@ export class ReceitaService {
     const segura = clausulaSegura(estritas);
     return {
       OR: [
-        { status: StatusReceita.aprovada, ...segura },
+        {
+          status: StatusReceita.aprovada,
+          AND: [semAdaptacoesDeOutros(usuario.id)],
+          ...segura,
+        },
         { criadoPor: usuario.id, adaptacaoDe: { is: null } },
         {
           criadoPor: usuario.id,

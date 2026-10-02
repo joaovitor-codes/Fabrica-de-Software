@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -9,18 +10,50 @@ import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { IaService } from '../../ia/ia.service';
 import { ReceitaService } from './receita.service';
-import { ItemReceita, interpretarAdaptacao } from './adaptacao';
 import {
+  ItemReceita,
+  PropostaAdaptacao,
+  Troca,
+  interpretarAdaptacao,
+  interpretarOpcoes,
+} from './adaptacao';
+import {
+  RestricaoDoPaciente,
+  RestricaoViolada,
   ingredientesSegurosPara,
   restricaoPorId,
+  restricoesDoPaciente,
   restricoesDoUsuario,
+  semAdaptacoesDeOutros,
   violacoesDosIngredientes,
 } from './restricoes-receita';
+import { AdaptacaoProfissionalDto } from './dtos/adaptar-receita';
+
+const incluirIngredientes = {
+  ingredientes: {
+    include: {
+      ingrediente: { select: { id: true, nome: true } },
+      unidadeMedida: { select: { codigo: true } },
+    },
+  },
+} satisfies Prisma.ReceitaInclude;
+
+type Origem = Prisma.ReceitaGetPayload<{ include: typeof incluirIngredientes }>;
+
+interface Analise {
+  itens: ItemReceita[];
+  violacoes: RestricaoViolada[];
+  /** Índices em `itens` dos ingredientes a trocar. */
+  problematicos: Set<number>;
+}
 
 /**
- * Adaptação de receita para uma restrição (Fase 2 de
- * regra_negocio_receitas_seguras.md). A IA propõe; a checagem determinística
- * decide; a verificação é a aprovação da receita adaptada por um profissional.
+ * Adaptação de receita (regra_negocio_receitas_seguras.md). Dois fluxos:
+ * - o paciente pede a adaptação para uma restrição: a IA decide e a
+ *   adaptação é pública, verificada depois por um profissional (Fase 2);
+ * - o profissional do paciente recebe sugestões e decide; a escolha dele
+ *   já é a verificação, e a adaptação é só daquele paciente.
+ * Nos dois, a IA propõe e a checagem determinística decide se é segura.
  */
 @Injectable()
 export class AdaptacaoReceitaService {
@@ -30,6 +63,9 @@ export class AdaptacaoReceitaService {
     private readonly receitaService: ReceitaService,
     private readonly cacheService: CacheService,
   ) {}
+
+  // ---------------------------------------------------------------------
+  // Paciente: adaptação para uma restrição
 
   async adaptar(
     receitaId: string,
@@ -45,20 +81,7 @@ export class AdaptacaoReceitaService {
         (r) => r.restricaoId === restricaoId,
       )?.estrita ?? false;
 
-    const origem = await this.prismaService.receita.findFirst({
-      where: { id: receitaId, deletedAt: null, ...this.podeVer(usuario) },
-      include: {
-        ingredientes: {
-          include: {
-            ingrediente: { select: { id: true, nome: true } },
-            unidadeMedida: { select: { codigo: true } },
-          },
-        },
-      },
-    });
-    if (!origem) {
-      throw new NotFoundException('Receita não encontrada');
-    }
+    const origem = await this.carregarOrigem(receitaId, this.podeVer(usuario));
 
     // 1. Já existe adaptação desta receita, nesta versão, para a restrição.
     const existente = await this.prismaService.receitaAdaptacao.findUnique({
@@ -94,19 +117,8 @@ export class AdaptacaoReceitaService {
     }
 
     // 2. A receita já é segura para a restrição: não há o que adaptar.
-    const itens: ItemReceita[] = origem.ingredientes.map((i) => ({
-      ingredienteId: i.ingredienteId,
-      nome: i.ingrediente.nome,
-      quantidade: i.quantidade.toNumber(),
-      unidadeMedidaId: i.unidadeMedidaId,
-      unidade: i.unidadeMedida.codigo,
-    }));
-    const [violacao] = await violacoesDosIngredientes(
-      this.prismaService,
-      itens.map((i) => i.ingredienteId),
-      [restricao],
-    );
-    if (!violacao && origem.ingredientesNaoListados.length === 0) {
+    const analise = await this.analisar(origem, [restricao]);
+    if (analise.problematicos.size === 0 && !this.temNaoListados(origem)) {
       return {
         success: 'A receita já é segura para esta restrição.',
         jaSegura: true,
@@ -114,107 +126,31 @@ export class AdaptacaoReceitaService {
       };
     }
 
-    // 3. Ingredientes a trocar: os que contêm a restrição, os não revisados
-    // e os sem o dado da regra nutricional. Sem trocar os dois últimos, a
-    // adaptada continuaria escondida.
-    const idsProblematicos = new Set(
-      [
-        ...(violacao?.contem ?? []),
-        ...(violacao?.naoRevisados ?? []),
-        ...(violacao?.semDado ?? []),
-      ].map((i) => i.id),
-    );
-    const problematicos = new Set(
-      itens
-        .map((item, i) => (idsProblematicos.has(item.ingredienteId) ? i : -1))
-        .filter((i) => i >= 0),
-    );
-
-    const candidatos = await ingredientesSegurosPara(
-      this.prismaService,
+    // 3. A IA propõe e a checagem determinística confere.
+    const { resposta, candidatos } = await this.pedirProposta(origem, analise, [
       restricao,
-    );
-    const indiceCandidato = new Map(candidatos.map((c, i) => [c.id, i]));
-    const curados = await this.prismaService.ingredienteSubstituto.findMany({
-      where: {
-        restricaoId,
-        ingredienteOrigemId: { in: [...idsProblematicos] },
-      },
-      orderBy: { prioridade: 'asc' },
-      select: { ingredienteOrigemId: true, ingredienteDestinoId: true },
-    });
-    const preferidos: Record<number, number[]> = {};
-    for (const i of problematicos) {
-      const cs = curados
-        .filter((s) => s.ingredienteOrigemId === itens[i].ingredienteId)
-        .map((s) => indiceCandidato.get(s.ingredienteDestinoId))
-        .filter((c): c is number => c !== undefined);
-      if (cs.length > 0) preferidos[i] = cs;
-    }
-
-    // 4. A IA propõe as trocas.
-    const resposta = await this.iaService.adaptarReceita({
-      restricao: restricao.nome,
-      nome: origem.nome,
-      modoPreparo: origem.modoPreparo,
-      itens: itens.map((item, i) => ({
-        nome: item.nome,
-        quantidade: item.quantidade,
-        unidade: item.unidade,
-        trocar: problematicos.has(i),
-      })),
-      candidatos: candidatos.map((c) => c.nome),
-      preferidos,
-    });
+    ]);
     const proposta = interpretarAdaptacao(
       resposta,
-      itens,
-      problematicos,
+      analise.itens,
+      analise.problematicos,
       candidatos,
     );
     if ('erro' in proposta) {
       throw this.naoAdaptou(proposta.erro);
     }
-
-    // 5. Checagem determinística: a lista nova não pode ferir a restrição,
-    // e o modo de preparo reescrito não pode citar nada fora dela.
-    const idsNovos = proposta.ingredientes.map((i) => i.ingredienteId);
-    const [aindaViola] = await violacoesDosIngredientes(
-      this.prismaService,
-      idsNovos,
+    const modoPreparo = proposta.modoPreparo ?? origem.modoPreparo;
+    const problema = await this.conferir(
+      proposta.ingredientes.map((i) => i.ingredienteId),
+      modoPreparo,
       [restricao],
     );
-    if (aindaViola) {
-      throw this.naoAdaptou(
-        'a lista adaptada ainda fere a restrição: ' +
-          [
-            ...aindaViola.contem,
-            ...aindaViola.naoRevisados,
-            ...aindaViola.semDado,
-          ]
-            .map((i) => i.nome)
-            .join(', '),
-      );
-    }
-    const modoPreparo = proposta.modoPreparo ?? origem.modoPreparo;
-    const nomesNovos = (
-      await this.prismaService.ingrediente.findMany({
-        where: { id: { in: idsNovos } },
-        select: { nome: true },
-      })
-    ).map((i) => i.nome);
-    const foraDaLista = await this.receitaService.verificarIngredientesOcultos(
-      modoPreparo,
-      nomesNovos,
-    );
-    if (foraDaLista.length > 0) {
-      throw this.naoAdaptou(
-        `o modo de preparo adaptado cita ingredientes fora da lista: ${foraDaLista.join(', ')}`,
-      );
+    if (problema) {
+      throw this.naoAdaptou(problema);
     }
 
-    // 6. Grava a receita adaptada (pendente = não verificada) e a ligação.
-    // Uma adaptação antiga, de outra versão da origem, sai de circulação.
+    // 4. Grava a adaptada (pendente = não verificada) e a ligação. Uma
+    // adaptação antiga, de outra versão da origem, sai de circulação.
     const { adaptacaoId, adaptada } = await this.prismaService.$transaction(
       async (tx) => {
         if (existente) {
@@ -224,27 +160,13 @@ export class AdaptacaoReceitaService {
             data: { deletedAt: new Date() },
           });
         }
-
-        const adaptada = await tx.receita.create({
-          data: {
-            nome: `${origem.nome} (adaptada: ${restricao.nome})`.slice(0, 255),
-            descricao: origem.descricao,
-            modoPreparo,
-            tempoPreparoMin: origem.tempoPreparoMin,
-            porcoes: origem.porcoes,
-            nivelDificuldade: origem.nivelDificuldade,
-            avisoContaminacaoCruzada: origem.avisoContaminacaoCruzada,
-            criadoPor: usuario.id,
-            status: StatusReceita.pendente,
-            ingredientes: { create: proposta.ingredientes },
-          },
-          include: {
-            ingredientes: {
-              include: { ingrediente: true, unidadeMedida: true },
-            },
-          },
+        const adaptada = await this.criarAdaptada(tx, origem, {
+          nome: `${origem.nome} (adaptada: ${restricao.nome})`,
+          modoPreparo,
+          ingredientes: proposta.ingredientes,
+          criadoPor: usuario.id,
+          status: StatusReceita.pendente,
         });
-
         const adaptacao = await tx.receitaAdaptacao.create({
           data: {
             receitaOrigemId: origem.id,
@@ -255,7 +177,6 @@ export class AdaptacaoReceitaService {
             trocas: proposta.trocas as unknown as Prisma.InputJsonValue,
           },
         });
-
         return { adaptacaoId: adaptacao.id, adaptada };
       },
     );
@@ -269,6 +190,462 @@ export class AdaptacaoReceitaService {
       estritaParaQuemPediu,
       false,
     );
+  }
+
+  // ---------------------------------------------------------------------
+  // Profissional: sugestões e adaptação escolhida para um paciente dele
+
+  /**
+   * O que a receita fere para o paciente e o que fazer: opções de
+   * substituto por ingrediente (curadas primeiro, depois as da IA) e a
+   * receita inteira adaptada pela IA, como prévia. Nada é gravado.
+   */
+  async sugerir(
+    receitaId: string,
+    pacienteId: string,
+    usuario: UsuarioAutenticado,
+  ) {
+    await this.garantirPacienteDoProfissional(pacienteId, usuario);
+    const restricoes = await restricoesDoPaciente(this.prismaService, {
+      id: pacienteId,
+    });
+    const origem = await this.carregarOrigem(receitaId, {});
+    const resumoRestricoes = restricoes.map((r) => ({
+      id: r.restricaoId,
+      nome: r.nome,
+      estrita: r.estrita,
+    }));
+
+    const analise = await this.analisar(origem, restricoes);
+    if (analise.problematicos.size === 0 && !this.temNaoListados(origem)) {
+      return {
+        receita: { id: origem.id, nome: origem.nome },
+        restricoesDoPaciente: resumoRestricoes,
+        segura: true,
+      };
+    }
+
+    const { resposta, candidatos } = await this.pedirProposta(
+      origem,
+      analise,
+      restricoes,
+    );
+    const opcoesIa = interpretarOpcoes(
+      resposta,
+      analise.problematicos,
+      candidatos.length,
+    );
+    const seguros = new Set(candidatos.map((c) => c.id));
+    const curados = await this.substitutosCurados(analise, restricoes);
+    const nomePorId = new Map(candidatos.map((c) => [c.id, c.nome]));
+
+    const ingredientes = analise.itens.map((item, i) => {
+      const trocar = analise.problematicos.has(i);
+      const sugestoes = trocar
+        ? [
+            ...curados
+              .filter(
+                (s) =>
+                  s.ingredienteOrigemId === item.ingredienteId &&
+                  seguros.has(s.ingredienteDestino.id),
+              )
+              .map((s) => ({ ...s.ingredienteDestino, fonte: 'curado' })),
+            ...(opcoesIa.get(i) ?? []).map((c) => ({
+              ...candidatos[c],
+              fonte: 'ia',
+            })),
+          ].filter(
+            (s, idx, todas) => todas.findIndex((x) => x.id === s.id) === idx,
+          )
+        : [];
+      return { ...item, trocar, sugestoes };
+    });
+
+    // A receita inteira da IA só é sugerida se passar na checagem.
+    let receitaInteira: object;
+    const proposta = interpretarAdaptacao(
+      resposta,
+      analise.itens,
+      analise.problematicos,
+      candidatos,
+    );
+    if ('erro' in proposta) {
+      receitaInteira = { erro: proposta.erro };
+    } else {
+      const modoPreparo = proposta.modoPreparo ?? origem.modoPreparo;
+      const problema = await this.conferir(
+        proposta.ingredientes.map((i) => i.ingredienteId),
+        modoPreparo,
+        restricoes,
+      );
+      receitaInteira = problema
+        ? { erro: problema }
+        : {
+            ingredientes: proposta.ingredientes.map((i) => ({
+              ...i,
+              nome:
+                nomePorId.get(i.ingredienteId) ??
+                analise.itens.find((x) => x.ingredienteId === i.ingredienteId)
+                  ?.nome,
+            })),
+            trocas: proposta.trocas,
+            modoPreparo,
+            resumo: proposta.resumo,
+          };
+    }
+
+    return {
+      receita: { id: origem.id, nome: origem.nome },
+      restricoesDoPaciente: resumoRestricoes,
+      segura: false,
+      restricoesVioladas: analise.violacoes,
+      ingredientesNaoListados: origem.ingredientesNaoListados,
+      ingredientes,
+      receitaInteira,
+    };
+  }
+
+  /**
+   * Grava a adaptação que o profissional escolheu para o paciente dele. Ela
+   * precisa ser segura para TODAS as restrições do paciente; a escolha do
+   * profissional já é a verificação. As substituições viram substitutos
+   * curados para as restrições que o ingrediente original feria.
+   */
+  async salvarDoProfissional(
+    receitaId: string,
+    dto: AdaptacaoProfissionalDto,
+    usuario: UsuarioAutenticado,
+  ) {
+    const profissional = await this.garantirPacienteDoProfissional(
+      dto.pacienteId,
+      usuario,
+    );
+    const restricoes = await restricoesDoPaciente(this.prismaService, {
+      id: dto.pacienteId,
+    });
+    const origem = await this.carregarOrigem(receitaId, {});
+    await this.receitaService.validarIngredientes(dto.ingredientes);
+
+    const idsNovos = dto.ingredientes.map((i) => i.ingredienteId);
+    const modoPreparo =
+      dto.modoPreparo !== undefined ? dto.modoPreparo : origem.modoPreparo;
+    const problema = await this.conferir(idsNovos, modoPreparo, restricoes);
+    if (problema) {
+      throw new UnprocessableEntityException(
+        `A adaptação não é segura para o paciente: ${problema}.`,
+      );
+    }
+
+    const trocas = this.trocasValidas(dto.trocas ?? [], origem, idsNovos);
+    const analise = await this.analisar(origem, restricoes);
+
+    const adaptada = await this.prismaService.$transaction(async (tx) => {
+      const adaptada = await this.criarAdaptada(tx, origem, {
+        nome: `${origem.nome} (adaptada pelo nutricionista)`,
+        modoPreparo,
+        ingredientes: dto.ingredientes,
+        criadoPor: usuario.id,
+        status: StatusReceita.aprovada,
+        profissionalAprovadorId: profissional.id,
+      });
+      await tx.receitaAdaptacao.create({
+        data: {
+          receitaOrigemId: origem.id,
+          versaoOrigem: origem.versaoAtual,
+          receitaAdaptadaId: adaptada.id,
+          pacienteId: dto.pacienteId,
+          resumoIa: dto.resumo ?? null,
+          trocas: trocas as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      // Aprendizado: cada substituição vale para as restrições que o
+      // ingrediente original feria.
+      const substitutos = trocas.flatMap((t) =>
+        t.acao === 'substituir' && t.ingredienteDestinoId
+          ? analise.violacoes
+              .filter((v) =>
+                v.contem.some((c) => c.id === t.ingredienteOrigemId),
+              )
+              .map((v) => ({
+                ingredienteOrigemId: t.ingredienteOrigemId,
+                ingredienteDestinoId: t.ingredienteDestinoId!,
+                restricaoId: v.id,
+                observacao: `Escolhido por nutricionista na receita "${origem.nome}"`,
+              }))
+          : [],
+      );
+      if (substitutos.length > 0) {
+        await tx.ingredienteSubstituto.createMany({
+          data: substitutos,
+          skipDuplicates: true,
+        });
+      }
+      return adaptada;
+    });
+
+    return {
+      success: 'Adaptação gravada e verificada.',
+      receita: adaptada,
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Etapas comuns
+
+  private async carregarOrigem(
+    receitaId: string,
+    visibilidade: Prisma.ReceitaWhereInput,
+  ): Promise<Origem> {
+    const origem = await this.prismaService.receita.findFirst({
+      where: { id: receitaId, deletedAt: null, ...visibilidade },
+      include: incluirIngredientes,
+    });
+    if (!origem) {
+      throw new NotFoundException('Receita não encontrada');
+    }
+    return origem;
+  }
+
+  /**
+   * O que a receita fere e quais ingredientes trocar: os que contêm alguma
+   * restrição, os não revisados e os sem o dado das regras nutricionais
+   * (sem trocar os dois últimos, a adaptada continuaria escondida).
+   */
+  private async analisar(
+    origem: Origem,
+    restricoes: RestricaoDoPaciente[],
+  ): Promise<Analise> {
+    const itens: ItemReceita[] = origem.ingredientes.map((i) => ({
+      ingredienteId: i.ingredienteId,
+      nome: i.ingrediente.nome,
+      quantidade: i.quantidade.toNumber(),
+      unidadeMedidaId: i.unidadeMedidaId,
+      unidade: i.unidadeMedida.codigo,
+    }));
+    const violacoes = await violacoesDosIngredientes(
+      this.prismaService,
+      itens.map((i) => i.ingredienteId),
+      restricoes,
+    );
+    const ids = new Set(
+      violacoes.flatMap((v) =>
+        [...v.contem, ...v.naoRevisados, ...v.semDado].map((i) => i.id),
+      ),
+    );
+    const problematicos = new Set(
+      itens
+        .map((item, i) => (ids.has(item.ingredienteId) ? i : -1))
+        .filter((i) => i >= 0),
+    );
+    return { itens, violacoes, problematicos };
+  }
+
+  /** Uma chamada à IA, com candidatos seguros para todas as restrições. */
+  private async pedirProposta(
+    origem: Origem,
+    analise: Analise,
+    restricoes: RestricaoDoPaciente[],
+  ) {
+    const candidatos = await ingredientesSegurosPara(
+      this.prismaService,
+      restricoes,
+    );
+    const indice = new Map(candidatos.map((c, i) => [c.id, i]));
+    const curados = await this.substitutosCurados(analise, restricoes);
+    const preferidos: Record<number, number[]> = {};
+    for (const i of analise.problematicos) {
+      const cs = curados
+        .filter((s) => s.ingredienteOrigemId === analise.itens[i].ingredienteId)
+        .map((s) => indice.get(s.ingredienteDestino.id))
+        .filter((c): c is number => c !== undefined);
+      if (cs.length > 0) preferidos[i] = cs;
+    }
+
+    const resposta = await this.iaService.adaptarReceita({
+      restricoes: restricoes.map((r) => r.nome),
+      nome: origem.nome,
+      modoPreparo: origem.modoPreparo,
+      itens: analise.itens.map((item, i) => ({
+        nome: item.nome,
+        quantidade: item.quantidade,
+        unidade: item.unidade,
+        trocar: analise.problematicos.has(i),
+      })),
+      candidatos: candidatos.map((c) => c.nome),
+      preferidos,
+    });
+    return { resposta, candidatos };
+  }
+
+  private substitutosCurados(
+    analise: Analise,
+    restricoes: RestricaoDoPaciente[],
+  ) {
+    return this.prismaService.ingredienteSubstituto.findMany({
+      where: {
+        restricaoId: { in: restricoes.map((r) => r.restricaoId) },
+        ingredienteOrigemId: {
+          in: [...analise.problematicos].map(
+            (i) => analise.itens[i].ingredienteId,
+          ),
+        },
+      },
+      orderBy: { prioridade: 'asc' },
+      select: {
+        ingredienteOrigemId: true,
+        ingredienteDestino: { select: { id: true, nome: true } },
+      },
+    });
+  }
+
+  /**
+   * Checagem determinística da lista final: não pode ferir nenhuma das
+   * restrições, e o modo de preparo não pode citar ingrediente fora dela.
+   * Devolve o motivo, ou null se estiver tudo certo.
+   */
+  private async conferir(
+    ingredienteIds: string[],
+    modoPreparo: string | null,
+    restricoes: RestricaoDoPaciente[],
+  ): Promise<string | null> {
+    const violacoes = await violacoesDosIngredientes(
+      this.prismaService,
+      ingredienteIds,
+      restricoes,
+    );
+    if (violacoes.length > 0) {
+      return (
+        'a lista ainda fere: ' +
+        violacoes
+          .map(
+            (v) =>
+              `${v.nome} (${[...v.contem, ...v.naoRevisados, ...v.semDado]
+                .map((i) => i.nome)
+                .join(', ')})`,
+          )
+          .join('; ')
+      );
+    }
+    const nomes = (
+      await this.prismaService.ingrediente.findMany({
+        where: { id: { in: ingredienteIds } },
+        select: { nome: true },
+      })
+    ).map((i) => i.nome);
+    const foraDaLista = await this.receitaService.verificarIngredientesOcultos(
+      modoPreparo,
+      nomes,
+    );
+    if (foraDaLista.length > 0) {
+      return `o modo de preparo cita ingredientes fora da lista: ${foraDaLista.join(', ')}`;
+    }
+    return null;
+  }
+
+  private criarAdaptada(
+    tx: Prisma.TransactionClient,
+    origem: Origem,
+    dados: {
+      nome: string;
+      modoPreparo: string | null;
+      ingredientes: PropostaAdaptacao['ingredientes'];
+      criadoPor: string;
+      status: StatusReceita;
+      profissionalAprovadorId?: string;
+    },
+  ) {
+    const aprovada = dados.status === StatusReceita.aprovada;
+    return tx.receita.create({
+      data: {
+        nome: dados.nome.slice(0, 255),
+        descricao: origem.descricao,
+        modoPreparo: dados.modoPreparo,
+        tempoPreparoMin: origem.tempoPreparoMin,
+        porcoes: origem.porcoes,
+        nivelDificuldade: origem.nivelDificuldade,
+        avisoContaminacaoCruzada: origem.avisoContaminacaoCruzada,
+        criadoPor: dados.criadoPor,
+        status: dados.status,
+        ...(aprovada
+          ? {
+              profissionalAprovadorId: dados.profissionalAprovadorId,
+              dataAprovacao: new Date(),
+            }
+          : {}),
+        ingredientes: { create: dados.ingredientes },
+      },
+      include: {
+        ingredientes: { include: { ingrediente: true, unidadeMedida: true } },
+      },
+    });
+  }
+
+  /**
+   * Trocas informadas pelo profissional: só valem as de ingrediente da
+   * receita original que saiu da lista, com destino que está na lista nova.
+   * Ingrediente original que saiu sem troca informada conta como removido.
+   */
+  private trocasValidas(
+    informadas: Troca[],
+    origem: Origem,
+    idsNovos: string[],
+  ): Troca[] {
+    const novos = new Set(idsNovos);
+    const saiu = origem.ingredientes
+      .map((i) => i.ingredienteId)
+      .filter((id) => !novos.has(id));
+    return saiu.map((id) => {
+      const troca = informadas.find(
+        (t) =>
+          t.ingredienteOrigemId === id &&
+          t.acao === 'substituir' &&
+          t.ingredienteDestinoId &&
+          novos.has(t.ingredienteDestinoId),
+      );
+      return troca
+        ? {
+            ingredienteOrigemId: id,
+            acao: 'substituir' as const,
+            ingredienteDestinoId: troca.ingredienteDestinoId,
+          }
+        : { ingredienteOrigemId: id, acao: 'remover' as const };
+    });
+  }
+
+  /** Só o profissional do paciente (ou admin) mexe na adaptação dele. */
+  private async garantirPacienteDoProfissional(
+    pacienteId: string,
+    usuario: UsuarioAutenticado,
+  ) {
+    const [paciente, profissional] = await Promise.all([
+      this.prismaService.paciente.findUnique({ where: { id: pacienteId } }),
+      this.prismaService.profissional.findUnique({
+        where: { usuarioId: usuario.id },
+      }),
+    ]);
+    if (!paciente) {
+      throw new NotFoundException('Paciente não encontrado');
+    }
+    const ehAdmin = usuario.tipoUsuario === TipoUsuario.admin;
+    if (
+      !ehAdmin &&
+      (!profissional || paciente.profissionalId !== profissional.id)
+    ) {
+      throw new ForbiddenException(
+        'Só o profissional do paciente pode adaptar receitas para ele',
+      );
+    }
+    if (!profissional) {
+      throw new ForbiddenException(
+        'É preciso ter cadastro de profissional para verificar a adaptação',
+      );
+    }
+    return profissional;
+  }
+
+  private temNaoListados(origem: Origem) {
+    return origem.ingredientesNaoListados.length > 0;
   }
 
   /**
@@ -318,7 +695,13 @@ export class AdaptacaoReceitaService {
       return {};
     }
     return {
-      OR: [{ status: StatusReceita.aprovada }, { criadoPor: usuario.id }],
+      OR: [
+        {
+          status: StatusReceita.aprovada,
+          AND: [semAdaptacoesDeOutros(usuario.id)],
+        },
+        { criadoPor: usuario.id },
+      ],
     };
   }
 }

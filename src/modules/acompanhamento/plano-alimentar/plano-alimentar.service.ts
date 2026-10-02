@@ -395,6 +395,17 @@ export class PlanoAlimentarService {
     receitaId: string,
     pacienteId: string,
   ) {
+    // Adaptação feita para outro paciente não entra neste plano.
+    const adaptacao = await this.prismaService.receitaAdaptacao.findUnique({
+      where: { receitaAdaptadaId: receitaId },
+      select: { pacienteId: true },
+    });
+    if (adaptacao?.pacienteId && adaptacao.pacienteId !== pacienteId) {
+      throw new UnprocessableEntityException(
+        'Esta adaptação foi feita para outro paciente',
+      );
+    }
+
     const estritas = (
       await restricoesDoPaciente(this.prismaService, { id: pacienteId })
     ).filter((r) => r.estrita);

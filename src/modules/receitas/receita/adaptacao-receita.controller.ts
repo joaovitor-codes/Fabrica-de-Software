@@ -15,9 +15,22 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../../auth/auth.guard';
+import { RolesGuard } from '../../../auth/roles.guard';
+import { Roles } from '../../../auth/roles.decorator';
+import { TipoUsuario } from '@prisma/client';
 import type { RequestAutenticado } from '../../../auth/auth.types';
 import { AdaptacaoReceitaService } from './adaptacao-receita.service';
-import { AdaptarReceitaDto } from './dtos/adaptar-receita';
+import {
+  AdaptacaoProfissionalDto,
+  AdaptarReceitaDto,
+  SugestoesAdaptacaoDto,
+} from './dtos/adaptar-receita';
+
+const idPipe = () =>
+  new ParseUUIDPipe({
+    version: '4',
+    exceptionFactory: () => new BadRequestException('ID inválido'),
+  });
 
 @ApiTags('Receita')
 @Controller('api/receita')
@@ -36,17 +49,51 @@ export class AdaptacaoReceitaController {
   @UseGuards(AuthGuard)
   @Post(':id/adaptar')
   async adaptar(
-    @Param(
-      'id',
-      new ParseUUIDPipe({
-        version: '4',
-        exceptionFactory: () => new BadRequestException('ID inválido'),
-      }),
-    )
-    id: string,
+    @Param('id', idPipe()) id: string,
     @Body() dto: AdaptarReceitaDto,
     @Request() req: RequestAutenticado,
   ) {
     return this.adaptacaoService.adaptar(id, dto.restricaoId, req.user);
+  }
+
+  @ApiOperation({
+    summary:
+      'Sugestões de adaptação da receita para um paciente (profissional)',
+    description:
+      'O que a receita fere para o paciente, opções de substituto por ingrediente ' +
+      '(curadas e da IA) e a receita inteira adaptada pela IA, como prévia. Nada é gravado.',
+  })
+  @ApiCreatedResponse({
+    description: 'Sugestões para o profissional escolher.',
+  })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.profissional, TipoUsuario.admin)
+  @Post(':id/sugestoes-adaptacao')
+  async sugerir(
+    @Param('id', idPipe()) id: string,
+    @Body() dto: SugestoesAdaptacaoDto,
+    @Request() req: RequestAutenticado,
+  ) {
+    return this.adaptacaoService.sugerir(id, dto.pacienteId, req.user);
+  }
+
+  @ApiOperation({
+    summary: 'Grava a adaptação escolhida pelo profissional para um paciente',
+    description:
+      'A lista final precisa ser segura para todas as restrições do paciente. A adaptação ' +
+      'nasce verificada pelo profissional e só é visível para aquele paciente.',
+  })
+  @ApiCreatedResponse({ description: 'Adaptação gravada e verificada.' })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.profissional, TipoUsuario.admin)
+  @Post(':id/adaptacao-profissional')
+  async salvarDoProfissional(
+    @Param('id', idPipe()) id: string,
+    @Body() dto: AdaptacaoProfissionalDto,
+    @Request() req: RequestAutenticado,
+  ) {
+    return this.adaptacaoService.salvarDoProfissional(id, dto, req.user);
   }
 }
