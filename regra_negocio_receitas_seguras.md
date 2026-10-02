@@ -134,7 +134,7 @@ A IA nunca grava vínculo direto. Ela só recebe nomes de ingrediente e de restr
 
 ## Fase 1: filtro padrão por restrições (só nativas)
 
-**Andamento**: Fase 1 completa. A lógica comum (restrições do paciente, cláusula de receita segura e `restricoesVioladas`) fica em `src/modules/receitas/receita/restricoes-receita.ts`, usada pelo `ReceitaService` e pelo plano alimentar. Item 8 em `src/modules/receitas/receita/ingredientes-ocultos.ts` e `IaService.ingredientesNaoListados`. Limitação: hoje o `update` não edita a lista de ingredientes (ver "Decisões em aberto"), então o autor só tira o aviso reescrevendo o modo de preparo.
+**Andamento**: Fase 1 completa. A lógica comum (restrições do paciente, cláusula de receita segura e `restricoesVioladas`) fica em `src/modules/receitas/receita/restricoes-receita.ts`, usada pelo `ReceitaService` e pelo plano alimentar. Item 8 em `src/modules/receitas/receita/ingredientes-ocultos.ts` e `IaService.ingredientesNaoListados`. Quando a IA aponta um ingrediente, o autor o inclui na lista pela edição (`PATCH` com `ingredientes`), e a checagem roda de novo.
 
 Formato de `restricoesVioladas`, em cada receita das listagens e no corpo do 403/422: `{ id, nome, estrita, contem[], naoRevisados[], semDado[] }`, um por restrição violada, cada lista com `{ id, nome }` dos ingredientes.
 
@@ -224,6 +224,6 @@ Entrega: nas listagens, o usuário vê diretamente a versão que pode comer.
 ## Decisões em aberto
 
 - **Usuário com várias restrições** (ex: lactose + glúten). A adaptação é por uma restrição. Se a adaptação para lactose ainda contém glúten, ela é descartada para esse usuário (passo 3 da Fase 3). A alternativa é adaptar para o conjunto de restrições de uma vez, mas isso reduz muito o reaproveitamento. Começar por restrição única e medir.
-- **Edição de ingredientes.** Hoje o `update` ignora `ingredientes`. Quando isso for implementado, a regra de voltar para `pendente` ao editar uma receita aprovada já cobre as adaptadas.
+- **Edição de ingredientes.** Implementada: `ingredientes` no `PATCH` substitui a lista inteira, e a receita aprovada volta para `pendente`, o que também cobre as adaptadas.
 - **Usuário `comum` com restrição.** Hoje só `Paciente` tem restrições. Se o `comum` também precisar do filtro, as restrições teriam que ser ligadas ao `Usuario`, não ao `Paciente`. Fica para depois.
 - **Custo da IA.** Gerar adaptações em segundo plano, logo que uma receita é aprovada, para as restrições mais comuns. Isso deixa a experiência instantânea também na primeira vez. Decidir depois de medir o uso da Fase 2.

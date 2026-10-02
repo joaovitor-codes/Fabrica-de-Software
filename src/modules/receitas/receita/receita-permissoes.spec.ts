@@ -131,7 +131,7 @@ describe('ReceitaService - autor ou admin e alertas', () => {
         dataAprovacao: new Date(),
       });
 
-      await service.update(receitaId, { nome: 'Nova versão' } as any, autor);
+      await service.update(receitaId, { nome: 'Nova versão' }, autor);
 
       const receita = prisma.receitas.get(receitaId);
       expect(receita.status).toBe('pendente');
@@ -143,17 +143,17 @@ describe('ReceitaService - autor ou admin e alertas', () => {
     });
 
     it('receita pendente editada continua pendente, sem nova versão', async () => {
-      await service.update(receitaId, { nome: 'Ajuste' } as any, autor);
+      await service.update(receitaId, { nome: 'Ajuste' }, autor);
 
       expect(prisma.receitas.get(receitaId).status).toBe('pendente');
       expect(prisma.versoes).toHaveLength(0);
     });
 
     it('permite o autor e o admin', async () => {
-      await service.update(receitaId, { nome: 'Pelo autor' } as any, autor);
+      await service.update(receitaId, { nome: 'Pelo autor' }, autor);
       expect(prisma.receitas.get(receitaId).nome).toBe('Pelo autor');
 
-      await service.update(receitaId, { nome: 'Pelo admin' } as any, admin);
+      await service.update(receitaId, { nome: 'Pelo admin' }, admin);
       expect(prisma.receitas.get(receitaId).nome).toBe('Pelo admin');
     });
   });
