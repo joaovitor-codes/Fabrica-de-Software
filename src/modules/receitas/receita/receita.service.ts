@@ -38,7 +38,7 @@ export class ReceitaService {
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
     });
-    return !!receita;
+    return !!receita && !receita.deletedAt;
   }
 
   async create(data: ReceitaDto, userId: string) {
@@ -168,7 +168,7 @@ export class ReceitaService {
     }
 
     const receitas = await this.prismaService.receita.findMany({
-      where: this.filtroVisibilidade(usuario),
+      where: { deletedAt: null, ...this.filtroVisibilidade(usuario) },
     });
 
     if (!receitas || receitas.length === 0) {
@@ -184,7 +184,7 @@ export class ReceitaService {
 
   async findPendentes() {
     return this.prismaService.receita.findMany({
-      where: { status: StatusReceita.pendente },
+      where: { status: StatusReceita.pendente, deletedAt: null },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -281,6 +281,7 @@ export class ReceitaService {
     const receita = await this.prismaService.receita.findMany({
       where: {
         nome: { contains: nome, mode: 'insensitive' },
+        deletedAt: null,
         ...this.filtroVisibilidade(usuario),
       },
     });
@@ -362,6 +363,7 @@ export class ReceitaService {
     const receitas = await this.prismaService.receita.findMany({
       where: {
         status: 'aprovada',
+        deletedAt: null,
         OR: [{ nivelDificuldade: 'facil' }, { nivelDificuldade: 'medio' }],
       },
     });
@@ -374,7 +376,7 @@ export class ReceitaService {
 
   async findValidated() {
     const receitas = await this.prismaService.receita.findMany({
-      where: { status: 'aprovada' },
+      where: { status: 'aprovada', deletedAt: null },
     });
     if (!receitas || receitas.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada');
@@ -393,7 +395,7 @@ export class ReceitaService {
     return this.prismaService.$transaction(async (tx) => {
       const receitaAtual = await tx.receita.findUnique({ where: { id } });
 
-      if (!receitaAtual) {
+      if (!receitaAtual || receitaAtual.deletedAt) {
         throw new NotFoundException('Receita não encontrada');
       }
 
@@ -424,8 +426,14 @@ export class ReceitaService {
           porcoes: updateReceita.porcoes,
           nivelDificuldade: updateReceita.nivelDificuldade,
           avisoContaminacaoCruzada: updateReceita.avisoContaminacaoCruzada,
+          // Conteúdo aprovado que muda precisa de nova curadoria.
           ...(receitaAtual.status === 'aprovada'
-            ? { versaoAtual: { increment: 1 } }
+            ? {
+                versaoAtual: { increment: 1 },
+                status: StatusReceita.pendente,
+                profissionalAprovadorId: null,
+                dataAprovacao: null,
+              }
             : {}),
         },
       });
@@ -454,8 +462,14 @@ export class ReceitaService {
     const resultado = await this.prismaService.$transaction(async (tx) => {
       const receita = await tx.receita.findUnique({ where: { id } });
 
-      if (!receita) {
+      if (!receita || receita.deletedAt) {
         throw new NotFoundException('Receita não encontrada');
+      }
+
+      if (receita.criadoPor === usuarioId) {
+        throw new ForbiddenException(
+          'Não é possível aprovar a própria receita',
+        );
       }
 
       if (receita.status === 'aprovada') {
@@ -504,8 +518,14 @@ export class ReceitaService {
     const resultado = await this.prismaService.$transaction(async (tx) => {
       const receita = await tx.receita.findUnique({ where: { id } });
 
-      if (!receita) {
+      if (!receita || receita.deletedAt) {
         throw new NotFoundException('Receita não encontrada');
+      }
+
+      if (receita.criadoPor === usuarioId) {
+        throw new ForbiddenException(
+          'Não é possível rejeitar a própria receita',
+        );
       }
 
       if (receita.status === 'rejeitada') {
@@ -538,20 +558,36 @@ export class ReceitaService {
     return resultado;
   }
 
+  /**
+   * Receita usada em algum plano alimentar é só marcada como excluída
+   * (deletedAt): some das listagens, mas o plano do paciente continua
+   * mostrando. Fora de planos, é apagada de vez. Favoritos saem nos dois casos.
+   */
   async remove(id: string, usuario: UsuarioAutenticado) {
-    const cacheKey = 'receitas:all';
     await this.garantirAutorOuAdmin(id, usuario);
 
-    await this.cacheService.del(cacheKey);
-    await this.prismaService.receitaMidia.deleteMany({
+    const usadaEmPlano = await this.prismaService.planoAlimentarItem.count({
       where: { receitaId: id },
     });
-    await this.prismaService.receitaIngrediente.deleteMany({
-      where: { receitaId: id },
+
+    await this.prismaService.$transaction(async (tx) => {
+      await tx.favorito.deleteMany({ where: { receitaId: id } });
+
+      if (usadaEmPlano > 0) {
+        await tx.receita.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
+        return;
+      }
+
+      await tx.receitaVersao.deleteMany({ where: { receitaId: id } });
+      await tx.receitaMidia.deleteMany({ where: { receitaId: id } });
+      await tx.receitaIngrediente.deleteMany({ where: { receitaId: id } });
+      await tx.receita.delete({ where: { id } });
     });
-    await this.prismaService.receita.delete({
-      where: { id },
-    });
+
+    await this.cacheService.del('receitas:all');
     return { success: 'Receita removida com sucesso.' };
   }
 
@@ -600,9 +636,9 @@ export class ReceitaService {
   private async garantirAutorOuAdmin(id: string, usuario: UsuarioAutenticado) {
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
-      select: { criadoPor: true },
+      select: { criadoPor: true, deletedAt: true },
     });
-    if (!receita) {
+    if (!receita || receita.deletedAt) {
       throw new NotFoundException('Receita não encontrada');
     }
     this.verificarAutorOuAdmin(receita.criadoPor, usuario);

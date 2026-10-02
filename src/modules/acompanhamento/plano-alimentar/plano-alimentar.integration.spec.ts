@@ -737,6 +737,33 @@ describe('PlanoAlimentar (integration)', () => {
           .expect(409);
       });
 
+      it('rejeita trocar o item para uma receita excluída', async () => {
+        const planoAlimentarId = await criarPlano();
+        const itemId = await criarItem(planoAlimentarId);
+        const receitaExcluida = {
+          id: randomUUID(),
+          nome: 'Receita excluída',
+          deletedAt: new Date(),
+        };
+        prisma.receitas.set(receitaExcluida.id, receitaExcluida);
+
+        await request(app.getHttpServer())
+          .patch(`/api/plano-alimentar/itens/${itemId}`)
+          .set(asProfissionalDono())
+          .send({ receitaId: receitaExcluida.id })
+          .expect(404);
+
+        await request(app.getHttpServer())
+          .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+          .set(asProfissionalDono())
+          .send({
+            ...itemValido,
+            receitaId: receitaExcluida.id,
+            tipoRefeicao: TipoRefeicao.ceia,
+          })
+          .expect(404);
+      });
+
       it('rejeita receita inexistente e enum inválido', async () => {
         const planoAlimentarId = await criarPlano();
         const itemId = await criarItem(planoAlimentarId);
