@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -12,6 +13,7 @@ import {
   StatusAprovacao,
   StatusReceita,
   TipoMidia,
+  TipoRestricao,
   TipoTransacaoPontos,
   TipoUsuario,
 } from '@prisma/client';
@@ -89,6 +91,7 @@ export class ReceitaService {
     file: Express.Multer.File,
     tipo: TipoMidia,
     ordem: number,
+    usuario: UsuarioAutenticado,
   ) {
     if (!file) {
       throw new BadRequestException('file is required');
@@ -110,12 +113,12 @@ export class ReceitaService {
       throw new BadRequestException('file is too large!');
     }
 
-    const receitaExists = await this.alreadyExists(id);
-
-    if (!receitaExists) {
+    try {
+      await this.garantirAutorOuAdmin(id, usuario);
+    } catch (error) {
       await unlink(file.path).catch(() => undefined);
 
-      throw new NotFoundException('Receita não encontrada');
+      throw error;
     }
 
     let folder: string;
@@ -297,14 +300,62 @@ export class ReceitaService {
     return receita!.ingredientes;
   }
 
+  /**
+   * Alertas de restrição alimentar da receita: cada restrição vinculada a
+   * algum ingrediente dela, com os ingredientes que a disparam.
+   */
   async findAlerts(id: string, usuario?: UsuarioAutenticado) {
     await this.garantirVisivel(id, usuario);
 
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
-      include: { pontosTransacoes: true },
+      select: {
+        avisoContaminacaoCruzada: true,
+        ingredientes: {
+          select: {
+            ingrediente: {
+              select: {
+                id: true,
+                nome: true,
+                restricoes: {
+                  select: {
+                    restricao: { select: { id: true, nome: true, tipo: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
-    return receita!.pontosTransacoes;
+
+    const porRestricao = new Map<
+      string,
+      {
+        id: string;
+        nome: string;
+        tipo: TipoRestricao;
+        ingredientes: { id: string; nome: string }[];
+      }
+    >();
+    for (const { ingrediente } of receita!.ingredientes) {
+      for (const { restricao } of ingrediente.restricoes) {
+        const alerta = porRestricao.get(restricao.id) ?? {
+          ...restricao,
+          ingredientes: [],
+        };
+        alerta.ingredientes.push({
+          id: ingrediente.id,
+          nome: ingrediente.nome,
+        });
+        porRestricao.set(restricao.id, alerta);
+      }
+    }
+
+    return {
+      avisoContaminacaoCruzada: receita!.avisoContaminacaoCruzada,
+      restricoes: [...porRestricao.values()],
+    };
   }
 
   async findSuggestions() {
@@ -333,7 +384,11 @@ export class ReceitaService {
 
   async findFeedbacks(_id: string) {} // TODO: Implementar o método de encontrar feedbacks para uma receita
 
-  async update(id: string, updateReceita: UpdateReceitaDto, usuarioId: string) {
+  async update(
+    id: string,
+    updateReceita: UpdateReceitaDto,
+    usuario: UsuarioAutenticado,
+  ) {
     const cacheKey = 'receitas:all';
     return this.prismaService.$transaction(async (tx) => {
       const receitaAtual = await tx.receita.findUnique({ where: { id } });
@@ -341,6 +396,8 @@ export class ReceitaService {
       if (!receitaAtual) {
         throw new NotFoundException('Receita não encontrada');
       }
+
+      this.verificarAutorOuAdmin(receitaAtual.criadoPor, usuario);
 
       await this.cacheService.del(cacheKey);
 
@@ -352,7 +409,7 @@ export class ReceitaService {
             nome: receitaAtual.nome,
             descricao: receitaAtual.descricao,
             modoPreparo: receitaAtual.modoPreparo,
-            alteradoPor: usuarioId,
+            alteradoPor: usuario.id,
           },
         });
       }
@@ -481,12 +538,9 @@ export class ReceitaService {
     return resultado;
   }
 
-  async remove(id: string) {
+  async remove(id: string, usuario: UsuarioAutenticado) {
     const cacheKey = 'receitas:all';
-    const receitaExists = await this.alreadyExists(id);
-    if (!receitaExists) {
-      throw new NotFoundException('Receita não encontrada');
-    }
+    await this.garantirAutorOuAdmin(id, usuario);
 
     await this.cacheService.del(cacheKey);
     await this.prismaService.receitaMidia.deleteMany({
@@ -530,5 +584,27 @@ export class ReceitaService {
     if (!receita) {
       throw new NotFoundException('Receita não encontrada');
     }
+  }
+
+  private verificarAutorOuAdmin(
+    criadoPor: string,
+    usuario: UsuarioAutenticado,
+  ) {
+    if (usuario.tipoUsuario !== TipoUsuario.admin && criadoPor !== usuario.id) {
+      throw new ForbiddenException(
+        'Apenas o autor da receita ou um admin pode realizar esta ação',
+      );
+    }
+  }
+
+  private async garantirAutorOuAdmin(id: string, usuario: UsuarioAutenticado) {
+    const receita = await this.prismaService.receita.findUnique({
+      where: { id },
+      select: { criadoPor: true },
+    });
+    if (!receita) {
+      throw new NotFoundException('Receita não encontrada');
+    }
+    this.verificarAutorOuAdmin(receita.criadoPor, usuario);
   }
 }

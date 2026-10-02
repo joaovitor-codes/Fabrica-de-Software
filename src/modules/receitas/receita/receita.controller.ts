@@ -83,7 +83,9 @@ export class ReceitaController {
     return await this.receitaService.findByName(nome, req.user);
   }
 
-  @ApiOperation({ summary: 'Envia uma mídia para uma receita' })
+  @ApiOperation({
+    summary: 'Envia uma mídia para uma receita (autor ou admin)',
+  })
   @ApiCreatedResponse({ description: 'Mídia enviada com sucesso.' })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)
@@ -102,13 +104,20 @@ export class ReceitaController {
     @UploadedFiles()
     files: { image?: Express.Multer.File[]; video?: Express.Multer.File[] },
     @Body('tipo') tipo: TipoMidia,
+    @Request() req: RequestAutenticado,
     @Body('ordem') ordem = 0,
   ) {
     const file = files.image?.[0] ?? files.video?.[0];
     if (!file) {
       throw new BadRequestException('file is required');
     }
-    return await this.receitaService.uploadMedia(id, file, tipo, Number(ordem));
+    return await this.receitaService.uploadMedia(
+      id,
+      file,
+      tipo,
+      Number(ordem),
+      req.user,
+    );
   }
 
   @ApiOperation({ summary: 'Retorna todas as receitas' })
@@ -203,8 +212,14 @@ export class ReceitaController {
     return await this.receitaService.findIngredients(id, req.user);
   }
 
-  @ApiOperation({ summary: 'Retorna os alertas de uma receita pelo ID' })
-  @ApiOkResponse({ description: 'Array de alertas da receita.' })
+  @ApiOperation({
+    summary:
+      'Retorna os alertas de restrição alimentar da receita (restrições ligadas aos ingredientes e aviso de contaminação cruzada)',
+  })
+  @ApiOkResponse({
+    description:
+      'Objeto com avisoContaminacaoCruzada e as restrições com os ingredientes que as disparam.',
+  })
   @ApiBearerAuth()
   @UseGuards(OptionalAuthGuard)
   @Get(':id/alertas')
@@ -222,7 +237,7 @@ export class ReceitaController {
     return await this.receitaService.findFeedbacks(id);
   }
 
-  @ApiOperation({ summary: 'Atualiza uma receita pelo ID' })
+  @ApiOperation({ summary: 'Atualiza uma receita pelo ID (autor ou admin)' })
   @ApiOkResponse({ description: 'Receita atualizada com sucesso.' })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)
@@ -232,7 +247,7 @@ export class ReceitaController {
     @Body() receita: UpdateReceitaDto,
     @Request() request: RequestAutenticado,
   ) {
-    return await this.receitaService.update(id, receita, request.user.sub);
+    return await this.receitaService.update(id, receita, request.user);
   }
 
   @ApiOperation({ summary: 'Aprova uma receita pelo ID' })
@@ -259,12 +274,15 @@ export class ReceitaController {
     return await this.receitaService.rejeitarReceita(id, request.user.sub);
   }
 
-  @ApiOperation({ summary: 'Remove uma receita pelo ID' })
+  @ApiOperation({ summary: 'Remove uma receita pelo ID (autor ou admin)' })
   @ApiOkResponse({ description: 'Receita removida com sucesso.' })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async remove(@Param('id', uuidPipe('ID inválido')) id: string) {
-    return await this.receitaService.remove(id);
+  async remove(
+    @Param('id', uuidPipe('ID inválido')) id: string,
+    @Request() request: RequestAutenticado,
+  ) {
+    return await this.receitaService.remove(id, request.user);
   }
 }
