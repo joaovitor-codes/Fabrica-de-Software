@@ -1,38 +1,8 @@
-import {
-  NivelDificuldade,
-  StatusAprovacao,
-  Usuario,
-  Profissional,
-  ReceitaVersao,
-  ReceitaMidia,
-  ReceitaIngrediente,
-  PontosTransacao,
-  Favorito,
-  PlanoAlimentarItem,
-  Notificacao,
-} from '@prisma/client';
+import { PartialType } from '@nestjs/swagger';
+import { ReceitaDto } from './receita';
 
-export class UpdateReceitaDto {
-  nome!: string;
-  descricao!: string;
-  modoPreparo!: string;
-  tempoPreparoMin!: number;
-  porcoes!: number;
-  nivelDificuldade!: NivelDificuldade;
-  avisoContaminacaoCruzada!: boolean;
-  criadoPor!: string;
-  status!: StatusAprovacao;
-  profissionalAprovadorId!: string;
-  dataAprovacao!: Date;
-  versaoAtual!: number;
-
-  criador!: Usuario;
-  profissionalAprovador!: Profissional;
-  versoes!: ReceitaVersao;
-  midias!: ReceitaMidia;
-  ingredientes!: ReceitaIngrediente;
-  pontosTransacoes!: PontosTransacao;
-  favoritos!: Favorito;
-  planoAlimentarItens!: PlanoAlimentarItem;
-  notificacoes!: Notificacao;
-}
+/**
+ * Tudo opcional. `ingredientes`, quando vem, substitui a lista inteira e
+ * não pode ser vazia.
+ */
+export class UpdateReceitaDto extends PartialType(ReceitaDto) {}

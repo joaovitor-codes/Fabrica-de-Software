@@ -60,10 +60,17 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
     };
     prisma = {
       ingrediente: {
-        findMany: jest.fn().mockResolvedValue([{ nome: 'Macarrão, trigo' }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'macarrao', nome: 'Macarrão, trigo' }]),
+      },
+      unidadeMedida: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'g' }]),
       },
       receitaIngrediente: {
-        findMany: jest.fn().mockResolvedValue([{ ingredienteId: 'macarrao' }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ ingrediente: { nome: 'Macarrão, trigo' } }]),
       },
       receita: {
         create: jest.fn(async ({ data }: any) => ({ id: receitaId, ...data })),
@@ -126,7 +133,7 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
 
     await service.update(
       receitaId,
-      { modoPreparo: 'Cozinhe o macarrão.' } as any,
+      { modoPreparo: 'Cozinhe o macarrão.' },
       autor as UsuarioAutenticado,
     );
 
@@ -150,7 +157,7 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
   it('editar outro campo não chama a IA nem mexe na lista', async () => {
     await service.update(
       receitaId,
-      { nome: 'Macarrão simples' } as any,
+      { nome: 'Macarrão simples' },
       autor as UsuarioAutenticado,
     );
 

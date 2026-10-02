@@ -19,6 +19,7 @@ import {
   TipoUsuario,
 } from '@prisma/client';
 import { ReceitaDto } from './dtos/receita';
+import { ReceitaIngredienteDTO } from './dtos/receita-ingrediente';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { UpdateReceitaDto } from './dtos/update-receita';
 import { CacheService } from '../../../common/cache/cache.service';
@@ -70,9 +71,10 @@ export class ReceitaService {
       );
     }
 
+    const ingredientes = await this.validarIngredientes(data.ingredientes);
     const ingredientesNaoListados = await this.verificarIngredientesOcultos(
       data.modoPreparo,
-      data.ingredientes.map((i) => i.ingredienteId),
+      ingredientes.map((i) => i.nome),
     );
 
     const receita = await this.prismaService.receita.create({
@@ -118,19 +120,15 @@ export class ReceitaService {
    */
   private async verificarIngredientesOcultos(
     modoPreparo: string | null | undefined,
-    ingredienteIds: string[],
+    nomesIngredientes: string[],
   ): Promise<string[]> {
     if (!modoPreparo?.trim()) {
       return [];
     }
     try {
-      const ingredientes = await this.prismaService.ingrediente.findMany({
-        where: { id: { in: ingredienteIds } },
-        select: { nome: true },
-      });
       const resposta = await this.iaService.ingredientesNaoListados(
         modoPreparo,
-        ingredientes.map((i) => i.nome),
+        nomesIngredientes,
       );
       return interpretarIngredientesNaoListados(resposta);
     } catch (erro) {
@@ -139,6 +137,52 @@ export class ReceitaService {
       );
       return [];
     }
+  }
+
+  /**
+   * Confere a lista de ingredientes antes de gravar: repetido ou inexistente
+   * daria erro 500 no banco (chave e FK de receita_ingredientes). Devolve os
+   * ingredientes, na ordem da lista, para a checagem do modo de preparo.
+   */
+  private async validarIngredientes(itens: ReceitaIngredienteDTO[]) {
+    const ids = itens.map((i) => i.ingredienteId);
+    const repetidos = [
+      ...new Set(ids.filter((id, i) => ids.indexOf(id) !== i)),
+    ];
+    if (repetidos.length > 0) {
+      throw new BadRequestException(
+        `Ingrediente repetido na receita: ${repetidos.join(', ')}`,
+      );
+    }
+
+    const idsUnidades = [...new Set(itens.map((i) => i.unidadeMedidaId))];
+    const [ingredientes, unidades] = await Promise.all([
+      this.prismaService.ingrediente.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, nome: true },
+      }),
+      this.prismaService.unidadeMedida.findMany({
+        where: { id: { in: idsUnidades }, ativo: true },
+        select: { id: true },
+      }),
+    ]);
+
+    const encontrados = new Map(ingredientes.map((i) => [i.id, i]));
+    const faltando = ids.filter((id) => !encontrados.has(id));
+    if (faltando.length > 0) {
+      throw new BadRequestException(
+        `Ingrediente não encontrado: ${faltando.join(', ')}`,
+      );
+    }
+    const unidadesOk = new Set(unidades.map((u) => u.id));
+    const unidadesFaltando = idsUnidades.filter((id) => !unidadesOk.has(id));
+    if (unidadesFaltando.length > 0) {
+      throw new BadRequestException(
+        `Unidade de medida não encontrada ou inativa: ${unidadesFaltando.join(', ')}`,
+      );
+    }
+
+    return ids.map((id) => encontrados.get(id)!);
   }
 
   private avisoIngredientesOcultos(ingredientesNaoListados: string[]) {
@@ -500,19 +544,40 @@ export class ReceitaService {
   ) {
     const cacheKey = 'receitas:all';
 
-    // Modo de preparo novo: confere de novo os ingredientes citados. Fora da
-    // transação (a IA demora) e só depois de checar o autor, para ninguém
-    // gastar chamada de IA numa receita que não pode editar.
+    // Modo de preparo ou lista de ingredientes novos: confere de novo os
+    // ingredientes citados. Fora da transação (a IA demora) e só depois de
+    // checar o autor, para ninguém gastar chamada de IA numa receita que não
+    // pode editar.
+    const novosIngredientes = updateReceita.ingredientes;
     let ingredientesNaoListados: string[] | undefined;
-    if (updateReceita.modoPreparo !== undefined) {
+    if (
+      updateReceita.modoPreparo !== undefined ||
+      novosIngredientes !== undefined
+    ) {
       await this.garantirAutorOuAdmin(id, usuario);
-      const itens = await this.prismaService.receitaIngrediente.findMany({
-        where: { receitaId: id },
-        select: { ingredienteId: true },
-      });
+
+      const nomes = novosIngredientes
+        ? (await this.validarIngredientes(novosIngredientes)).map((i) => i.nome)
+        : (
+            await this.prismaService.receitaIngrediente.findMany({
+              where: { receitaId: id },
+              select: { ingrediente: { select: { nome: true } } },
+            })
+          ).map((i) => i.ingrediente.nome);
+
+      const modoPreparo =
+        updateReceita.modoPreparo !== undefined
+          ? updateReceita.modoPreparo
+          : (
+              await this.prismaService.receita.findUnique({
+                where: { id },
+                select: { modoPreparo: true },
+              })
+            )?.modoPreparo;
+
       ingredientesNaoListados = await this.verificarIngredientesOcultos(
-        updateReceita.modoPreparo,
-        itens.map((i) => i.ingredienteId),
+        modoPreparo,
+        nomes,
       );
     }
 
@@ -537,6 +602,20 @@ export class ReceitaService {
             modoPreparo: receitaAtual.modoPreparo,
             alteradoPor: usuario.id,
           },
+        });
+      }
+
+      // A lista nova substitui a antiga. Como muda o que a receita contém,
+      // a receita aprovada volta para curadoria (abaixo), como qualquer edição.
+      if (novosIngredientes) {
+        await tx.receitaIngrediente.deleteMany({ where: { receitaId: id } });
+        await tx.receitaIngrediente.createMany({
+          data: novosIngredientes.map((i) => ({
+            receitaId: id,
+            ingredienteId: i.ingredienteId,
+            quantidade: i.quantidade,
+            unidadeMedidaId: i.unidadeMedidaId,
+          })),
         });
       }
 
