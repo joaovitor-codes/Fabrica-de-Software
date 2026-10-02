@@ -25,6 +25,7 @@ import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
+import { CAMPO_INGREDIENTE } from '../../nutricao/ingrediente-restricao/regra-nutricional.service';
 
 @Injectable()
 export class ReceitaService {
@@ -630,6 +631,10 @@ export class ReceitaService {
    * (alergia ou gravidade grave). Ingrediente sem vínculo só conta como
    * seguro se já teve as restrições revisadas por um curador: um ingrediente
    * recém-criado também nasce sem vínculo.
+   *
+   * Se a restrição tem regra nutricional (ex: sódio > 600 para hipertensão),
+   * o ingrediente também precisa ter o dado daquele campo: sem o dado, a
+   * regra não consegue vincular, e a falta de vínculo não prova nada.
    */
   private async filtroRestricoes(
     usuario?: UsuarioAutenticado,
@@ -646,18 +651,39 @@ export class ReceitaService {
           { restricao: { tipo: TipoRestricao.alergia } },
         ],
       },
-      select: { restricaoId: true },
+      select: {
+        restricaoId: true,
+        restricao: {
+          select: {
+            regrasNutricionais: {
+              where: { valorLimite: { not: null } },
+              select: { campoNutricional: true },
+            },
+          },
+        },
+      },
     });
 
     if (estritas.length === 0) {
       return {};
     }
 
+    const camposDasRegras = new Set(
+      estritas.flatMap((r) =>
+        r.restricao.regrasNutricionais.map(
+          (regra) => CAMPO_INGREDIENTE[regra.campoNutricional],
+        ),
+      ),
+    );
+
     return {
       ingredientes: {
         every: {
           ingrediente: {
             restricoesRevisadasEm: { not: null },
+            ...Object.fromEntries(
+              [...camposDasRegras].map((campo) => [campo, { not: null }]),
+            ),
             restricoes: {
               none: {
                 restricaoId: { in: estritas.map((r) => r.restricaoId) },

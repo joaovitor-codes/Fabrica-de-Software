@@ -36,9 +36,7 @@ export class RestricaoRegraNutricionalService {
         },
       });
 
-      await this.regraNutricionalService.aplicarRegraATodosIngredientes(
-        regra.id,
-      );
+      await this.regraNutricionalService.reavaliarRestricao(restricao.id);
 
       return regra;
     } catch (error) {
@@ -94,9 +92,9 @@ export class RestricaoRegraNutricionalService {
         data: dto,
       });
 
-      await this.regraNutricionalService.aplicarRegraATodosIngredientes(
-        regra.id,
-      );
+      // Inclui o caso de valorLimite voltar a null: a reavaliação apaga os
+      // vínculos que só essa regra sustentava.
+      await this.regraNutricionalService.reavaliarRestricao(restricaoId);
 
       return regra;
     } catch (error) {
@@ -139,5 +137,8 @@ export class RestricaoRegraNutricionalService {
 
       throw error;
     }
+
+    // Sem isso, os vínculos criados pela regra removida continuariam valendo.
+    await this.regraNutricionalService.reavaliarRestricao(restricaoId);
   }
 }
