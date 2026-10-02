@@ -57,8 +57,5 @@ jobs:
       - name: Testes
         run: npm test
 
-      # Não bloqueia o PR enquanto o código legado tem erros de lint/format.
-      # Quando o time zerar os erros, remova o continue-on-error.
       - name: Lint (sem --fix)
         run: npx eslint "{src,test}/**/*.ts"
-        continue-on-error: true

@@ -1,0 +1,297 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  UseGuards,
+  Request,
+  Query,
+  Param,
+  BadRequestException,
+  DefaultValuePipe,
+  ParseIntPipe,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
+import { RolesGuard } from '../../../auth/roles.guard';
+import { AuthGuard } from '../../../auth/auth.guard';
+import { ProfissionalService } from './profissional.service';
+import { createProfissionalDto } from './dtos/profissional';
+import { Roles } from '../../../auth/roles.decorator';
+
+import { TipoUsuario } from '@prisma/client';
+import { CreateUsuarioDto } from '../usuario/dtos/usuario';
+import { ClinicasService } from '../clinicas/clinicas.service';
+import { PontosTransacaoService } from '../../receitas/pontos-transacao/pontos-transacao.service';
+
+import type { RequestAutenticado } from '../../../auth/auth.types';
+const uuidPipe = (mensagem: string) =>
+  new ParseUUIDPipe({
+    version: '4',
+    errorHttpStatusCode: 400,
+    exceptionFactory: () => new BadRequestException(mensagem),
+  });
+
+@ApiTags('Profissionais')
+@ApiBearerAuth()
+@UseGuards(AuthGuard, RolesGuard)
+@Controller('api/profissionais')
+export class ProfissionalController {
+  constructor(
+    private readonly profissionalService: ProfissionalService,
+    private readonly clinicaService: ClinicasService,
+    private readonly pontosTransacaoService: PontosTransacaoService,
+  ) {}
+
+  @ApiOperation({ summary: 'Listar os pacientes do profissional autenticado' })
+  @ApiResponse({
+    description: 'Retorna a lista de pacientes vinculados ao profissional.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Get('meus-pacientes')
+  async listarMeusPacientes(@Request() request: RequestAutenticado) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+    return this.profissionalService.listarPacientesDoProfissional(
+      profissional.id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Obter os dados da clínica do profissional autenticado',
+  })
+  @ApiResponse({
+    description: 'Retorna os dados da clínica vinculada ao profissional.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Get('minha-clinica')
+  async minhaClinica(@Request() request: RequestAutenticado) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+
+    if (!profissional.clinicaId) {
+      throw new BadRequestException(
+        'O profissional não está associado a uma clínica.',
+      );
+    }
+
+    return this.clinicaService.findOne(profissional.clinicaId);
+  }
+
+  @ApiOperation({
+    summary: 'Obter o saldo de pontos do profissional autenticado',
+  })
+  @ApiResponse({
+    description: 'Retorna o saldo de pontos de incentivo do profissional.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Get('pontos/saldo')
+  async getSaldo(@Request() request: RequestAutenticado) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+    await this.profissionalService.exigirProfissionalAprovado(profissional.id);
+    const saldo = await this.pontosTransacaoService.getSaldo(profissional.id);
+
+    return { saldo };
+  }
+
+  @ApiOperation({
+    summary:
+      'Listar o histórico de transações de pontos do profissional autenticado',
+  })
+  @ApiResponse({
+    description:
+      'Retorna o histórico paginado de transações de pontos do profissional.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Get('pontos/historico')
+  async historicoTransacoes(
+    @Request() request: RequestAutenticado,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+    await this.profissionalService.exigirProfissionalAprovado(profissional.id);
+
+    return this.pontosTransacaoService.historicoTransacoes(
+      profissional.id,
+      page,
+      limit,
+    );
+  }
+
+  @ApiOperation({ summary: 'Solicitar cadastro como profissional' })
+  @ApiCreatedResponse({
+    description:
+      'Solicitação de cadastro profissional criada com sucesso, aguardando aprovação.',
+  })
+  @Roles(TipoUsuario.comum)
+  @Post('solicitar')
+  async solicitarCadastro(
+    @Request() request: RequestAutenticado,
+    @Body() dto: createProfissionalDto,
+  ) {
+    return this.profissionalService.solicitarCadastroProfissional(
+      request.user.sub,
+      dto,
+    );
+  }
+
+  @ApiOperation({ summary: 'Lista solicitações pendentes de profissionais' })
+  @ApiResponse({
+    description: 'Retorna a lista de solicitações pendentes de profissionais.',
+  })
+  @Roles(TipoUsuario.admin)
+  @Get('pendentes')
+  async listarPendentes(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    return this.profissionalService.listarProfissionaisPendentes(page, limit);
+  }
+
+  @ApiOperation({
+    summary: 'Criar um novo paciente associado ao profissional autenticado',
+  })
+  @ApiCreatedResponse({
+    description: 'Paciente criado com sucesso e associado ao profissional.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Post('paciente')
+  async criarPaciente(
+    @Request() request: RequestAutenticado,
+    @Body() dto: CreateUsuarioDto,
+  ) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+    return this.profissionalService.criarNovoPacienteAssociado(
+      dto,
+      profissional.id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Desassociar uma clinica vinculada a um profissional',
+  })
+  @ApiCreatedResponse({
+    description: 'Clínica Desassociada com sucesso ao profissional.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Post('clinica/desassociar')
+  async desassociarClinica(@Request() request: RequestAutenticado) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+
+    if (!profissional.clinicaId) {
+      throw new BadRequestException(
+        'O profissional não está associado a uma clínica.',
+      );
+    }
+
+    return this.profissionalService.update(profissional.id, {
+      clinicaId: null,
+    });
+  }
+
+  @ApiOperation({ summary: 'Aprovar solicitação de cadastro profissional' })
+  @ApiCreatedResponse({
+    description: 'Solicitação de cadastro profissional aprovada com sucesso.',
+  })
+  @Roles(TipoUsuario.admin)
+  @Post(':id/aprovar')
+  async aprovar(
+    @Request() request: RequestAutenticado,
+    @Param('id', uuidPipe('ID inválido')) id: string,
+  ) {
+    return this.profissionalService.aprovarCadastroProfissional(
+      request.user.sub,
+      id,
+    );
+  }
+
+  @ApiOperation({ summary: 'Rejeitar solicitação de cadastro profissional' })
+  @ApiCreatedResponse({
+    description: 'Solicitação de cadastro profissional rejeitada com sucesso.',
+  })
+  @Roles(TipoUsuario.admin)
+  @Post(':id/rejeitar')
+  async rejeitar(
+    @Request() request: RequestAutenticado,
+    @Param('id', uuidPipe('ID inválido')) id: string,
+  ) {
+    return this.profissionalService.rejeitarCadastroProfissional(
+      request.user.sub,
+      id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Vincular um paciente já existente ao profissional autenticado',
+  })
+  @ApiCreatedResponse({
+    description: 'Paciente vinculado ao profissional com sucesso.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Post('paciente/:pacienteId/associar')
+  async associarPaciente(
+    @Request() request: RequestAutenticado,
+    @Param('pacienteId', uuidPipe('ID inválido')) pacienteId: string,
+  ) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+
+    return this.profissionalService.associarPaciente(
+      profissional.id,
+      pacienteId,
+    );
+  }
+
+  @ApiOperation({ summary: 'Obter os dados de um profissional específico' })
+  @ApiResponse({ description: 'Retorna os dados de um profissional.' })
+  @Roles(TipoUsuario.admin)
+  @Get(':id')
+  async findOne(@Param('id', uuidPipe('ID inválido')) id: string) {
+    return this.profissionalService.findOne(id);
+  }
+
+  @ApiOperation({ summary: 'Associar uma clinica vinculada a um profissional' })
+  @ApiCreatedResponse({
+    description: 'Clínica Associada com sucesso ao profissional.',
+  })
+  @Roles(TipoUsuario.profissional)
+  @Post('clinica/associar/:id')
+  async associarClinica(
+    @Request() request: RequestAutenticado,
+    @Param('id', uuidPipe('ID inválido')) id: string,
+  ) {
+    const profissional = await this.profissionalService.findByUsuarioId(
+      request.user.sub,
+    );
+
+    if (profissional.clinicaId) {
+      throw new BadRequestException(
+        'O profissional já está associado a uma clínica. Desassocie a clínica atual antes de associar uma nova.',
+      );
+    }
+
+    const clinica = await this.clinicaService.findOne(id);
+
+    return this.profissionalService.update(profissional.id, {
+      clinicaId: clinica.id,
+    });
+  }
+}

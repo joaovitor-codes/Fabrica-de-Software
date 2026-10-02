@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtSignOptions } from '@nestjs/jwt';
 
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MailerModuleEmail } from '../lib/mailer.module';
+import { MailerConfigModule } from '../common/mailer/mailer.module';
 
 @Module({
   imports: [
-    MailerModuleEmail,
+    MailerConfigModule,
     JwtModule.registerAsync({
       global: true,
       imports: [ConfigModule],
@@ -16,7 +16,8 @@ import { MailerModuleEmail } from '../lib/mailer.module';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '1h') as any,
+          expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ||
+            '1h') as JwtSignOptions['expiresIn'],
         },
       }),
     }),

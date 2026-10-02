@@ -97,7 +97,7 @@ Com a API no ar:
 
 ## Variáveis de ambiente
 
-O `.env` é validado na inicialização (`src/config/env.validation.ts`). Se faltar uma variável obrigatória, a API não sobe.
+O `.env` é validado na inicialização (`src/common/config/env.validation.ts`). Se faltar uma variável obrigatória, a API não sobe.
 
 | Variável | Obrigatória | Descrição |
 |---|:---:|---|
