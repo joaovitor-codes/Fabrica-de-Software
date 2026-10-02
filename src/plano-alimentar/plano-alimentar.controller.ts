@@ -4,7 +4,7 @@ import { AuthGuard } from "../auth/auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { TipoUsuario } from "@prisma/client";
-import { PlanoAlimentarDto, PlanoAlimentarItemDto } from "./dto/plano-alimentar";
+import { PlanoAlimentarDto, PlanoAlimentarItemDto, UpdatePlanoAlimentarDto, UpdatePlanoAlimentarItemDto } from "./dto/plano-alimentar";
 import { PlanoAlimentarService } from "./plano-alimentar.service";
 import { ProfissionalService } from "../profissional/profissional.service";
 import { PacientesService } from "../pacientes/pacientes.service";
@@ -52,6 +52,57 @@ export class PlanoAlimentarController {
     return this.planoAlimentarService.adicionarItemAoPlano(id, dto, profissional.id);
   }
 
+  @ApiOperation({ summary: 'Lista os planos alimentares de um paciente' })
+  @ApiOkResponse({ description: 'Lista de planos alimentares do paciente.' })
+  @Roles(TipoUsuario.admin, TipoUsuario.profissional, TipoUsuario.paciente)
+  @Get('pacientes/:pacienteId')
+  async findPlanosDoPaciente(@Param('pacienteId', uuidPipe('ID do paciente inválido')) pacienteId: string, @Request() req) {
+    return this.planoAlimentarService.findPlanosDoPaciente(pacienteId, req.user.sub, req.user.tipoUsuario);
+  }
+
+  @ApiOperation({ summary: 'Busca um plano alimentar com a grade de itens (dia x refeição)' })
+  @ApiOkResponse({ description: 'Plano alimentar com seus itens.' })
+  @Roles(TipoUsuario.admin, TipoUsuario.profissional, TipoUsuario.paciente)
+  @Get(':id')
+  async findPlanoAlimentar(@Param('id', uuidPipe('ID do plano alimentar inválido')) id: string, @Request() req) {
+    return this.planoAlimentarService.findPlanoAlimentar(id, req.user.sub, req.user.tipoUsuario);
+  }
+
+  @ApiOperation({ summary: 'Atualiza nome e/ou período de um plano alimentar' })
+  @ApiOkResponse({ description: 'Plano alimentar atualizado com sucesso.' })
+  @Roles(TipoUsuario.profissional)
+  @Patch(':id')
+  async updatePlanoAlimentar(
+    @Param('id', uuidPipe('ID do plano alimentar inválido')) id: string,
+    @Body() dto: UpdatePlanoAlimentarDto,
+    @Request() req,
+  ) {
+    const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
+    return this.planoAlimentarService.updatePlanoAlimentar(id, dto, profissional.id);
+  }
+
+  @ApiOperation({ summary: 'Atualiza um item (receita, dia, refeição ou horário) do plano alimentar' })
+  @ApiOkResponse({ description: 'Item atualizado com sucesso.' })
+  @Roles(TipoUsuario.profissional)
+  @Patch('itens/:itemId')
+  async updateItemDoPlano(
+    @Param('itemId', uuidPipe('ID do item inválido')) itemId: string,
+    @Body() dto: UpdatePlanoAlimentarItemDto,
+    @Request() req,
+  ) {
+    const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
+    return this.planoAlimentarService.updateItemDoPlano(itemId, dto, profissional.id);
+  }
+
+  @ApiOperation({ summary: 'Remove um item do plano alimentar (somente se não houver histórico do paciente)' })
+  @ApiOkResponse({ description: 'Item removido com sucesso.' })
+  @Roles(TipoUsuario.profissional)
+  @Delete('itens/:itemId')
+  async deleteItemDoPlano(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
+    const profissional = await this.profissionalService.findByUsuarioId(req.user.sub);
+    return this.planoAlimentarService.deleteItemDoPlano(itemId, profissional.id);
+  }
+
   @ApiOperation({ summary: 'Marca (ou desmarca) uma refeição como concluída num dia específico' })
   @ApiCreatedResponse({ description: 'Checklist atualizado com sucesso.' })
   @Roles(TipoUsuario.paciente)
@@ -67,7 +118,7 @@ export class PlanoAlimentarController {
 
   @ApiOperation({ summary: 'Lista o histórico de checklist de um item do plano alimentar' })
   @ApiOkResponse({ description: 'Histórico de checklist.' })
-  @Roles(TipoUsuario.paciente, TipoUsuario.profissional)
+  @Roles(TipoUsuario.admin, TipoUsuario.paciente, TipoUsuario.profissional)
   @Get('itens/:itemId/checklist')
   async findChecklist(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
     return this.checklistRefeicaoService.findAll(itemId, req.user.sub, req.user.tipoUsuario);
@@ -88,7 +139,7 @@ export class PlanoAlimentarController {
 
   @ApiOperation({ summary: 'Lista os comentários de um item do plano alimentar' })
   @ApiOkResponse({ description: 'Lista de comentários.' })
-  @Roles(TipoUsuario.paciente, TipoUsuario.profissional)
+  @Roles(TipoUsuario.admin, TipoUsuario.paciente, TipoUsuario.profissional)
   @Get('itens/:itemId/comentarios')
   async findComentarios(@Param('itemId', uuidPipe('ID do item inválido')) itemId: string, @Request() req) {
     return this.comentarioRefeicaoService.findAll(itemId, req.user.sub, req.user.tipoUsuario);

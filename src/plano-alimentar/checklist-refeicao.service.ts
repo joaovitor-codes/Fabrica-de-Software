@@ -72,12 +72,12 @@ export class ChecklistRefeicaoService {
             if(!ehProfissionalDono && !ehPacienteDono){
                 throw new ForbiddenException(`Item do plano alimentar não pertence ao usuário`);
             }
-
-            return this.prismaService.checklistRefeicao.findMany({
-                where: { planoAlimentarItemId: itemId },
-                orderBy: { dataReferencia: 'desc' }
-            })
         }
+
+        return this.prismaService.checklistRefeicao.findMany({
+            where: { planoAlimentarItemId: itemId },
+            orderBy: { dataReferencia: 'desc' }
+        })
     }
 
     async updateCheckList(itemId: string, pacienteId: string, dto: MarcarCheckListDto){

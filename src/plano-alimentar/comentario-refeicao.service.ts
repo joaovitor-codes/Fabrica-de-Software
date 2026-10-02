@@ -50,8 +50,8 @@ export class ComentarioRefeicaoService {
 
         if(tipoUsuario !== TipoUsuario.admin){
             const [profissional, paciente] = await Promise.all([
-                this.prismaService.profissional.findUnique({ where: { id: usuarioId } }),
-                this.prismaService.paciente.findUnique({ where: { id: usuarioId } })
+                this.prismaService.profissional.findUnique({ where: { usuarioId } }),
+                this.prismaService.paciente.findUnique({ where: { usuarioId } })
             ]);
 
             const ehProfissionalDono = profissional?.id === item.planoAlimentar.profissionalId;
