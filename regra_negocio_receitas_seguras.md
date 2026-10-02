@@ -6,7 +6,7 @@ Plano para que o usuário só veja receitas que pode comer. Para cada restriçã
 
 A ideia da plataforma é ser 100% adaptada: o usuário com restrição nunca deveria ver uma receita que não pode comer.
 
-Estado atual do código que afeta este plano:
+Estado do código quando este plano foi escrito (antes das fases; o módulo de receitas depois foi dividido em `receita/`, `visibilidade/`, `favorito/`, `curadoria/` e `adaptacao/`):
 
 - **Não existe selo de "segura para X".** A única informação é `GET /receitas/:id/alertas` (`findAlerts`), que lista as restrições disparadas pelos ingredientes, e o booleano genérico `avisoContaminacaoCruzada`.
 - **Visibilidade** (`filtroVisibilidade` em `receita.service.ts`): visitante vê só as aprovadas; usuário logado vê as aprovadas e as próprias; admin e profissional veem todas. Usam o filtro `findAll`, `findOne`, `findByName` e tudo que passa por `garantirVisivel` (`ingredientes`, `alertas`). **Não usam**: `findSuggestions`, `findValidated` e `findFavorites`. As rotas de `sugestoes` e `validadas` nem recebem o usuário (estão sem `OptionalAuthGuard`).
@@ -134,7 +134,7 @@ A IA nunca grava vínculo direto. Ela só recebe nomes de ingrediente e de restr
 
 ## Fase 1: filtro padrão por restrições (só nativas)
 
-**Andamento**: Fase 1 completa. A lógica comum (restrições do paciente, cláusula de receita segura e `restricoesVioladas`) fica em `src/modules/receitas/receita/restricoes-receita.ts`, usada pelo `ReceitaService` e pelo plano alimentar. Item 8 em `src/modules/receitas/receita/ingredientes-ocultos.ts` e `IaService.ingredientesNaoListados`. Quando a IA aponta um ingrediente, o autor o inclui na lista pela edição (`PATCH` com `ingredientes`), e a checagem roda de novo.
+**Andamento**: Fase 1 completa. A lógica comum (restrições do paciente, cláusula de receita segura e `restricoesVioladas`) fica em `src/modules/receitas/visibilidade/restricoes-receita.ts` e em `VisibilidadeReceitaService`, usados pelas listagens, favoritos, adaptação e plano alimentar. Item 8 em `src/modules/receitas/receita/ingredientes-ocultos.ts`, `IngredientesReceitaService` e `IaService.ingredientesNaoListados`. Quando a IA aponta um ingrediente, o autor o inclui na lista pela edição (`PATCH` com `ingredientes`), e a checagem roda de novo.
 
 Formato de `restricoesVioladas`, em cada receita das listagens e no corpo do 403/422: `{ id, nome, estrita, contem[], naoRevisados[], semDado[] }`, um por restrição violada, cada lista com `{ id, nome }` dos ingredientes.
 
@@ -164,7 +164,7 @@ Entrega: o paciente com restrições deixa de ver receitas que as violam. Ainda 
 
 Entrega: o usuário pede a versão adaptada de uma receita para uma restrição. Quem tem a restrição como leve/moderada recebe na hora; quem tem como estrita (alergia ou grave), depois que um profissional verifica.
 
-**Andamento**: implementada. Código em `src/modules/receitas/receita/`: `adaptacao.ts` (leitura da resposta da IA, sem banco), `adaptacao-receita.service.ts` e `adaptacao-receita.controller.ts`; prompt em `IaService.adaptarReceita`.
+**Andamento**: implementada. Código em `src/modules/receitas/adaptacao/`: `adaptacao.ts` (leitura da resposta da IA, sem banco), `adaptacao-base.service.ts` (etapas comuns), `adaptacao-paciente.service.ts` e `adaptacao.controller.ts`; prompt em `IaService.adaptarReceita`.
 
 ### Modelagem
 
@@ -192,7 +192,7 @@ Exige login. Pode pedir quem consegue ver a receita (aprovada ou própria; profi
 
 ### Quem vê a adaptação ainda não verificada
 
-No `filtroVisibilidade`:
+No `filtroVisibilidade` (`VisibilidadeReceitaService`):
 - quem tem a restrição dela como leve/moderada;
 - quem pediu, **exceto** se a restrição for estrita para ele;
 - profissional e admin (curadoria).
@@ -223,7 +223,7 @@ São dois cenários, com quem decide diferente:
 | Verificação | profissional da plataforma, para restrição estrita | a escolha do profissional já é a verificação |
 | Quem vê a adaptada | quem tem a restrição (regras da Fase 2) | só aquele paciente |
 
-**Andamento**: implementado (`AdaptacaoReceitaService.sugerir` e `salvarDoProfissional`).
+**Andamento**: implementado (`AdaptacaoProfissionalService.sugerir` e `salvarDoProfissional`, em `src/modules/receitas/adaptacao/`).
 
 ### `POST /api/receita/:id/sugestoes-adaptacao { pacienteId }`
 
