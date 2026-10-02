@@ -45,6 +45,64 @@ export class PacienteRestricaoController {
     private readonly pacienteRestricaoService: PacienteRestricaoService,
   ) {}
 
+  // As rotas `me/*` vêm antes das `:pacienteId/*`: senão "me" cairia no
+  // ParseUUIDPipe do :pacienteId e responderia 400.
+
+  @ApiOperation({
+    summary: 'Paciente cadastra uma restrição alimentar própria',
+  })
+  @ApiCreatedResponse({ description: 'Restrição cadastrada com sucesso.' })
+  @Roles(TipoUsuario.paciente)
+  @Post('me/restricoes')
+  async vincularPropria(
+    @Request() request: RequestAutenticado,
+    @Body() dto: VincularPacienteRestricaoDto,
+  ) {
+    return this.pacienteRestricaoService.vincularPropria(request.user.sub, dto);
+  }
+
+  @ApiOperation({ summary: 'Lista as restrições alimentares do paciente' })
+  @ApiOkResponse({ description: 'Lista de restrições do paciente.' })
+  @Roles(TipoUsuario.paciente)
+  @Get('me/restricoes')
+  async findAllProprias(@Request() request: RequestAutenticado) {
+    return this.pacienteRestricaoService.findAllProprias(request.user.sub);
+  }
+
+  @ApiOperation({
+    summary: 'Paciente atualiza a gravidade/observação de uma restrição sua',
+  })
+  @ApiOkResponse({ description: 'Restrição atualizada com sucesso.' })
+  @Roles(TipoUsuario.paciente)
+  @Patch('me/restricoes/:restricaoId')
+  async updatePropria(
+    @Request() request: RequestAutenticado,
+    @Param('restricaoId', uuidPipe('ID Restrição inválido'))
+    restricaoId: string,
+    @Body() dto: UpdatePacienteRestricaoDto,
+  ) {
+    return this.pacienteRestricaoService.updatePropria(
+      request.user.sub,
+      restricaoId,
+      dto,
+    );
+  }
+
+  @ApiOperation({ summary: 'Paciente remove uma restrição sua' })
+  @ApiOkResponse({ description: 'Restrição removida com sucesso.' })
+  @Roles(TipoUsuario.paciente)
+  @Delete('me/restricoes/:restricaoId')
+  async deletePropria(
+    @Request() request: RequestAutenticado,
+    @Param('restricaoId', uuidPipe('ID Restrição inválido'))
+    restricaoId: string,
+  ) {
+    return this.pacienteRestricaoService.deletePropria(
+      request.user.sub,
+      restricaoId,
+    );
+  }
+
   @ApiOperation({ summary: 'Vincula uma restrição alimentar a um paciente' })
   @ApiCreatedResponse({
     description: 'Restrição vinculada ao paciente com sucesso.',
