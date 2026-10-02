@@ -15,6 +15,7 @@ Backend do **Nutrify**, uma plataforma que conecta nutricionistas e pacientes. P
   - [Stack](#stack)
   - [Como rodar localmente](#como-rodar-localmente)
   - [Variáveis de ambiente](#variáveis-de-ambiente)
+  - [Estrutura do projeto](#estrutura-do-projeto)
   - [Scripts úteis](#scripts-úteis)
   - [Perfis de acesso](#perfis-de-acesso)
   - [Fluxo de trabalho do time](#fluxo-de-trabalho-do-time)
@@ -41,8 +42,9 @@ Backend do **Nutrify**, uma plataforma que conecta nutricionistas e pacientes. P
 - **Ingredientes (TACO)**: base nutricional importada da TACO, 4ª edição (NEPA/UNICAMP, 2011), com unidades de medida.
 - **Restrições alimentares**: vínculo entre ingrediente e restrição (feito por curadoria manual ou por regra nutricional, como sódio para hipertensão) e restrições do paciente.
 - **Ingredientes substitutos**: sugestões de substituição para ingredientes restritos, com apoio de IA.
-- **Receitas**: cadastro de receitas com ingredientes, imagem e vídeo.
-- **Plano alimentar**: plano do paciente, checklist de refeições e comentários por refeição.
+- **Receitas**: cadastro com ingredientes, imagem e vídeo; curadoria por profissional (edição de receita aprovada volta para `pendente`); favoritos; alertas de restrição alimentar por receita. Visitante vê só receitas aprovadas.
+- **Pontos de incentivo**: o profissional ganha pontos ao aprovar/rejeitar receitas; saldo, histórico e ajuste manual pelo admin.
+- **Plano alimentar**: criação, consulta e edição do plano e dos itens, checklist de refeições e comentários por refeição.
 - **Diário de sintomas**: registros do paciente com tags de sintomas.
 
 
@@ -115,6 +117,34 @@ O `.env` é validado na inicialização (`src/common/config/env.validation.ts`).
 
 > O `DATABASE_URL` do `.env.example` é só um modelo. Ajuste usuário, senha e nome do banco para os mesmos valores do `docker-compose.yml`.
 
+## Estrutura do projeto
+
+```
+src/
+  auth/        autenticação, guards (AuthGuard, OptionalAuthGuard, RolesGuard) e tipos
+  common/      infraestrutura: prisma, cache, throttler, multer, mailer, config
+  modules/
+    identidade/       usuario, pacientes, profissional, clinicas, endereco, telefone
+    nutricao/         ingrediente, unidade-medida, restricao-alimentar,
+                      ingrediente-restricao, paciente-restricao
+    receitas/         receita, pontos-transacao
+    acompanhamento/   plano-alimentar, anamnese, diario-de-sintomas, tag-sintomas
+    ia/
+  app.module.ts
+  main.ts
+```
+
+Convenções:
+- DTOs ficam em `dtos/` dentro do módulo, sem sufixo `.dto` (ex.: `dtos/receita.ts`, `dtos/update-receita.ts`).
+- Imports relativos (sem alias).
+- Para gerar um módulo novo no lugar certo, passe o caminho ao CLI, **criando o module primeiro**:
+  ```bash
+  npx nest g module     modules/<dominio>/<nome>
+  npx nest g controller modules/<dominio>/<nome> --no-spec
+  npx nest g service    modules/<dominio>/<nome> --no-spec
+  ```
+  Evite `nest g resource`: ele cria `dto/`, `entities/` e sufixo `.dto`, fora do padrão.
+
 ## Scripts úteis
 
 | Comando | O que faz |
@@ -132,7 +162,7 @@ O `.env` é validado na inicialização (`src/common/config/env.validation.ts`).
 
 ## Perfis de acesso
 
-O controle é feito com `AuthGuard` (usuário autenticado) e `RolesGuard` + `@Roles(...)` (perfil).
+O controle é feito com `AuthGuard` (usuário autenticado), `RolesGuard` + `@Roles(...)` (perfil) e `OptionalAuthGuard` (rotas públicas cujo conteúdo muda para quem está logado, como as de receita). Nos controllers, tipe o request como `RequestAutenticado` (ou `RequestOpcional`) e marque as rotas protegidas com `@ApiBearerAuth()` para o Swagger enviar o token. Regras de dono (ex.: só o autor ou o admin editam uma receita) ficam no service.
 
 | Perfil | Pode fazer |
 |---|---|
@@ -146,10 +176,12 @@ O controle é feito com `AuthGuard` (usuário autenticado) e `RolesGuard` + `@Ro
 - **Branch principal:** `desenvolvimento`. Toda mudança entra por Pull Request.
 - **Nome das branches:** `feat/<descricao>` para funcionalidades, `fix/<descricao>` para correções e `docs/<descricao>` para documentação.
 - **Commits:** no padrão [Conventional Commits](https://www.conventionalcommits.org/pt-br/), por exemplo `feat: diário de sintomas` ou `fix: fluxo de ingrediente substituto`.
-- **Antes de abrir o PR:** rode `npm run lint` e `npm test`. Se alterou o `schema.prisma`, inclua a migration no PR.
+- **Antes de abrir o PR:** rode `npm run lint` e `npm test`. O CI (build, testes e lint) **bloqueia o PR** se qualquer um falhar. Se alterou o `schema.prisma`, inclua a migration no PR.
+- **Testes:** módulo novo já nasce com testes (veja os `*.integration.spec.ts` existentes como modelo: fake do Prisma em memória e `AuthGuard` substituído por headers).
 - **Nunca** faça commit do `.env` nem da pasta `uploads/`.
 
 ## Documentação complementar
 
-- [`regra_negocio.md`](../regra_negocio.md): decisões sobre ingredientes, restrições, importação da TACO e limiares nutricionais.
-- [`regra_negocio_anamnese.md`](../regra_negocio_anamnese.md): decisões sobre anamnese, permissões e restrições do paciente.
+- [`regra_negocio.md`](regra_negocio.md): decisões sobre ingredientes, restrições, importação da TACO e limiares nutricionais.
+- [`regra_negocio_anamnese.md`](regra_negocio_anamnese.md): decisões sobre anamnese, permissões e restrições do paciente.
+- [`docs/ci-cd.md`](docs/ci-cd.md): pipeline de CI, proteção de branch e deploy.
