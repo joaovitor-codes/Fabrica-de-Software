@@ -8,6 +8,7 @@ import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.ser
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { CacheService } from '../../../common/cache/cache.service';
+import { IaService } from '../../ia/ia.service';
 
 /**
  * Fake em memória com rollback no $transaction, cobrindo só o que a
@@ -89,6 +90,7 @@ describe('ReceitaService - pontos na aprovação/rejeição', () => {
         { provide: PrismaService, useClass: FakePrismaService },
         { provide: UsuarioService, useValue: {} },
         { provide: CacheService, useValue: cache },
+        { provide: IaService, useValue: {} },
       ],
     }).compile();
 
