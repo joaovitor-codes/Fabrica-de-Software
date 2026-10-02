@@ -3,9 +3,15 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { TipoUsuario } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import {
+  clausulaSegura,
+  restricoesDoPaciente,
+  restricoesVioladas,
+} from '../../receitas/receita/restricoes-receita';
 import {
   PlanoAlimentarDto,
   PlanoAlimentarItemDto,
@@ -84,6 +90,11 @@ export class PlanoAlimentarService {
     if (!receitaExiste || receitaExiste.deletedAt) {
       throw new NotFoundException('Receita não encontrada');
     }
+
+    await this.garantirSeguraParaPaciente(
+      item.receitaId,
+      planoAlimentar.pacienteId,
+    );
 
     const itemDuplicado = await this.prismaService.planoAlimentarItem.findFirst(
       {
@@ -268,6 +279,11 @@ export class PlanoAlimentarService {
       if (!receitaExiste || receitaExiste.deletedAt) {
         throw new NotFoundException('Receita não encontrada');
       }
+
+      await this.garantirSeguraParaPaciente(
+        dto.receitaId,
+        item.planoAlimentar.pacienteId,
+      );
     }
 
     const diaSemana = dto.diaSemana ?? item.diaSemana;
@@ -368,6 +384,40 @@ export class PlanoAlimentarService {
     }
 
     return item;
+  }
+
+  /**
+   * O profissional não põe no plano uma receita que fere uma restrição
+   * estrita (alergia ou grave) do paciente. Mesma regra do filtro de
+   * receitas; ver regra_negocio_receitas_seguras.md.
+   */
+  private async garantirSeguraParaPaciente(
+    receitaId: string,
+    pacienteId: string,
+  ) {
+    const estritas = (
+      await restricoesDoPaciente(this.prismaService, { id: pacienteId })
+    ).filter((r) => r.estrita);
+    if (estritas.length === 0) {
+      return;
+    }
+
+    const segura = await this.prismaService.receita.count({
+      where: { id: receitaId, ...clausulaSegura(estritas) },
+    });
+    if (segura === 0) {
+      const violadas = await restricoesVioladas(
+        this.prismaService,
+        [receitaId],
+        estritas,
+      );
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        error: 'Unprocessable Entity',
+        message: 'A receita não é segura para as restrições do paciente',
+        restricoesVioladas: violadas.get(receitaId) ?? [],
+      });
+    }
   }
 
   private horarioSugeridoParaDate(horario: string): Date {

@@ -31,6 +31,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { TipoMidia, TipoUsuario } from '@prisma/client';
 
@@ -58,6 +59,20 @@ const uuidPipe = (mensagem: string) =>
     exceptionFactory: () => new BadRequestException(mensagem),
   });
 
+const seguraParaPipe = new ParseUUIDPipe({
+  version: '4',
+  optional: true,
+  exceptionFactory: () =>
+    new BadRequestException('seguraPara deve ser o ID de uma restrição'),
+});
+
+const seguraParaQuery = ApiQuery({
+  name: 'seguraPara',
+  required: false,
+  description:
+    'ID de uma restrição alimentar: devolve só as receitas seguras para ela.',
+});
+
 @Controller('api/receita')
 export class ReceitaController {
   constructor(private readonly receitaService: ReceitaService) {}
@@ -78,9 +93,14 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Objeto da receita.' })
   @ApiBearerAuth()
   @UseGuards(OptionalAuthGuard)
+  @seguraParaQuery
   @Get('/nome')
-  async findByName(@Query('q') nome: string, @Request() req: RequestOpcional) {
-    return await this.receitaService.findByName(nome, req.user);
+  async findByName(
+    @Query('q') nome: string,
+    @Request() req: RequestOpcional,
+    @Query('seguraPara', seguraParaPipe) seguraPara?: string,
+  ) {
+    return await this.receitaService.findByName(nome, req.user, seguraPara);
   }
 
   @ApiOperation({
@@ -124,9 +144,13 @@ export class ReceitaController {
   @ApiOkResponse({ description: 'Retorna uma lista de receitas.' })
   @ApiBearerAuth()
   @UseGuards(OptionalAuthGuard)
+  @seguraParaQuery
   @Get('all')
-  async findAll(@Request() req: RequestOpcional) {
-    return await this.receitaService.findAll(req.user);
+  async findAll(
+    @Request() req: RequestOpcional,
+    @Query('seguraPara', seguraParaPipe) seguraPara?: string,
+  ) {
+    return await this.receitaService.findAll(req.user, seguraPara);
   }
 
   @ApiOperation({ summary: 'Retorna uma lista de sugestões de receitas' })

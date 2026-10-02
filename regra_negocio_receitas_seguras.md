@@ -134,6 +134,10 @@ A IA nunca grava vínculo direto. Ela só recebe nomes de ingrediente e de restr
 
 ## Fase 1: filtro padrão por restrições (só nativas)
 
+**Andamento**: itens 1 a 7, 9 e 10 implementados. A lógica comum (restrições do paciente, cláusula de receita segura e `restricoesVioladas`) fica em `src/modules/receitas/receita/restricoes-receita.ts`, usada pelo `ReceitaService` e pelo plano alimentar. Falta o item 8 (ingredientes ocultos no modo de preparo).
+
+Formato de `restricoesVioladas`, em cada receita das listagens e no corpo do 403/422: `{ id, nome, estrita, contem[], naoRevisados[], semDado[] }`, um por restrição violada, cada lista com `{ id, nome }` dos ingredientes.
+
 Entrega: o paciente com restrições deixa de ver receitas que as violam. Ainda não existe adaptação. Por isso, nesta fase, toda receita insegura fica escondida para restrição estrita e é mostrada com alerta para restrição flexível.
 
 **Dependência**: hoje só o profissional cadastra as restrições do paciente. Implementar junto a rota self-service `POST/GET/DELETE /api/pacientes/me/restricoes`, já decidida no item 7 de `regra_negocio_anamnese.md`. Sem ela, só o paciente que tem profissional vinculado é filtrado.

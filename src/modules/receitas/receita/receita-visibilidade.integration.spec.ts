@@ -47,6 +47,7 @@ class FakeOptionalAuthGuard implements CanActivate {
 const atende = (r: any, where: any = {}): boolean =>
   Object.entries(where).every(([campo, cond]: [string, any]) => {
     if (campo === 'OR') return cond.some((w: any) => atende(r, w));
+    if (campo === 'AND') return cond.every((w: any) => atende(r, w));
     if (cond && typeof cond === 'object' && 'contains' in cond) {
       return r[campo].toLowerCase().includes(cond.contains.toLowerCase());
     }
