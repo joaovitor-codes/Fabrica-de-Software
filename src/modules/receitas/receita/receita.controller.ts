@@ -23,8 +23,6 @@ import { ReceitaService } from './receita.service';
 import { ReceitaDto } from './dtos/receita';
 import { AuthGuard } from '../../../auth/auth.guard';
 import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
-import { RolesGuard } from '../../../auth/roles.guard';
-import { Roles } from '../../../auth/roles.decorator';
 import { UpdateReceitaDto } from './dtos/update-receita';
 import {
   ApiBearerAuth,
@@ -33,7 +31,7 @@ import {
   ApiOperation,
   ApiQuery,
 } from '@nestjs/swagger';
-import { TipoMidia, TipoUsuario } from '@prisma/client';
+import { TipoMidia } from '@prisma/client';
 
 import type {
   RequestAutenticado,
@@ -162,41 +160,6 @@ export class ReceitaController {
     return await this.receitaService.findSuggestions(req.user);
   }
 
-  @ApiOperation({
-    summary: 'Retorna as receitas favoritas do usuário autenticado',
-  })
-  @ApiOkResponse({ description: 'Lista de receitas favoritas.' })
-  @ApiBearerAuth()
-  @UseGuards(AuthGuard)
-  @Get('favoritos')
-  async findFavorites(@Request() request: RequestAutenticado) {
-    return await this.receitaService.findFavorites(request.user.sub);
-  }
-
-  @ApiOperation({ summary: 'Adiciona uma receita aos favoritos' })
-  @ApiCreatedResponse({ description: 'Receita favoritada com sucesso.' })
-  @ApiBearerAuth()
-  @UseGuards(AuthGuard)
-  @Post(':id/favorito')
-  async addFavorite(
-    @Param('id', uuidPipe('ID inválido')) id: string,
-    @Request() request: RequestAutenticado,
-  ) {
-    return await this.receitaService.addFavorite(id, request.user.sub);
-  }
-
-  @ApiOperation({ summary: 'Remove uma receita dos favoritos' })
-  @ApiOkResponse({ description: 'Receita removida dos favoritos com sucesso.' })
-  @ApiBearerAuth()
-  @UseGuards(AuthGuard)
-  @Delete(':id/favorito')
-  async removeFavorite(
-    @Param('id', uuidPipe('ID inválido')) id: string,
-    @Request() request: RequestAutenticado,
-  ) {
-    return await this.receitaService.removeFavorite(id, request.user.sub);
-  }
-
   @ApiOperation({ summary: 'Retorna todas as receitas validadas' })
   @ApiOkResponse({ description: 'Array com as receitas validadas.' })
   @ApiBearerAuth()
@@ -204,16 +167,6 @@ export class ReceitaController {
   @Get('validadas')
   async findValidated(@Request() req: RequestOpcional) {
     return await this.receitaService.findValidated(req.user);
-  }
-
-  @ApiOperation({ summary: 'Lista as receitas pendentes de curadoria' })
-  @ApiOkResponse({ description: 'Receitas pendentes, mais antigas primeiro.' })
-  @ApiBearerAuth()
-  @UseGuards(AuthGuard, RolesGuard)
-  @Roles(TipoUsuario.admin, TipoUsuario.profissional)
-  @Get('pendentes')
-  async findPendentes() {
-    return await this.receitaService.findPendentes();
   }
 
   @ApiOperation({ summary: 'Retorna uma receita pelo ID' })
@@ -277,30 +230,6 @@ export class ReceitaController {
     @Request() request: RequestAutenticado,
   ) {
     return await this.receitaService.update(id, receita, request.user);
-  }
-
-  @ApiOperation({ summary: 'Aprova uma receita pelo ID' })
-  @ApiOkResponse({ description: 'Receita aprovada com sucesso.' })
-  @ApiBearerAuth()
-  @UseGuards(AuthGuard)
-  @Patch(':id/aprovar')
-  async aprovarReceita(
-    @Param('id', uuidPipe('ID inválido')) id: string,
-    @Request() request: RequestAutenticado,
-  ) {
-    return await this.receitaService.aprovarReceita(id, request.user.sub);
-  }
-
-  @ApiOperation({ summary: 'Rejeita uma receita pelo ID' })
-  @ApiOkResponse({ description: 'Receita rejeitada com sucesso.' })
-  @ApiBearerAuth()
-  @UseGuards(AuthGuard)
-  @Patch(':id/rejeitar')
-  async rejeitarReceita(
-    @Param('id', uuidPipe('ID inválido')) id: string,
-    @Request() request: RequestAutenticado,
-  ) {
-    return await this.receitaService.rejeitarReceita(id, request.user.sub);
   }
 
   @ApiOperation({ summary: 'Remove uma receita pelo ID (autor ou admin)' })

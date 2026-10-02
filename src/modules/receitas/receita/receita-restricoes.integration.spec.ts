@@ -19,10 +19,11 @@ import {
 } from '@prisma/client';
 import { ReceitaController } from './receita.controller';
 import { ReceitaService } from './receita.service';
+import { IngredientesReceitaService } from './ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { IaService } from '../../ia/ia.service';
 import { AuthGuard } from '../../../auth/auth.guard';
 import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
@@ -266,6 +267,8 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       controllers: [ReceitaController],
       providers: [
         ReceitaService,
+        IngredientesReceitaService,
+        VisibilidadeReceitaService,
         { provide: PrismaService, useClass: FakePrismaService },
         {
           provide: CacheService,
@@ -276,7 +279,6 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
           },
         },
         { provide: UsuarioService, useValue: {} },
-        { provide: PontosTransacaoService, useValue: {} },
         { provide: IaService, useValue: {} },
       ],
     })

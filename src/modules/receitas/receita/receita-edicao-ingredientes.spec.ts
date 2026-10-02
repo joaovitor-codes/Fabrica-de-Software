@@ -5,10 +5,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { TipoUsuario } from '@prisma/client';
 import { ReceitaService } from './receita.service';
+import { IngredientesReceitaService } from './ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { IaService } from '../../ia/ia.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 
@@ -76,10 +77,11 @@ describe('ReceitaService - lista de ingredientes', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         ReceitaService,
+        IngredientesReceitaService,
+        VisibilidadeReceitaService,
         { provide: PrismaService, useValue: prisma },
         { provide: CacheService, useValue: { del: async () => {} } },
         { provide: UsuarioService, useValue: { userExists: async () => true } },
-        { provide: PontosTransacaoService, useValue: {} },
         { provide: IaService, useValue: ia },
       ],
     }).compile();

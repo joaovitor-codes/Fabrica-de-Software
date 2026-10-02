@@ -5,18 +5,20 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, TipoUsuario } from '@prisma/client';
-import { AdaptacaoReceitaService } from './adaptacao-receita.service';
-import * as restricoesReceita from './restricoes-receita';
+import { AdaptacaoPacienteService } from './adaptacao-paciente.service';
+import { AdaptacaoBaseService } from './adaptacao-base.service';
+import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
+import * as restricoesReceita from '../visibilidade/restricoes-receita';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { IaService } from '../../ia/ia.service';
-import { ReceitaService } from './receita.service';
+import { IngredientesReceitaService } from '../receita/ingredientes-receita.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 
-jest.mock('./restricoes-receita');
+jest.mock('../visibilidade/restricoes-receita');
 const mocked = jest.mocked(restricoesReceita);
 
-describe('AdaptacaoReceitaService.adaptar', () => {
+describe('AdaptacaoPacienteService.adaptar', () => {
   const usuario = {
     id: 'carla',
     tipoUsuario: TipoUsuario.paciente,
@@ -70,7 +72,7 @@ describe('AdaptacaoReceitaService.adaptar', () => {
   let tx: any;
   let ia: { adaptarReceita: jest.Mock };
   let verificarIngredientesOcultos: jest.Mock;
-  let service: AdaptacaoReceitaService;
+  let service: AdaptacaoPacienteService;
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -115,11 +117,16 @@ describe('AdaptacaoReceitaService.adaptar', () => {
     };
     verificarIngredientesOcultos = jest.fn(async () => []);
 
-    service = new AdaptacaoReceitaService(
+    const base = new AdaptacaoBaseService(
       prisma as PrismaService,
       ia as unknown as IaService,
-      { verificarIngredientesOcultos } as unknown as ReceitaService,
+      { verificarIngredientesOcultos } as unknown as IngredientesReceitaService,
+    );
+    service = new AdaptacaoPacienteService(
+      prisma as PrismaService,
       { del: async () => {} } as unknown as CacheService,
+      base,
+      new VisibilidadeReceitaService(prisma as PrismaService),
     );
   });
 

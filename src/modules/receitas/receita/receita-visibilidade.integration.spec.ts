@@ -12,10 +12,14 @@ import { randomUUID } from 'crypto';
 import { StatusReceita, TipoUsuario } from '@prisma/client';
 import { ReceitaController } from './receita.controller';
 import { ReceitaService } from './receita.service';
+import { CuradoriaReceitaController } from '../curadoria/curadoria-receita.controller';
+import { CuradoriaReceitaService } from '../curadoria/curadoria-receita.service';
+import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
+import { IngredientesReceitaService } from './ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { IaService } from '../../ia/ia.service';
 import { AuthGuard } from '../../../auth/auth.guard';
 import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
@@ -109,9 +113,14 @@ describe('Receita - visibilidade nas rotas públicas (integration)', () => {
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      controllers: [ReceitaController],
+      // Mesma ordem do ReceitasModule: rotas fixas antes de GET :id.
+      controllers: [CuradoriaReceitaController, ReceitaController],
       providers: [
         ReceitaService,
+        IngredientesReceitaService,
+        VisibilidadeReceitaService,
+        CuradoriaReceitaService,
+        { provide: PontosTransacaoService, useValue: {} },
         { provide: PrismaService, useClass: FakePrismaService },
         {
           provide: CacheService,
@@ -122,7 +131,6 @@ describe('Receita - visibilidade nas rotas públicas (integration)', () => {
           },
         },
         { provide: UsuarioService, useValue: {} },
-        { provide: PontosTransacaoService, useValue: {} },
         { provide: IaService, useValue: {} },
       ],
     })

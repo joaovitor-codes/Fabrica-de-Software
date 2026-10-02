@@ -5,16 +5,16 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, TipoUsuario } from '@prisma/client';
-import { AdaptacaoReceitaService } from './adaptacao-receita.service';
+import { AdaptacaoProfissionalService } from './adaptacao-profissional.service';
+import { AdaptacaoBaseService } from './adaptacao-base.service';
 import { interpretarOpcoes } from './adaptacao';
-import * as restricoesReceita from './restricoes-receita';
+import * as restricoesReceita from '../visibilidade/restricoes-receita';
 import { PrismaService } from '../../../common/prisma/prisma.service';
-import { CacheService } from '../../../common/cache/cache.service';
 import { IaService } from '../../ia/ia.service';
-import { ReceitaService } from './receita.service';
+import { IngredientesReceitaService } from '../receita/ingredientes-receita.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 
-jest.mock('./restricoes-receita');
+jest.mock('../visibilidade/restricoes-receita');
 const mocked = jest.mocked(restricoesReceita);
 
 describe('interpretarOpcoes', () => {
@@ -37,7 +37,7 @@ describe('interpretarOpcoes', () => {
   });
 });
 
-describe('AdaptacaoReceitaService - profissional', () => {
+describe('AdaptacaoProfissionalService', () => {
   const nutri = {
     id: 'usuario-nutri',
     tipoUsuario: TipoUsuario.profissional,
@@ -104,7 +104,7 @@ describe('AdaptacaoReceitaService - profissional', () => {
     verificarIngredientesOcultos: jest.Mock;
     validarIngredientes: jest.Mock;
   };
-  let service: AdaptacaoReceitaService;
+  let service: AdaptacaoProfissionalService;
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -159,11 +159,16 @@ describe('AdaptacaoReceitaService - profissional', () => {
       verificarIngredientesOcultos: jest.fn(async () => []),
       validarIngredientes: jest.fn(async () => []),
     };
-    service = new AdaptacaoReceitaService(
+    const ingredientesReceita =
+      receitaService as unknown as IngredientesReceitaService;
+    service = new AdaptacaoProfissionalService(
       prisma as PrismaService,
-      ia as unknown as IaService,
-      receitaService as unknown as ReceitaService,
-      { del: async () => {} } as unknown as CacheService,
+      new AdaptacaoBaseService(
+        prisma as PrismaService,
+        ia as unknown as IaService,
+        ingredientesReceita,
+      ),
+      ingredientesReceita,
     );
   });
 
