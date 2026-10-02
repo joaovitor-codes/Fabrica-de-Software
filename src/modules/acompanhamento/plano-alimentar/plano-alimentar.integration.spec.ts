@@ -80,7 +80,20 @@ class FakePrismaService {
 
   receita = {
     findUnique: async ({ where }: any) => this.receitas.get(where.id) ?? null,
+    // Só a checagem de restrição usa: 0 = a receita fere a restrição.
+    count: async ({ where }: any) =>
+      this.receitasInseguras.has(where.id) ? 0 : 1,
   };
+
+  receitasInseguras = new Set<string>();
+  pacienteRestricoes: any[] = [];
+
+  pacienteRestricao = {
+    findMany: async ({ where }: any) =>
+      this.pacienteRestricoes.filter((r) => r.pacienteId === where.paciente.id),
+  };
+
+  receitaIngrediente = { findMany: async () => [] };
 
   planoAlimentar = {
     create: async ({ data }: any) => {
@@ -762,6 +775,46 @@ describe('PlanoAlimentar (integration)', () => {
             tipoRefeicao: TipoRefeicao.ceia,
           })
           .expect(404);
+      });
+
+      it('rejeita receita que fere restrição estrita do paciente (422)', async () => {
+        const planoAlimentarId = await criarPlano();
+        const itemId = await criarItem(planoAlimentarId);
+        const receitaComLeite = { id: randomUUID(), nome: 'Bolo de leite' };
+        prisma.receitas.set(receitaComLeite.id, receitaComLeite);
+        prisma.receitasInseguras.add(receitaComLeite.id);
+        prisma.pacienteRestricoes.push({
+          pacienteId: paciente.id,
+          restricaoId: randomUUID(),
+          gravidade: 'leve',
+          restricao: {
+            nome: 'Alergia a leite',
+            tipo: 'alergia',
+            createdAt: new Date(),
+            regrasNutricionais: [],
+          },
+        });
+
+        try {
+          const res = await request(app.getHttpServer())
+            .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+            .set(asProfissionalDono())
+            .send({
+              ...itemValido,
+              receitaId: receitaComLeite.id,
+              tipoRefeicao: TipoRefeicao.ceia,
+            })
+            .expect(422);
+          expect(res.body.message).toContain('restrições do paciente');
+
+          await request(app.getHttpServer())
+            .patch(`/api/plano-alimentar/itens/${itemId}`)
+            .set(asProfissionalDono())
+            .send({ receitaId: receitaComLeite.id })
+            .expect(422);
+        } finally {
+          prisma.pacienteRestricoes = [];
+        }
       });
 
       it('rejeita receita inexistente e enum inválido', async () => {

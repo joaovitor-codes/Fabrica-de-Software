@@ -56,6 +56,7 @@ class FakeOptionalAuthGuard implements CanActivate {
 const atende = (r: any, where: any = {}): boolean =>
   Object.entries(where).every(([campo, cond]: [string, any]) => {
     if (campo === 'OR') return cond.some((w: any) => atende(r, w));
+    if (campo === 'AND') return cond.every((w: any) => atende(r, w));
     const valor = r[campo];
     if (cond && typeof cond === 'object') {
       if ('contains' in cond) {
@@ -83,9 +84,28 @@ class FakePrismaService {
       this.receitas.find((r) => atende(r, where)) ?? null,
   };
 
+  restricoesAlimentares: any[] = [];
+
+  restricaoAlimentar = {
+    findUnique: async ({ where }: any) =>
+      this.restricoesAlimentares.find((r) => r.id === where.id) ?? null,
+  };
+
   pacienteRestricao = {
     findMany: async ({ where }: any) =>
       this.pacienteRestricoes.filter((r) => atende(r, where)),
+  };
+
+  receitaIngrediente = {
+    findMany: async ({ where }: any) =>
+      this.receitas
+        .filter((r) => where.receitaId.in.includes(r.id))
+        .flatMap((r) =>
+          r.ingredientes.map((i: any) => ({
+            receitaId: r.id,
+            ingrediente: i.ingrediente,
+          })),
+        ),
   };
 }
 
@@ -118,6 +138,8 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     sodioMg: number | null = 100,
   ) => ({
     ingrediente: {
+      id: randomUUID(),
+      nome: `ingrediente ${restricoes.join(',')}`,
       restricoesRevisadasEm: revisado ? new Date() : null,
       sodioMg,
       restricoes: restricoes.map((restricaoId) => ({ restricaoId })),
@@ -174,6 +196,7 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     gravidade,
     paciente: { usuarioId },
     restricao: {
+      nome: `restrição ${restricaoId}`,
       tipo,
       createdAt: criadaEm,
       regrasNutricionais: camposDasRegras.map((campoNutricional) => ({
@@ -225,6 +248,12 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       semDadoSodio,
       propriaComLeite,
     );
+    prisma.restricoesAlimentares.push({
+      id: leite,
+      nome: 'Alergia a leite',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      regrasNutricionais: [],
+    });
     prisma.pacienteRestricoes.push(
       restricaoDe(alergico.id, leite, TipoRestricao.alergia, Gravidade.leve),
       restricaoDe(
@@ -274,11 +303,25 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       );
     });
 
-    it('recebe 404 ao abrir a receita com o alérgeno pelo id', async () => {
-      await request(app.getHttpServer())
+    it('recebe 403 com o motivo ao abrir a receita com o alérgeno pelo id', async () => {
+      const res = await request(app.getHttpServer())
         .get(`/api/receita/${comLeite.id}`)
         .set(como(alergico))
-        .expect(404);
+        .expect(403);
+
+      expect(res.body.restricoesVioladas).toEqual([
+        expect.objectContaining({
+          id: leite,
+          estrita: true,
+          contem: [expect.objectContaining({ nome: `ingrediente ${leite}` })],
+        }),
+      ]);
+
+      // Os alertas da receita escondida também respondem 403.
+      await request(app.getHttpServer())
+        .get(`/api/receita/${comLeite.id}/alertas`)
+        .set(como(alergico))
+        .expect(403);
 
       await request(app.getHttpServer())
         .get(`/api/receita/${segura.id}`)
@@ -324,6 +367,31 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       expect(ids(res.body)).toEqual(todasAprovadas);
     });
 
+    it('moderada ganha o aviso de restricoesVioladas em cada receita', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .set(como(intolerante))
+        .expect(200);
+
+      const porId = new Map(res.body.map((r: any) => [r.id, r]));
+      expect((porId.get(comLeite.id) as any).restricoesVioladas).toEqual([
+        expect.objectContaining({
+          id: leite,
+          estrita: false,
+          contem: [expect.objectContaining({ nome: `ingrediente ${leite}` })],
+          naoRevisados: [],
+        }),
+      ]);
+      expect((porId.get(naoRevisada.id) as any).restricoesVioladas).toEqual([
+        expect.objectContaining({
+          id: leite,
+          contem: [],
+          naoRevisados: [expect.anything()],
+        }),
+      ]);
+      expect((porId.get(segura.id) as any).restricoesVioladas).toEqual([]);
+    });
+
     it('grave é tratada como estrita', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/receita/validadas')
@@ -353,6 +421,26 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         .get('/api/receita/validadas')
         .set(como(alergicoGergelim))
         .expect(404);
+    });
+  });
+
+  describe('?seguraPara=<restricaoId>', () => {
+    it('visitante filtra pelas receitas seguras para uma restrição', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/receita/all?seguraPara=${leite}`)
+        .expect(200);
+
+      expect(ids(res.body)).toEqual([segura.id, semDadoSodio.id].sort());
+    });
+
+    it('restrição inexistente responde 404 e ID inválido 400', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/receita/all?seguraPara=${randomUUID()}`)
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .get('/api/receita/nome?q=bolo&seguraPara=leite')
+        .expect(400);
     });
   });
 

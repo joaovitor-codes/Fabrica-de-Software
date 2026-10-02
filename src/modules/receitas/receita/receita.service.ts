@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import { unlink } from 'fs/promises';
 import {
-  Gravidade,
   Prisma,
   Receita,
   StatusAprovacao,
@@ -25,7 +24,14 @@ import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
-import { CAMPO_INGREDIENTE } from '../../nutricao/ingrediente-restricao/regra-nutricional.service';
+import {
+  RestricaoDoPaciente,
+  clausulaSegura,
+  restricaoPorId,
+  restricoesDoPaciente,
+  restricoesDoUsuario,
+  restricoesVioladas,
+} from './restricoes-receita';
 
 @Injectable()
 export class ReceitaService {
@@ -156,12 +162,13 @@ export class ReceitaService {
     }
   }
 
-  async findAll(usuario?: UsuarioAutenticado) {
-    // Só a lista pública (visitante sem login) vai para o cache: a de quem
-    // está logado depende do usuário.
+  async findAll(usuario?: UsuarioAutenticado, seguraPara?: string) {
+    // Só a lista pública (visitante sem login, sem filtro) vai para o cache:
+    // a de quem está logado depende do usuário.
     const cacheKey = 'receitas:all';
+    const usaCache = !usuario && !seguraPara;
 
-    if (!usuario) {
+    if (usaCache) {
       const cachedReceitas = await this.cacheService.get<Receita[]>(cacheKey);
 
       if (cachedReceitas) {
@@ -169,19 +176,26 @@ export class ReceitaService {
       }
     }
 
+    const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
     const receitas = await this.prismaService.receita.findMany({
-      where: { deletedAt: null, ...(await this.filtroVisibilidade(usuario)) },
+      where: {
+        deletedAt: null,
+        AND: [
+          this.filtroVisibilidade(usuario, restricoes),
+          await this.filtroSeguraPara(seguraPara),
+        ],
+      },
     });
 
     if (!receitas || receitas.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada');
     }
 
-    if (!usuario) {
+    if (usaCache) {
       await this.cacheService.set(cacheKey, receitas, 300_000);
     }
 
-    return receitas;
+    return this.comRestricoesVioladas(receitas, restricoes);
   }
 
   async findPendentes() {
@@ -214,7 +228,11 @@ export class ReceitaService {
       throw new NotFoundException('Nenhuma receita favorita encontrada');
     }
 
-    return favoritos.map(({ receita }) => receita);
+    // Favorito não some por causa de restrição nova: só ganha o aviso.
+    return this.comRestricoesVioladas(
+      favoritos.map(({ receita }) => receita),
+      await restricoesDoPaciente(this.prismaService, { usuarioId }),
+    );
   }
 
   async addFavorite(receitaId: string, usuarioId: string) {
@@ -261,8 +279,9 @@ export class ReceitaService {
   }
 
   async findOne(id: string, usuario?: UsuarioAutenticado) {
+    const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
     const receita = await this.prismaService.receita.findFirst({
-      where: { id, ...(await this.filtroVisibilidade(usuario)) },
+      where: { id, ...this.filtroVisibilidade(usuario, restricoes) },
       include: {
         ingredientes: {
           include: {
@@ -274,23 +293,32 @@ export class ReceitaService {
       },
     });
     if (!receita) {
-      throw new NotFoundException('Receita não encontrada');
+      return this.naoEncontrada(id, usuario, restricoes);
     }
-    return receita;
+    const [anotada] = await this.comRestricoesVioladas([receita], restricoes);
+    return anotada;
   }
 
-  async findByName(nome: string, usuario?: UsuarioAutenticado) {
+  async findByName(
+    nome: string,
+    usuario?: UsuarioAutenticado,
+    seguraPara?: string,
+  ) {
+    const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
     const receita = await this.prismaService.receita.findMany({
       where: {
         nome: { contains: nome, mode: 'insensitive' },
         deletedAt: null,
-        ...(await this.filtroVisibilidade(usuario)),
+        AND: [
+          this.filtroVisibilidade(usuario, restricoes),
+          await this.filtroSeguraPara(seguraPara),
+        ],
       },
     });
     if (!receita || receita.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada com esse nome');
     }
-    return receita;
+    return this.comRestricoesVioladas(receita, restricoes);
   }
 
   async findIngredients(id: string, usuario?: UsuarioAutenticado) {
@@ -373,33 +401,35 @@ export class ReceitaService {
   }
 
   async findSuggestions(usuario?: UsuarioAutenticado) {
+    const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
     const receitas = await this.prismaService.receita.findMany({
       where: {
         status: 'aprovada',
         deletedAt: null,
         OR: [{ nivelDificuldade: 'facil' }, { nivelDificuldade: 'medio' }],
-        ...(await this.filtroRestricoes(usuario)),
+        ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });
     if (!receitas || receitas.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada');
     }
 
-    return receitas;
+    return this.comRestricoesVioladas(receitas, restricoes);
   }
 
   async findValidated(usuario?: UsuarioAutenticado) {
+    const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
     const receitas = await this.prismaService.receita.findMany({
       where: {
         status: 'aprovada',
         deletedAt: null,
-        ...(await this.filtroRestricoes(usuario)),
+        ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });
     if (!receitas || receitas.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada');
     }
-    return receitas;
+    return this.comRestricoesVioladas(receitas, restricoes);
   }
 
   async findFeedbacks(_id: string) {} // TODO: Implementar o método de encontrar feedbacks para uma receita
@@ -610,13 +640,11 @@ export class ReceitaService {
   }
 
   /**
-   * Quem vê quais receitas: visitante só as aprovadas; usuário logado as
-   * aprovadas (que não firam suas restrições estritas) e as próprias; admin e
-   * profissional (curadoria) todas.
+   * Quem vê quais receitas, sem olhar restrição: visitante só as aprovadas;
+   * usuário logado as aprovadas e as próprias; admin e profissional
+   * (curadoria) todas.
    */
-  private async filtroVisibilidade(
-    usuario?: UsuarioAutenticado,
-  ): Promise<Prisma.ReceitaWhereInput> {
+  private filtroBase(usuario?: UsuarioAutenticado): Prisma.ReceitaWhereInput {
     if (!usuario) {
       return { status: StatusReceita.aprovada };
     }
@@ -627,101 +655,107 @@ export class ReceitaService {
       return {};
     }
     return {
+      OR: [{ status: StatusReceita.aprovada }, { criadoPor: usuario.id }],
+    };
+  }
+
+  /**
+   * filtroBase mais as restrições estritas (alergia ou grave) do paciente:
+   * a receita aprovada que fere alguma delas some. O autor continua vendo as
+   * próprias. Regras em regra_negocio_receitas_seguras.md.
+   */
+  private filtroVisibilidade(
+    usuario: UsuarioAutenticado | undefined,
+    restricoes: RestricaoDoPaciente[],
+  ): Prisma.ReceitaWhereInput {
+    const estritas = restricoes.filter((r) => r.estrita);
+    if (!usuario || estritas.length === 0) {
+      return this.filtroBase(usuario);
+    }
+    return {
       OR: [
-        {
-          status: StatusReceita.aprovada,
-          ...(await this.filtroRestricoes(usuario)),
-        },
+        { status: StatusReceita.aprovada, ...clausulaSegura(estritas) },
         { criadoPor: usuario.id },
       ],
     };
   }
 
-  /**
-   * Esconde do paciente as receitas que ferem uma restrição estrita dele
-   * (alergia ou gravidade grave). Ingrediente sem vínculo só conta como
-   * seguro se já teve as restrições revisadas por um curador: um ingrediente
-   * recém-criado também nasce sem vínculo.
-   *
-   * Se a restrição tem regra nutricional (ex: sódio > 600 para hipertensão),
-   * o ingrediente também precisa ter o dado daquele campo: sem o dado, a
-   * regra não consegue vincular, e a falta de vínculo não prova nada.
-   *
-   * A revisão só vale se for posterior à criação da restrição: uma
-   * restrição cadastrada depois da curadoria (ex: gergelim) não foi
-   * conferida em ninguém, mesmo nos ingredientes já revisados.
-   */
-  private async filtroRestricoes(
-    usuario?: UsuarioAutenticado,
+  /** `?seguraPara=<restricaoId>`: só receitas seguras para essa restrição. */
+  private async filtroSeguraPara(
+    restricaoId?: string,
   ): Promise<Prisma.ReceitaWhereInput> {
-    if (usuario?.tipoUsuario !== TipoUsuario.paciente) {
+    if (!restricaoId) {
       return {};
     }
-
-    const estritas = await this.prismaService.pacienteRestricao.findMany({
-      where: {
-        paciente: { usuarioId: usuario.id },
-        OR: [
-          { gravidade: Gravidade.grave },
-          { restricao: { tipo: TipoRestricao.alergia } },
-        ],
-      },
-      select: {
-        restricaoId: true,
-        restricao: {
-          select: {
-            createdAt: true,
-            regrasNutricionais: {
-              where: { valorLimite: { not: null } },
-              select: { campoNutricional: true },
-            },
-          },
-        },
-      },
-    });
-
-    if (estritas.length === 0) {
-      return {};
+    const restricao = await restricaoPorId(this.prismaService, restricaoId);
+    if (!restricao) {
+      throw new NotFoundException('Restrição alimentar não encontrada');
     }
+    return clausulaSegura([restricao]);
+  }
 
-    const camposDasRegras = new Set(
-      estritas.flatMap((r) =>
-        r.restricao.regrasNutricionais.map(
-          (regra) => CAMPO_INGREDIENTE[regra.campoNutricional],
-        ),
-      ),
+  /**
+   * Acrescenta `restricoesVioladas` a cada receita, para o paciente com
+   * restrição. Sem restrição, devolve as receitas como estão.
+   */
+  private async comRestricoesVioladas<T extends { id: string }>(
+    receitas: T[],
+    restricoes: RestricaoDoPaciente[],
+  ) {
+    if (restricoes.length === 0) {
+      return receitas;
+    }
+    const violadas = await restricoesVioladas(
+      this.prismaService,
+      receitas.map((r) => r.id),
+      restricoes,
     );
+    return receitas.map((r) => ({
+      ...r,
+      restricoesVioladas: violadas.get(r.id) ?? [],
+    }));
+  }
 
-    const criadaPorUltimo = new Date(
-      Math.max(...estritas.map((r) => r.restricao.createdAt.getTime())),
-    );
-
-    return {
-      ingredientes: {
-        every: {
-          ingrediente: {
-            restricoesRevisadasEm: { gte: criadaPorUltimo },
-            ...Object.fromEntries(
-              [...camposDasRegras].map((campo) => [campo, { not: null }]),
-            ),
-            restricoes: {
-              none: {
-                restricaoId: { in: estritas.map((r) => r.restricaoId) },
-              },
-            },
-          },
-        },
-      },
-    };
+  /**
+   * A receita não passou no filtro. Se ela existe e só foi escondida por uma
+   * restrição estrita do paciente, responde 403 dizendo qual; senão, 404.
+   */
+  private async naoEncontrada(
+    id: string,
+    usuario: UsuarioAutenticado | undefined,
+    restricoes: RestricaoDoPaciente[],
+  ): Promise<never> {
+    const estritas = restricoes.filter((r) => r.estrita);
+    if (estritas.length > 0) {
+      const existe = await this.prismaService.receita.findFirst({
+        where: { id, ...this.filtroBase(usuario) },
+        select: { id: true },
+      });
+      if (existe) {
+        const violadas = await restricoesVioladas(
+          this.prismaService,
+          [id],
+          estritas,
+        );
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'Esta receita não é segura para as suas restrições',
+          restricoesVioladas: violadas.get(id) ?? [],
+        });
+      }
+    }
+    throw new NotFoundException('Receita não encontrada');
   }
 
   private async garantirVisivel(id: string, usuario?: UsuarioAutenticado) {
+    const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
     const receita = await this.prismaService.receita.findFirst({
-      where: { id, ...(await this.filtroVisibilidade(usuario)) },
+      where: { id, ...this.filtroVisibilidade(usuario, restricoes) },
       select: { id: true },
     });
     if (!receita) {
-      throw new NotFoundException('Receita não encontrada');
+      await this.naoEncontrada(id, usuario, restricoes);
     }
   }
 

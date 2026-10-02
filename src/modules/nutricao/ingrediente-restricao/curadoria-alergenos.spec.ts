@@ -321,10 +321,11 @@ describe('curadoria de alérgenos', () => {
       { contem: ['Alergia a ovo'], incertos: [] },
     );
 
-    const [lida] = parse(gerarCsv(linhas), {
+    const lidas: Record<string, string>[] = parse(gerarCsv(linhas), {
       columns: true,
       bom: true,
     });
+    const [lida] = lidas;
     expect(lida.codigo_fonte_externo).toBe('TACO-4-488');
   });
 });
