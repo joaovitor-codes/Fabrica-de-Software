@@ -5,7 +5,7 @@ import { envValidationSchema } from './common/config/env.validation';
 import { ConfigModule } from '@nestjs/config';
 import { UsuarioModule } from './modules/identidade/usuario/usuario.module';
 import { PacientesModule } from './modules/identidade/pacientes/pacientes.module';
-import { ReceitaModule } from './modules/receitas/receita/receita.module';
+import { ReceitasModule } from './modules/receitas/receitas.module';
 import { ProfissionalModule } from './modules/identidade/profissional/profissional.module';
 import { IngredienteModule } from './modules/nutricao/ingrediente/ingrediente.module';
 import { UnidadeMedidaModule } from './modules/nutricao/unidade-medida/unidade-medida.module';
@@ -42,7 +42,7 @@ import { PontosTransacaoModule } from './modules/receitas/pontos-transacao/ponto
     AuthModule,
     UsuarioModule,
     PacientesModule,
-    ReceitaModule,
+    ReceitasModule,
     ProfissionalModule,
     IngredienteModule,
     UnidadeMedidaModule,

@@ -10,7 +10,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { ReceitaIngredienteDTO } from './receita-ingrediente';
+import { ReceitaIngredienteDTO } from '../../receita/dtos/receita-ingrediente';
 
 export class AdaptarReceitaDto {
   @ApiProperty({

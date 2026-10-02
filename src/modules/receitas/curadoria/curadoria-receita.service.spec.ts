@@ -3,12 +3,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { StatusAprovacao, TipoTransacaoPontos } from '@prisma/client';
-import { ReceitaService } from './receita.service';
+import { CuradoriaReceitaService } from './curadoria-receita.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
-import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { CacheService } from '../../../common/cache/cache.service';
-import { IaService } from '../../ia/ia.service';
 
 /**
  * Fake em memória com rollback no $transaction, cobrindo só o que a
@@ -83,8 +81,8 @@ class FakePrismaService {
   };
 }
 
-describe('ReceitaService - pontos na aprovação/rejeição', () => {
-  let service: ReceitaService;
+describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
+  let service: CuradoriaReceitaService;
   let pontosService: PontosTransacaoService;
   let prisma: FakePrismaService;
 
@@ -100,16 +98,14 @@ describe('ReceitaService - pontos na aprovação/rejeição', () => {
     cache = { del: jest.fn() };
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
-        ReceitaService,
+        CuradoriaReceitaService,
         PontosTransacaoService,
         { provide: PrismaService, useClass: FakePrismaService },
-        { provide: UsuarioService, useValue: {} },
         { provide: CacheService, useValue: cache },
-        { provide: IaService, useValue: {} },
       ],
     }).compile();
 
-    service = moduleRef.get(ReceitaService);
+    service = moduleRef.get(CuradoriaReceitaService);
     pontosService = moduleRef.get(PontosTransacaoService);
     prisma = moduleRef.get(PrismaService);
 

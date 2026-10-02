@@ -19,7 +19,8 @@ import { RolesGuard } from '../../../auth/roles.guard';
 import { Roles } from '../../../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 import type { RequestAutenticado } from '../../../auth/auth.types';
-import { AdaptacaoReceitaService } from './adaptacao-receita.service';
+import { AdaptacaoPacienteService } from './adaptacao-paciente.service';
+import { AdaptacaoProfissionalService } from './adaptacao-profissional.service';
 import {
   AdaptacaoProfissionalDto,
   AdaptarReceitaDto,
@@ -34,8 +35,11 @@ const idPipe = () =>
 
 @ApiTags('Receita')
 @Controller('api/receita')
-export class AdaptacaoReceitaController {
-  constructor(private readonly adaptacaoService: AdaptacaoReceitaService) {}
+export class AdaptacaoController {
+  constructor(
+    private readonly adaptacaoPaciente: AdaptacaoPacienteService,
+    private readonly adaptacaoProfissional: AdaptacaoProfissionalService,
+  ) {}
 
   @ApiOperation({
     summary: 'Adapta a receita para uma restrição alimentar (IA)',
@@ -53,7 +57,7 @@ export class AdaptacaoReceitaController {
     @Body() dto: AdaptarReceitaDto,
     @Request() req: RequestAutenticado,
   ) {
-    return this.adaptacaoService.adaptar(id, dto.restricaoId, req.user);
+    return this.adaptacaoPaciente.adaptar(id, dto.restricaoId, req.user);
   }
 
   @ApiOperation({
@@ -75,7 +79,7 @@ export class AdaptacaoReceitaController {
     @Body() dto: SugestoesAdaptacaoDto,
     @Request() req: RequestAutenticado,
   ) {
-    return this.adaptacaoService.sugerir(id, dto.pacienteId, req.user);
+    return this.adaptacaoProfissional.sugerir(id, dto.pacienteId, req.user);
   }
 
   @ApiOperation({
@@ -94,6 +98,6 @@ export class AdaptacaoReceitaController {
     @Body() dto: AdaptacaoProfissionalDto,
     @Request() req: RequestAutenticado,
   ) {
-    return this.adaptacaoService.salvarDoProfissional(id, dto, req.user);
+    return this.adaptacaoProfissional.salvarDoProfissional(id, dto, req.user);
   }
 }

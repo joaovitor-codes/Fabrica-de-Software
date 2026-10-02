@@ -5,6 +5,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { TipoMidia, TipoRestricao, TipoUsuario } from '@prisma/client';
 import { ReceitaService } from './receita.service';
+import { IngredientesReceitaService } from './ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
+import { CuradoriaReceitaService } from '../curadoria/curadoria-receita.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
@@ -87,11 +90,15 @@ describe('ReceitaService - autor ou admin e alertas', () => {
   const profissional = usuario(TipoUsuario.profissional);
   const admin = usuario(TipoUsuario.admin);
   let receitaId: string;
+  let curadoria: CuradoriaReceitaService;
 
   beforeEach(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         ReceitaService,
+        IngredientesReceitaService,
+        VisibilidadeReceitaService,
+        CuradoriaReceitaService,
         { provide: PrismaService, useClass: FakePrismaService },
         { provide: CacheService, useValue: { del: async () => {} } },
         { provide: UsuarioService, useValue: {} },
@@ -101,6 +108,7 @@ describe('ReceitaService - autor ou admin e alertas', () => {
     }).compile();
 
     service = moduleRef.get(ReceitaService);
+    curadoria = moduleRef.get(CuradoriaReceitaService);
     prisma = moduleRef.get(PrismaService);
 
     receitaId = randomUUID();
@@ -231,10 +239,10 @@ describe('ReceitaService - autor ou admin e alertas', () => {
       });
 
       await expect(
-        service.aprovarReceita(receitaId, autorProfissional.id),
+        curadoria.aprovarReceita(receitaId, autorProfissional.id),
       ).rejects.toBeInstanceOf(ForbiddenException);
       await expect(
-        service.rejeitarReceita(receitaId, autorProfissional.id),
+        curadoria.rejeitarReceita(receitaId, autorProfissional.id),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.receitas.get(receitaId).status).toBe('pendente');
     });

@@ -11,7 +11,7 @@ import {
   clausulaSegura,
   restricoesDoPaciente,
   restricoesVioladas,
-} from '../../receitas/receita/restricoes-receita';
+} from '../../receitas/visibilidade/restricoes-receita';
 import {
   PlanoAlimentarDto,
   PlanoAlimentarItemDto,
