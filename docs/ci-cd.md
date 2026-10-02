@@ -48,17 +48,9 @@ A partir daqui, PR com build ou teste quebrado não pode ser mergeado.
 
 > O check só aparece na lista depois que o workflow rodou pelo menos uma vez.
 
-### Passo 4: zerar o lint (dívida técnica)
+### Passo 4: lint bloqueando o PR (feito)
 
-Hoje o ESLint acusa ~3.900 erros e o Prettier ~80 arquivos fora do padrão. Por isso o passo de lint está com `continue-on-error: true`: ele mostra os erros, mas não bloqueia o PR.
-
-Para resolver:
-
-1. Num PR separado, rode `npm run format` e `npm run lint` (a maioria dos erros é corrigida pelo `--fix`).
-2. Corrija à mão o que sobrar.
-3. Remova o `continue-on-error: true` do `ci.yml`. Pronto, lint passa a bloquear.
-
-Faça isso num PR só de formatação, avisando o time antes: ele mexe em quase todos os arquivos e gera conflito com branches abertas.
+O lint foi zerado e o `continue-on-error` saiu do `ci.yml`: PR com erro de lint ou de formatação não passa. Antes de subir, rode `npm run lint` (corrige o que for automático) e confira com `npx eslint "{src,test}/**/*.ts"`.
 
 ### Passo 5 (opcional): incluir o teste e2e
 
@@ -160,7 +152,7 @@ O deploy só roda se o CI de `main` passar. O `environment: production` permite 
 
 - [ ] `ci.yml` mergeado em `desenvolvimento`
 - [ ] Branch protection exigindo `build-and-test`
-- [ ] PR de formatação/lint e remoção do `continue-on-error`
+- [x] PR de formatação/lint e remoção do `continue-on-error`
 - [ ] Hospedagem escolhida
 - [ ] Segredos de produção cadastrados (fora do repositório)
 - [ ] Deploy automático após CI verde em `main`
