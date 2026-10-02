@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { VincularIngredienteRestricaoDto } from './dtos/ingrediente-restricao';
+import { FONTE_ESTIMATIVA_IA } from './ingrediente-substituto.service';
 
 @Injectable()
 export class IngredienteRestricaoService {
@@ -67,11 +68,31 @@ export class IngredienteRestricaoService {
    */
   async marcarRevisado(ingredienteId: string) {
     try {
-      return await this.prismaService.ingrediente.update({
-        where: { id: ingredienteId },
-        data: { restricoesRevisadasEm: new Date() },
-        select: { id: true, nome: true, restricoesRevisadasEm: true },
-      });
+      const { fonteDados, ...ingrediente } =
+        await this.prismaService.ingrediente.update({
+          where: { id: ingredienteId },
+          data: { restricoesRevisadasEm: new Date() },
+          select: {
+            id: true,
+            nome: true,
+            restricoesRevisadasEm: true,
+            fonteDados: true,
+          },
+        });
+
+      // Revisar confirma as restrições, não os nutrientes. Num ingrediente
+      // criado pela IA, os nutrientes são estimativa e passam a ser usados
+      // pelas regras nutricionais (ex: sódio para hipertensão) como dado.
+      if (fonteDados === FONTE_ESTIMATIVA_IA) {
+        return {
+          ...ingrediente,
+          aviso:
+            'Os nutrientes deste ingrediente são estimativas da IA e não foram verificados. ' +
+            'Eles são usados pelas regras nutricionais (ex: sódio na hipertensão). ' +
+            'Confira e corrija os valores, trocando também a fonte dos dados.',
+        };
+      }
+      return ingrediente;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

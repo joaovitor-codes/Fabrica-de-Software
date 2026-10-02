@@ -305,7 +305,9 @@ export class ReceitaService {
 
   /**
    * Alertas de restrição alimentar da receita: cada restrição vinculada a
-   * algum ingrediente dela, com os ingredientes que a disparam.
+   * algum ingrediente dela, com os ingredientes que a disparam, e os
+   * ingredientes que ninguém revisou ainda (a falta de vínculo neles não
+   * garante nada).
    */
   async findAlerts(id: string, usuario?: UsuarioAutenticado) {
     await this.garantirVisivel(id, usuario);
@@ -320,6 +322,7 @@ export class ReceitaService {
               select: {
                 id: true,
                 nome: true,
+                restricoesRevisadasEm: true,
                 restricoes: {
                   select: {
                     restricao: { select: { id: true, nome: true, tipo: true } },
@@ -341,7 +344,14 @@ export class ReceitaService {
         ingredientes: { id: string; nome: string }[];
       }
     >();
+    const ingredientesNaoRevisados: { id: string; nome: string }[] = [];
     for (const { ingrediente } of receita!.ingredientes) {
+      if (!ingrediente.restricoesRevisadasEm) {
+        ingredientesNaoRevisados.push({
+          id: ingrediente.id,
+          nome: ingrediente.nome,
+        });
+      }
       for (const { restricao } of ingrediente.restricoes) {
         const alerta = porRestricao.get(restricao.id) ?? {
           ...restricao,
@@ -358,6 +368,7 @@ export class ReceitaService {
     return {
       avisoContaminacaoCruzada: receita!.avisoContaminacaoCruzada,
       restricoes: [...porRestricao.values()],
+      ingredientesNaoRevisados,
     };
   }
 

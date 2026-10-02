@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { UnidadeMedidaDto } from './dtos/unidade-medida';
 import { UpdateUnidadeMedidaDto } from './dtos/update-unidade-medida';
 import { PrismaService } from '../../../common/prisma/prisma.service';
@@ -74,14 +79,24 @@ export class UnidadeMedidaService {
       throw new NotFoundException('Unidade de medida não encontrada');
     }
 
-    await this.prismaService.receitaIngrediente.deleteMany({
-      where: {
-        unidadeMedidaId: id,
-      },
-    });
-    await this.prismaService.unidadeMedida.delete({
-      where: { id },
-    });
+    // Antes, os ingredientes de receita que usavam a unidade eram apagados
+    // junto, tirando ingredientes das receitas sem aviso. Unidade em uso não
+    // sai; para tirá-la de circulação, use `ativo: false`.
+    try {
+      await this.prismaService.unidadeMedida.delete({
+        where: { id },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw new ConflictException(
+          'Não é possível remover: a unidade de medida é usada em receitas. Desative-a com ativo = false.',
+        );
+      }
+      throw error;
+    }
     return { success: 'Unidade de medida removida com sucesso.' };
   }
 }

@@ -20,6 +20,9 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../../auth/auth.guard';
+import { RolesGuard } from '../../../auth/roles.guard';
+import { Roles } from '../../../auth/roles.decorator';
+import { TipoUsuario } from '@prisma/client';
 
 const uuidPipe = (mensagem: string) =>
   new ParseUUIDPipe({
@@ -35,7 +38,8 @@ export class UnidadeMedidaController {
   @ApiOperation({ summary: 'Cria uma nova unidade de medida' })
   @ApiCreatedResponse({ description: 'Unidade de medida criada com sucesso.' })
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin)
   @Post()
   async create(@Body() createUnidadeMedidaDto: UnidadeMedidaDto) {
     return await this.unidadeMedidaService.create(createUnidadeMedidaDto);
@@ -58,7 +62,8 @@ export class UnidadeMedidaController {
   @ApiOperation({ summary: 'Atualiza uma unidade de medida pelo ID' })
   @ApiOkResponse({ description: 'Unidade de medida atualizada com sucesso.' })
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin)
   @Patch(':id')
   async update(
     @Param('id', uuidPipe('ID inválido')) id: string,
@@ -70,7 +75,8 @@ export class UnidadeMedidaController {
   @ApiOperation({ summary: 'Remove uma unidade de medida pelo ID' })
   @ApiOkResponse({ description: 'Unidade de medida removida com sucesso.' })
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin)
   @Delete(':id')
   async remove(@Param('id', uuidPipe('ID inválido')) id: string) {
     return await this.unidadeMedidaService.remove(id);
