@@ -10,6 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { randomUUID } from 'crypto';
 import {
+  CampoNutricionalRegra,
   Gravidade,
   NivelDificuldade,
   StatusReceita,
@@ -93,10 +94,12 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
 
   const leite = randomUUID();
   const gluten = randomUUID();
+  const hipertensao = randomUUID();
 
   const alergico = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const intolerante = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const intoleranteGrave = { id: randomUUID(), tipo: TipoUsuario.paciente };
+  const hipertensoGrave = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const semRestricao = { id: randomUUID(), tipo: TipoUsuario.paciente };
   const profissional = { id: randomUUID(), tipo: TipoUsuario.profissional };
   const autor = { id: randomUUID(), tipo: TipoUsuario.comum };
@@ -106,9 +109,14 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     'x-user-tipo': u.tipo,
   });
 
-  const ingrediente = (restricoes: string[], revisado = true) => ({
+  const ingrediente = (
+    restricoes: string[],
+    revisado = true,
+    sodioMg: number | null = 100,
+  ) => ({
     ingrediente: {
       restricoesRevisadasEm: revisado ? new Date() : null,
+      sodioMg,
       restricoes: restricoes.map((restricaoId) => ({ restricaoId })),
     },
   });
@@ -141,6 +149,11 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     ingrediente([]),
     ingrediente([], false),
   ]);
+  // Tudo revisado e sem vínculo, mas um ingrediente sem dado de sódio.
+  const semDadoSodio = nova('Sopa de legumes', [
+    ingrediente([]),
+    ingrediente([], true, null),
+  ]);
   const propriaComLeite = nova('Pudim do alérgico', [ingrediente([leite])], {
     status: StatusReceita.pendente,
     criadoPor: alergico.id,
@@ -151,15 +164,26 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     restricaoId: string,
     tipo: TipoRestricao,
     gravidade: Gravidade,
+    camposDasRegras: CampoNutricionalRegra[] = [],
   ) => ({
     restricaoId,
     gravidade,
     paciente: { usuarioId },
-    restricao: { tipo },
+    restricao: {
+      tipo,
+      regrasNutricionais: camposDasRegras.map((campoNutricional) => ({
+        campoNutricional,
+      })),
+    },
   });
 
   const ids = (body: any[]) => body.map((r) => r.id).sort();
-  const todasAprovadas = [comLeite.id, segura.id, naoRevisada.id].sort();
+  const todasAprovadas = [
+    comLeite.id,
+    segura.id,
+    naoRevisada.id,
+    semDadoSodio.id,
+  ].sort();
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -189,7 +213,13 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
     await app.init();
 
     prisma = moduleRef.get(PrismaService);
-    prisma.receitas.push(comLeite, segura, naoRevisada, propriaComLeite);
+    prisma.receitas.push(
+      comLeite,
+      segura,
+      naoRevisada,
+      semDadoSodio,
+      propriaComLeite,
+    );
     prisma.pacienteRestricoes.push(
       restricaoDe(alergico.id, leite, TipoRestricao.alergia, Gravidade.leve),
       restricaoDe(
@@ -203,6 +233,13 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         leite,
         TipoRestricao.intolerancia,
         Gravidade.grave,
+      ),
+      restricaoDe(
+        hipertensoGrave.id,
+        hipertensao,
+        TipoRestricao.doenca_cronica,
+        Gravidade.grave,
+        [CampoNutricionalRegra.sodio_mg],
       ),
     );
   });
@@ -218,7 +255,9 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         .set(como(alergico))
         .expect(200);
 
-      expect(ids(res.body)).toEqual([segura.id, propriaComLeite.id].sort());
+      expect(ids(res.body)).toEqual(
+        [segura.id, semDadoSodio.id, propriaComLeite.id].sort(),
+      );
     });
 
     it('recebe 404 ao abrir a receita com o alérgeno pelo id', async () => {
@@ -244,13 +283,13 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         .get('/api/receita/validadas')
         .set(como(alergico))
         .expect(200);
-      expect(ids(validadas.body)).toEqual([segura.id]);
+      expect(ids(validadas.body)).toEqual([segura.id, semDadoSodio.id].sort());
 
       const sugestoes = await request(app.getHttpServer())
         .get('/api/receita/sugestoes')
         .set(como(alergico))
         .expect(200);
-      expect(ids(sugestoes.body)).toEqual([segura.id]);
+      expect(ids(sugestoes.body)).toEqual([segura.id, semDadoSodio.id].sort());
     });
 
     it('continua vendo a própria receita, mesmo com o alérgeno', async () => {
@@ -277,7 +316,20 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
         .set(como(intoleranteGrave))
         .expect(200);
 
-      expect(ids(res.body)).toEqual([segura.id]);
+      expect(ids(res.body)).toEqual([segura.id, semDadoSodio.id].sort());
+    });
+  });
+
+  describe('restrição com regra nutricional', () => {
+    it('hipertensão grave esconde receita com ingrediente sem dado de sódio', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/receita/validadas')
+        .set(como(hipertensoGrave))
+        .expect(200);
+
+      // comLeite e segura: tudo revisado e com sódio informado.
+      // naoRevisada: ingrediente não revisado. semDadoSodio: sódio null.
+      expect(ids(res.body)).toEqual([comLeite.id, segura.id].sort());
     });
   });
 

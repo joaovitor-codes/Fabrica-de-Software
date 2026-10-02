@@ -58,6 +58,10 @@ model Ingrediente {
 - Para restrição **estrita**, a receita só é segura se for nativa **e** se todos os ingredientes tiverem `restricoesRevisadasEm` preenchido.
 - Para restrição **flexível**, um ingrediente não revisado não esconde a receita, mas aparece no alerta como "não revisado".
 
+**Restrição com regra nutricional** (ex: hipertensão com "sódio > 600 mg/100 g"): para restrição estrita, o ingrediente também precisa ter o dado do campo da regra. Sem o dado, a regra fica "pendente" e não vincula; a falta de vínculo, nesse caso, não prova que o ingrediente é seguro. Isso segue a regra de segurança de `regra_negocio.md`: dado `null` nunca é tratado como abaixo do limite.
+
+Ao criar, alterar ou remover uma regra, a restrição inteira é reavaliada (`RegraNutricionalService.reavaliarRestricao`). Se não sobrar regra com limite, os vínculos `automatico_regra_nutricional` da restrição são apagados; os manuais ficam.
+
 ## Regra de exibição
 
 Uma restrição do usuário é **estrita** quando `RestricaoAlimentar.tipo = alergia` ou `PacienteRestricao.gravidade = grave`. As demais são **flexíveis**.

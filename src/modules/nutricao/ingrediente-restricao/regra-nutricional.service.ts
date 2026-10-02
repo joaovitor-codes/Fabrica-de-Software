@@ -17,7 +17,7 @@ type CampoDecimalIngrediente =
 
 // Liga o enum de banco (snake_case, estável) ao nome do campo real em
 // Ingrediente (camelCase, gerado pelo Prisma Client).
-const CAMPO_INGREDIENTE: Record<
+export const CAMPO_INGREDIENTE: Record<
   CampoNutricionalRegra,
   CampoDecimalIngrediente
 > = {
@@ -91,26 +91,29 @@ export class RegraNutricionalService {
   }
 
   /**
-   * Retroaplica uma regra (nova ou com valorLimite alterado) sobre a base de
-   * ingredientes já existente. Reavalia junto com as OUTRAS regras da mesma
-   * restrição (semântica OR) — senão essa regra isolada poderia apagar um
-   * vínculo válido criado por outra regra da mesma restrição.
+   * Retroaplica as regras de uma restrição sobre a base de ingredientes já
+   * existente. Chamar sempre que uma regra da restrição for criada, alterada
+   * ou removida. Avalia todas as regras da restrição juntas (semântica OR):
+   * senão uma regra isolada poderia apagar um vínculo válido criado por
+   * outra regra da mesma restrição.
+   *
+   * Se não sobrou nenhuma regra com valorLimite (a última foi removida ou
+   * teve o limite limpo), apaga todos os vínculos automáticos da restrição:
+   * nenhuma regra os sustenta mais. Vínculos manuais ficam.
    */
-  async aplicarRegraATodosIngredientes(regraId: string): Promise<void> {
-    const regra = await this.prismaService.restricaoRegraNutricional.findUnique(
-      {
-        where: { id: regraId },
-      },
-    );
-    if (!regra) {
-      return;
-    }
-
+  async reavaliarRestricao(restricaoId: string): Promise<void> {
     const regrasDaRestricao =
       await this.prismaService.restricaoRegraNutricional.findMany({
-        where: { restricaoId: regra.restricaoId, valorLimite: { not: null } },
+        where: { restricaoId, valorLimite: { not: null } },
       });
+
     if (regrasDaRestricao.length === 0) {
+      await this.prismaService.ingredienteRestricao.deleteMany({
+        where: {
+          restricaoId,
+          origem: OrigemVinculoRestricao.automatico_regra_nutricional,
+        },
+      });
       return;
     }
 
@@ -119,7 +122,7 @@ export class RegraNutricionalService {
     for (const ingrediente of ingredientes) {
       await this.avaliarRestricaoParaIngrediente(
         ingrediente,
-        regra.restricaoId,
+        restricaoId,
         regrasDaRestricao,
       );
     }
