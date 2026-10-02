@@ -60,6 +60,29 @@ export class IngredienteRestricaoService {
     });
   }
 
+  /**
+   * Marca que um curador revisou todas as restrições do ingrediente. Só
+   * depois disso a ausência de vínculo conta como "seguro" no filtro de
+   * receitas para alergia.
+   */
+  async marcarRevisado(ingredienteId: string) {
+    try {
+      return await this.prismaService.ingrediente.update({
+        where: { id: ingredienteId },
+        data: { restricoesRevisadasEm: new Date() },
+        select: { id: true, nome: true, restricoesRevisadasEm: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Ingrediente não encontrado');
+      }
+      throw error;
+    }
+  }
+
   async remove(ingredienteId: string, restricaoId: string): Promise<void> {
     try {
       await this.prismaService.ingredienteRestricao.delete({

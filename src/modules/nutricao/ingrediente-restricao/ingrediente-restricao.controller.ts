@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -65,6 +66,21 @@ export class IngredienteRestricaoController {
     ingredienteId: string,
   ) {
     return this.ingredienteRestricaoService.findAllByIngrediente(ingredienteId);
+  }
+
+  @ApiOperation({
+    summary: 'Marca as restrições do ingrediente como revisadas por um curador',
+  })
+  @ApiOkResponse({ description: 'Ingrediente marcado como revisado.' })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin, TipoUsuario.profissional)
+  @Patch(':ingredienteId/restricoes/revisado')
+  async marcarRevisado(
+    @Param('ingredienteId', uuidPipe('ID Ingrediente inválido'))
+    ingredienteId: string,
+  ) {
+    return this.ingredienteRestricaoService.marcarRevisado(ingredienteId);
   }
 
   @ApiOperation({

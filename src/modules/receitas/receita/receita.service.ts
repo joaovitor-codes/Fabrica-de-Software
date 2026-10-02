@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { unlink } from 'fs/promises';
 import {
+  Gravidade,
   Prisma,
   Receita,
   StatusAprovacao,
@@ -168,7 +169,7 @@ export class ReceitaService {
     }
 
     const receitas = await this.prismaService.receita.findMany({
-      where: { deletedAt: null, ...this.filtroVisibilidade(usuario) },
+      where: { deletedAt: null, ...(await this.filtroVisibilidade(usuario)) },
     });
 
     if (!receitas || receitas.length === 0) {
@@ -260,7 +261,7 @@ export class ReceitaService {
 
   async findOne(id: string, usuario?: UsuarioAutenticado) {
     const receita = await this.prismaService.receita.findFirst({
-      where: { id, ...this.filtroVisibilidade(usuario) },
+      where: { id, ...(await this.filtroVisibilidade(usuario)) },
       include: {
         ingredientes: {
           include: {
@@ -282,7 +283,7 @@ export class ReceitaService {
       where: {
         nome: { contains: nome, mode: 'insensitive' },
         deletedAt: null,
-        ...this.filtroVisibilidade(usuario),
+        ...(await this.filtroVisibilidade(usuario)),
       },
     });
     if (!receita || receita.length === 0) {
@@ -359,12 +360,13 @@ export class ReceitaService {
     };
   }
 
-  async findSuggestions() {
+  async findSuggestions(usuario?: UsuarioAutenticado) {
     const receitas = await this.prismaService.receita.findMany({
       where: {
         status: 'aprovada',
         deletedAt: null,
         OR: [{ nivelDificuldade: 'facil' }, { nivelDificuldade: 'medio' }],
+        ...(await this.filtroRestricoes(usuario)),
       },
     });
     if (!receitas || receitas.length === 0) {
@@ -374,9 +376,13 @@ export class ReceitaService {
     return receitas;
   }
 
-  async findValidated() {
+  async findValidated(usuario?: UsuarioAutenticado) {
     const receitas = await this.prismaService.receita.findMany({
-      where: { status: 'aprovada', deletedAt: null },
+      where: {
+        status: 'aprovada',
+        deletedAt: null,
+        ...(await this.filtroRestricoes(usuario)),
+      },
     });
     if (!receitas || receitas.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada');
@@ -593,11 +599,12 @@ export class ReceitaService {
 
   /**
    * Quem vê quais receitas: visitante só as aprovadas; usuário logado as
-   * aprovadas e as próprias; admin e profissional (curadoria) todas.
+   * aprovadas (que não firam suas restrições estritas) e as próprias; admin e
+   * profissional (curadoria) todas.
    */
-  private filtroVisibilidade(
+  private async filtroVisibilidade(
     usuario?: UsuarioAutenticado,
-  ): Prisma.ReceitaWhereInput {
+  ): Promise<Prisma.ReceitaWhereInput> {
     if (!usuario) {
       return { status: StatusReceita.aprovada };
     }
@@ -608,13 +615,63 @@ export class ReceitaService {
       return {};
     }
     return {
-      OR: [{ status: StatusReceita.aprovada }, { criadoPor: usuario.id }],
+      OR: [
+        {
+          status: StatusReceita.aprovada,
+          ...(await this.filtroRestricoes(usuario)),
+        },
+        { criadoPor: usuario.id },
+      ],
+    };
+  }
+
+  /**
+   * Esconde do paciente as receitas que ferem uma restrição estrita dele
+   * (alergia ou gravidade grave). Ingrediente sem vínculo só conta como
+   * seguro se já teve as restrições revisadas por um curador: um ingrediente
+   * recém-criado também nasce sem vínculo.
+   */
+  private async filtroRestricoes(
+    usuario?: UsuarioAutenticado,
+  ): Promise<Prisma.ReceitaWhereInput> {
+    if (usuario?.tipoUsuario !== TipoUsuario.paciente) {
+      return {};
+    }
+
+    const estritas = await this.prismaService.pacienteRestricao.findMany({
+      where: {
+        paciente: { usuarioId: usuario.id },
+        OR: [
+          { gravidade: Gravidade.grave },
+          { restricao: { tipo: TipoRestricao.alergia } },
+        ],
+      },
+      select: { restricaoId: true },
+    });
+
+    if (estritas.length === 0) {
+      return {};
+    }
+
+    return {
+      ingredientes: {
+        every: {
+          ingrediente: {
+            restricoesRevisadasEm: { not: null },
+            restricoes: {
+              none: {
+                restricaoId: { in: estritas.map((r) => r.restricaoId) },
+              },
+            },
+          },
+        },
+      },
     };
   }
 
   private async garantirVisivel(id: string, usuario?: UsuarioAutenticado) {
     const receita = await this.prismaService.receita.findFirst({
-      where: { id, ...this.filtroVisibilidade(usuario) },
+      where: { id, ...(await this.filtroVisibilidade(usuario)) },
       select: { id: true },
     });
     if (!receita) {

@@ -131,9 +131,11 @@ export class ReceitaController {
 
   @ApiOperation({ summary: 'Retorna uma lista de sugestões de receitas' })
   @ApiOkResponse({ description: 'Array com receitas sugeridas.' })
+  @ApiBearerAuth()
+  @UseGuards(OptionalAuthGuard)
   @Get('sugestoes')
-  async findSuggestions() {
-    return await this.receitaService.findSuggestions();
+  async findSuggestions(@Request() req: RequestOpcional) {
+    return await this.receitaService.findSuggestions(req.user);
   }
 
   @ApiOperation({
@@ -173,9 +175,11 @@ export class ReceitaController {
 
   @ApiOperation({ summary: 'Retorna todas as receitas validadas' })
   @ApiOkResponse({ description: 'Array com as receitas validadas.' })
+  @ApiBearerAuth()
+  @UseGuards(OptionalAuthGuard)
   @Get('validadas')
-  async findValidated() {
-    return await this.receitaService.findValidated();
+  async findValidated(@Request() req: RequestOpcional) {
+    return await this.receitaService.findValidated(req.user);
   }
 
   @ApiOperation({ summary: 'Lista as receitas pendentes de curadoria' })

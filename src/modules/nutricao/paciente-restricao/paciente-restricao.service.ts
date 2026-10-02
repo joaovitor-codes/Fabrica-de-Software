@@ -33,34 +33,7 @@ export class PacienteRestricaoService {
 
     await this.verificarProfissional(userId, paciente, tipoUsuario);
 
-    const restricao = await this.prismaService.restricaoAlimentar.findUnique({
-      where: {
-        id: dto.restricaoId,
-      },
-    });
-
-    if (!restricao) {
-      throw new NotFoundException();
-    }
-
-    try {
-      return await this.prismaService.pacienteRestricao.create({
-        data: {
-          pacienteId,
-          restricaoId: dto.restricaoId,
-          gravidade: dto.gravidade,
-          observacao: dto.observacao,
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Restrição já vinculada a este paciente');
-      }
-      throw error;
-    }
+    return this.criarVinculo(pacienteId, dto);
   }
 
   async findAllByPaciente(
@@ -109,6 +82,111 @@ export class PacienteRestricaoService {
 
     await this.verificarProfissional(userId, paciente, tipoUsuario);
 
+    return this.atualizarVinculo(pacienteId, restricaoId, dto);
+  }
+
+  async delete(
+    userId: string,
+    tipoUsuario: TipoUsuario,
+    pacienteId: string,
+    restricaoId: string,
+  ) {
+    const paciente = await this.prismaService.paciente.findUnique({
+      where: {
+        id: pacienteId,
+      },
+    });
+
+    if (!paciente) {
+      throw new NotFoundException('Paciente não foi encontrado');
+    }
+
+    await this.verificarProfissional(userId, paciente, tipoUsuario);
+
+    await this.removerVinculo(pacienteId, restricaoId);
+  }
+
+  // Rotas `me/restricoes`: o paciente mexe nas próprias restrições, sem
+  // depender do profissional. O paciente sai sempre do usuário autenticado.
+
+  async vincularPropria(usuarioId: string, dto: VincularPacienteRestricaoDto) {
+    const paciente = await this.pacienteDoUsuario(usuarioId);
+    return this.criarVinculo(paciente.id, dto);
+  }
+
+  async findAllProprias(usuarioId: string) {
+    const paciente = await this.pacienteDoUsuario(usuarioId);
+    return this.prismaService.pacienteRestricao.findMany({
+      where: { pacienteId: paciente.id },
+      include: { restricao: true },
+    });
+  }
+
+  async updatePropria(
+    usuarioId: string,
+    restricaoId: string,
+    dto: UpdatePacienteRestricaoDto,
+  ) {
+    const paciente = await this.pacienteDoUsuario(usuarioId);
+    return this.atualizarVinculo(paciente.id, restricaoId, dto);
+  }
+
+  async deletePropria(usuarioId: string, restricaoId: string) {
+    const paciente = await this.pacienteDoUsuario(usuarioId);
+    await this.removerVinculo(paciente.id, restricaoId);
+  }
+
+  private async pacienteDoUsuario(usuarioId: string) {
+    const paciente = await this.prismaService.paciente.findUnique({
+      where: { usuarioId },
+    });
+
+    if (!paciente) {
+      throw new NotFoundException('Paciente não encontrado');
+    }
+
+    return paciente;
+  }
+
+  private async criarVinculo(
+    pacienteId: string,
+    dto: VincularPacienteRestricaoDto,
+  ) {
+    const restricao = await this.prismaService.restricaoAlimentar.findUnique({
+      where: {
+        id: dto.restricaoId,
+      },
+    });
+
+    if (!restricao) {
+      throw new NotFoundException();
+    }
+
+    try {
+      return await this.prismaService.pacienteRestricao.create({
+        data: {
+          pacienteId,
+          restricaoId: dto.restricaoId,
+          gravidade: dto.gravidade,
+          observacao: dto.observacao,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Restrição já vinculada a este paciente');
+      }
+      throw error;
+    }
+  }
+
+  private async atualizarVinculo(
+    pacienteId: string,
+    restricaoId: string,
+    dto: UpdatePacienteRestricaoDto,
+  ) {
     const restricao = await this.prismaService.restricaoAlimentar.findUnique({
       where: {
         id: restricaoId,
@@ -144,24 +222,7 @@ export class PacienteRestricaoService {
     }
   }
 
-  async delete(
-    userId: string,
-    tipoUsuario: TipoUsuario,
-    pacienteId: string,
-    restricaoId: string,
-  ) {
-    const paciente = await this.prismaService.paciente.findUnique({
-      where: {
-        id: pacienteId,
-      },
-    });
-
-    if (!paciente) {
-      throw new NotFoundException('Paciente não foi encontrado');
-    }
-
-    await this.verificarProfissional(userId, paciente, tipoUsuario);
-
+  private async removerVinculo(pacienteId: string, restricaoId: string) {
     try {
       await this.prismaService.pacienteRestricao.delete({
         where: {

@@ -604,17 +604,22 @@ model PacienteRestricao {
 }
 
 model Ingrediente {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nome               String   @db.VarChar(255)
-  fonteDados         String?  @map("fonte_dados") @db.VarChar(100)
-  codigoFonteExterno String?  @unique @map("codigo_fonte_externo") @db.VarChar(50)
-  caloriasKcal       Decimal? @map("calorias_kcal") @db.Decimal(8, 2)
-  proteinasG         Decimal? @map("proteinas_g") @db.Decimal(8, 2)
-  carboidratosG      Decimal? @map("carboidratos_g") @db.Decimal(8, 2)
-  gordurasG          Decimal? @map("gorduras_g") @db.Decimal(8, 2)
-  fibrasG            Decimal? @map("fibras_g") @db.Decimal(8, 2)
-  sodioMg            Decimal? @map("sodio_mg") @db.Decimal(8, 2)
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                  String    @db.VarChar(255)
+  fonteDados            String?   @map("fonte_dados") @db.VarChar(100)
+  codigoFonteExterno    String?   @unique @map("codigo_fonte_externo") @db.VarChar(50)
+  caloriasKcal          Decimal?  @map("calorias_kcal") @db.Decimal(8, 2)
+  proteinasG            Decimal?  @map("proteinas_g") @db.Decimal(8, 2)
+  carboidratosG         Decimal?  @map("carboidratos_g") @db.Decimal(8, 2)
+  gordurasG             Decimal?  @map("gorduras_g") @db.Decimal(8, 2)
+  fibrasG               Decimal?  @map("fibras_g") @db.Decimal(8, 2)
+  sodioMg               Decimal?  @map("sodio_mg") @db.Decimal(8, 2)
+  // Quando um curador revisou as restrições do ingrediente. Sem vínculo em
+  // IngredienteRestricao só significa "seguro" depois dessa revisão: um
+  // ingrediente novo (criado por usuário ou pela IA) nasce sem vínculo e
+  // não pode passar como seguro para alergia.
+  restricoesRevisadasEm DateTime? @map("restricoes_revisadas_em") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   restricoes           IngredienteRestricao[]
   receitas             ReceitaIngrediente[]
