@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { unlink } from 'fs/promises';
 import {
+  Prisma,
   Receita,
   StatusReceita,
   TipoMidia,
@@ -21,9 +22,17 @@ import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { IngredientesReceitaService } from './ingredientes-receita.service';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import {
+  RestricaoDoPaciente,
+  RestricaoViolada,
   clausulaSegura,
   restricoesDoUsuario,
+  restricoesVioladas,
 } from '../visibilidade/restricoes-receita';
+import {
+  Adaptada,
+  AdaptacaoCatalogoService,
+  peso,
+} from '../adaptacao/adaptacao-catalogo.service';
 
 /**
  * Receita: criar, editar, apagar, listar, abrir e mídia. Quem vê o quê fica
@@ -38,6 +47,7 @@ export class ReceitaService {
     private readonly cacheService: CacheService,
     private readonly visibilidade: VisibilidadeReceitaService,
     private readonly ingredientesReceita: IngredientesReceitaService,
+    private readonly adaptacaoCatalogo: AdaptacaoCatalogoService,
   ) {}
 
   async create(data: ReceitaDto, userId: string) {
@@ -195,15 +205,21 @@ export class ReceitaService {
       },
     });
 
-    if (!receitas || receitas.length === 0) {
-      throw new NotFoundException('Nenhuma receita encontrada');
-    }
-
-    if (usaCache) {
+    if (usaCache && receitas.length > 0) {
       await this.cacheService.set(cacheKey, receitas, 300_000);
     }
 
-    return this.visibilidade.comRestricoesVioladas(receitas, restricoes);
+    const lista = await this.listaAdaptada(
+      receitas,
+      { deletedAt: null },
+      usuario,
+      restricoes,
+      !seguraPara,
+    );
+    if (lista.length === 0) {
+      throw new NotFoundException('Nenhuma receita encontrada');
+    }
+    return lista;
   }
 
   async findOne(id: string, usuario?: UsuarioAutenticado) {
@@ -223,14 +239,139 @@ export class ReceitaService {
         midias: true,
       },
     });
-    if (!receita) {
-      return this.visibilidade.naoEncontrada(id, usuario, restricoes);
+    if (receita) {
+      const [anotada] = (await this.visibilidade.comRestricoesVioladas(
+        [receita],
+        restricoes,
+      )) as (typeof receita & { restricoesVioladas?: RestricaoViolada[] })[];
+      const violadas = anotada.restricoesVioladas ?? [];
+      if (usuario && violadas.length > 0) {
+        const adaptada = await this.adaptacaoCatalogo.abrirAdaptada(
+          receita,
+          violadas,
+          usuario,
+          restricoes,
+        );
+        if (adaptada) return this.receitaAdaptadaCompleta(adaptada, receita);
+      }
+      return anotada;
     }
-    const [anotada] = await this.visibilidade.comRestricoesVioladas(
-      [receita],
+
+    // Escondida por restrição estrita: o paciente recebe a versão adaptada
+    // (a que existe ou uma nova). Sem como adaptar, 403 explicando o motivo.
+    if (usuario && restricoes.some((r) => r.estrita)) {
+      const origem = await this.prismaService.receita.findFirst({
+        where: { id, ...this.visibilidade.filtroBase(usuario) },
+        select: { id: true, nome: true },
+      });
+      const violadas = origem
+        ? ((await restricoesVioladas(this.prismaService, [id], restricoes)).get(
+            id,
+          ) ?? [])
+        : [];
+      if (origem && violadas.length > 0) {
+        const adaptada = await this.adaptacaoCatalogo.abrirAdaptada(
+          origem,
+          violadas,
+          usuario,
+          restricoes,
+        );
+        if (adaptada) return this.receitaAdaptadaCompleta(adaptada, origem);
+      }
+    }
+    return this.visibilidade.naoEncontrada(id, usuario, restricoes);
+  }
+
+  /** A adaptada com ingredientes e mídias, dizendo de qual receita veio. */
+  private async receitaAdaptadaCompleta(
+    adaptada: Adaptada,
+    origem: { id: string; nome: string },
+  ) {
+    const completa = await this.prismaService.receita.findUnique({
+      where: { id: adaptada.receita.id },
+      include: {
+        ingredientes: {
+          include: {
+            ingrediente: true,
+            unidadeMedida: true,
+          },
+        },
+        midias: true,
+      },
+    });
+    return {
+      ...completa,
+      restricoesVioladas: adaptada.restricoesVioladas,
+      adaptadaDe: { id: origem.id, nome: origem.nome },
+    };
+  }
+
+  /**
+   * Fase 3 de regra_negocio_receitas_seguras.md: no lugar da receita que
+   * fere restrição do paciente, a melhor adaptação visível para ele que já
+   * exista (listagem não chama a IA). Receitas escondidas pelo filtro
+   * estrito entram pela adaptada, no fim da lista. A adaptada que já
+   * aparecia sozinha fica só no lugar da original. Sem restrição, só anota.
+   */
+  private async listaAdaptada<T extends { id: string; nome: string }>(
+    receitas: T[],
+    criterio: Prisma.ReceitaWhereInput,
+    usuario: UsuarioAutenticado | undefined,
+    restricoes: RestricaoDoPaciente[],
+    trocar = true,
+    somenteAprovadas = false,
+  ): Promise<Record<string, unknown>[]> {
+    const anotadas = (await this.visibilidade.comRestricoesVioladas(
+      receitas,
       restricoes,
+    )) as (T & { restricoesVioladas?: RestricaoViolada[] })[];
+    if (!usuario || restricoes.length === 0 || !trocar) {
+      return anotadas;
+    }
+
+    const ocultas = await this.prismaService.receita.findMany({
+      where: {
+        AND: [
+          criterio,
+          this.visibilidade.filtroBase(usuario),
+          { id: { notIn: receitas.map((r) => r.id) } },
+        ],
+      },
+      select: { id: true, nome: true },
+    });
+    const comProblema = anotadas.filter(
+      (r) => (r.restricoesVioladas ?? []).length > 0,
     );
-    return anotada;
+    const melhores = await this.adaptacaoCatalogo.melhoresAdaptacoes(
+      [...comProblema.map((r) => r.id), ...ocultas.map((o) => o.id)],
+      usuario,
+      restricoes,
+      somenteAprovadas,
+    );
+
+    const colocadas = new Set<string>();
+    const noLugarDe = (origem: { id: string; nome: string }, a: Adaptada) => {
+      colocadas.add(a.receita.id);
+      return {
+        ...a.receita,
+        restricoesVioladas: a.restricoesVioladas,
+        adaptadaDe: { id: origem.id, nome: origem.nome },
+      };
+    };
+
+    const resultado: Record<string, unknown>[] = anotadas.map((r) => {
+      const a = melhores.get(r.id);
+      return a && peso(a.restricoesVioladas) < peso(r.restricoesVioladas ?? [])
+        ? noLugarDe(r, a)
+        : r;
+    });
+    for (const o of ocultas) {
+      const a = melhores.get(o.id);
+      if (a && !colocadas.has(a.receita.id)) resultado.push(noLugarDe(o, a));
+    }
+    return resultado.filter(
+      (r) => !(colocadas.has(r.id as string) && !('adaptadaDe' in r)),
+    );
   }
 
   async findByName(
@@ -249,10 +390,17 @@ export class ReceitaService {
         ],
       },
     });
-    if (!receita || receita.length === 0) {
+    const lista = await this.listaAdaptada(
+      receita,
+      { nome: { contains: nome, mode: 'insensitive' }, deletedAt: null },
+      usuario,
+      restricoes,
+      !seguraPara,
+    );
+    if (lista.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada com esse nome');
     }
-    return this.visibilidade.comRestricoesVioladas(receita, restricoes);
+    return lista;
   }
 
   async findIngredients(id: string, usuario?: UsuarioAutenticado) {
@@ -345,11 +493,22 @@ export class ReceitaService {
         ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });
-    if (!receitas || receitas.length === 0) {
+    const lista = await this.listaAdaptada(
+      receitas,
+      {
+        status: 'aprovada',
+        deletedAt: null,
+        OR: [{ nivelDificuldade: 'facil' }, { nivelDificuldade: 'medio' }],
+      },
+      usuario,
+      restricoes,
+      true,
+      true,
+    );
+    if (lista.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada');
     }
-
-    return this.visibilidade.comRestricoesVioladas(receitas, restricoes);
+    return lista;
   }
 
   async findValidated(usuario?: UsuarioAutenticado) {
@@ -362,10 +521,18 @@ export class ReceitaService {
         ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });
-    if (!receitas || receitas.length === 0) {
+    const lista = await this.listaAdaptada(
+      receitas,
+      { status: 'aprovada', deletedAt: null },
+      usuario,
+      restricoes,
+      true,
+      true,
+    );
+    if (lista.length === 0) {
       throw new NotFoundException('Nenhuma receita encontrada');
     }
-    return this.visibilidade.comRestricoesVioladas(receitas, restricoes);
+    return lista;
   }
 
   async findFeedbacks(_id: string) {} // TODO: Implementar o método de encontrar feedbacks para uma receita

@@ -1,15 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ReceitaService } from './receita.service';
 import { ReceitaController } from './receita.controller';
-import { IngredientesReceitaService } from './ingredientes-receita.service';
+import { IngredientesReceitaModule } from './ingredientes-receita.module';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { IaModule } from '../../ia/ia.module';
 import { VisibilidadeModule } from '../visibilidade/visibilidade.module';
+import { AdaptacaoModule } from '../adaptacao/adaptacao.module';
 
 @Module({
-  imports: [IaModule, VisibilidadeModule],
+  imports: [IngredientesReceitaModule, VisibilidadeModule, AdaptacaoModule],
   controllers: [ReceitaController],
-  providers: [ReceitaService, UsuarioService, IngredientesReceitaService],
-  exports: [IngredientesReceitaService],
+  providers: [ReceitaService, UsuarioService],
 })
 export class ReceitaModule {}

@@ -9,6 +9,7 @@ import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import {
+  RestricaoDoPaciente,
   restricaoPorId,
   restricoesDoUsuario,
 } from '../visibilidade/restricoes-receita';
@@ -30,10 +31,17 @@ export class AdaptacaoPacienteService {
     private readonly visibilidade: VisibilidadeReceitaService,
   ) {}
 
+  /**
+   * `outrasRestricoes`: as demais restrições de quem pediu. Só restringem
+   * os candidatos a substituto (a adaptação continua sendo para
+   * `restricaoId` e pública), para a IA não trocar o leite por soja para
+   * quem também tem alergia a soja.
+   */
   async adaptar(
     receitaId: string,
     restricaoId: string,
     usuario: UsuarioAutenticado,
+    outrasRestricoes: RestricaoDoPaciente[] = [],
   ) {
     const restricao = await restricaoPorId(this.prismaService, restricaoId);
     if (!restricao) {
@@ -96,7 +104,7 @@ export class AdaptacaoPacienteService {
     const { resposta, candidatos } = await this.base.pedirProposta(
       origem,
       analise,
-      [restricao],
+      [restricao, ...outrasRestricoes],
     );
     const proposta = interpretarAdaptacao(
       resposta,
@@ -167,7 +175,7 @@ export class AdaptacaoPacienteService {
    */
   private resposta(
     adaptacaoId: string,
-    adaptada: { status: StatusReceita },
+    adaptada: { id: string; status: StatusReceita },
     resumoIa: string | null,
     restricao: string,
     estritaParaQuemPediu: boolean,

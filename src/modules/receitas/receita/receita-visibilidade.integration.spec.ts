@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto';
 import { StatusReceita, TipoUsuario } from '@prisma/client';
 import { ReceitaController } from './receita.controller';
 import { ReceitaService } from './receita.service';
+import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
 import { CuradoriaReceitaController } from '../curadoria/curadoria-receita.controller';
 import { CuradoriaReceitaService } from '../curadoria/curadoria-receita.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
@@ -119,6 +120,7 @@ describe('Receita - visibilidade nas rotas públicas (integration)', () => {
         ReceitaService,
         IngredientesReceitaService,
         VisibilidadeReceitaService,
+        { provide: AdaptacaoCatalogoService, useValue: {} },
         CuradoriaReceitaService,
         { provide: PontosTransacaoService, useValue: {} },
         { provide: PrismaService, useClass: FakePrismaService },

@@ -251,19 +251,38 @@ Bruno: intolerância à lactose (moderada) + alergia a soja. Receita: vitamina d
 - A nutricionista escolheu a terceira opção (creme vegetal de aveia), gravou (aprovada) e pôs no café da manhã do plano do Bruno.
 - Bruno vê a vitamina adaptada sem violações; outra paciente recebe 404.
 
-## Fase 3: substituição da original pela adaptada
+## Fase 3: o catálogo se adapta ao paciente
 
-Entrega: nas listagens, o usuário vê diretamente a versão que pode comer.
+Entrega: para qualquer paciente com restrição, com ou sem profissional, a receita que fere a restrição dele aparece já adaptada.
 
-1. Depois do filtro da Fase 1, para cada receita insegura, buscar `ReceitaAdaptacao` pelos pares (receita, restrição violada) e trocar a original pela adaptada, conforme a tabela da regra de exibição.
-2. Fazer essa busca em lote: uma query para todas as receitas da listagem, não uma por receita.
-3. A adaptada também precisa passar no filtro para as **outras** restrições do usuário. Se não passar, aplica a regra de "não tem adaptação".
-4. `GET :id` de uma receita escondida redireciona para a adaptada, quando houver.
-5. Na resposta, a adaptada carrega `receitaOrigemId`, `restricaoAdaptada` e `verificada`, para o front mostrar o aviso certo.
+**Andamento**: implementada. `AdaptacaoCatalogoService` (`src/modules/receitas/adaptacao/`), usado pelo `ReceitaService`.
+
+### Listagens (`all`, `nome`, `sugestoes`, `validadas`)
+
+- No lugar da receita que fere restrição do paciente entra a **melhor adaptação visível para ele que já exista**, com `adaptadaDe: { id, nome }`. "Melhor" = a que menos fere as restrições dele (estrita pesa mais); no empate, a verificada. Inclui a adaptação que o profissional fez para ele.
+- A receita escondida pelo filtro estrito volta pela adaptada (no fim da lista).
+- A adaptada que já aparecia sozinha fica só no lugar da original.
+- `validadas` e `sugestoes` só usam adaptações aprovadas.
+- **Listagem não chama a IA**: só troca pelo que já existe.
+- Com `?seguraPara=`, a lista não é trocada.
+
+### Abrir a receita (`GET /:id`)
+
+1. Receita que fere restrição do paciente (escondida ou com aviso) → devolve a melhor adaptação existente, com `adaptadaDe`.
+2. Não existe → **cria na hora**, uma restrição de cada vez (estritas primeiro), encadeando. Em cada passo, os candidatos a substituto também respeitam as **outras** restrições do paciente (ex: para quem tem lactose e alergia a soja, o queijo não vira creme de soja).
+3. Restrição estrita e adaptação nova pendente → 403 dizendo que a versão adaptada foi criada e aguarda verificação.
+4. No fim, a receita adaptada é conferida contra **todas** as restrições do paciente. Se ainda ferir alguma estrita, ou se a IA não conseguir adaptar, vale o comportamento de antes (receita com aviso, ou 403 com o motivo).
+
+### Teste com a IA real (base local, 2026-10-05)
+
+- Carla (hipertensão grave): o arroz com feijão adaptado (sem sal) aparece no lugar do original.
+- Bruno (lactose moderada + alergia a soja): a vitamina adaptada pelo nutricionista aparece no lugar da original. Ao abrir a omelete de queijo, recebeu na hora a versão com creme de coco (7 s); ao abrir de novo, reaproveitou (49 ms).
+- Ana (alergia a leite): ao abrir a omelete, 403 "criamos uma versão adaptada, que fica disponível depois que um profissional a verificar".
+- Antes de os candidatos respeitarem as outras restrições, a IA trocou o queijo da omelete do Bruno por creme vegetal de soja: a conferência final descartou a adaptação e ele recebeu a original com aviso. Por isso a regra do item 2.
 
 ## Decisões em aberto
 
-- **Usuário com várias restrições** (ex: lactose + glúten). A adaptação é por uma restrição. Se a adaptação para lactose ainda contém glúten, ela é descartada para esse usuário (passo 3 da Fase 3). A alternativa é adaptar para o conjunto de restrições de uma vez, mas isso reduz muito o reaproveitamento. Começar por restrição única e medir.
+- **Adaptação pública que não serve para um paciente.** A adaptação pública é uma por receita e restrição. Se ela foi criada antes e usa um substituto que fere outra restrição deste paciente (ex: soja), o catálogo não cria outra: o paciente recebe a original com aviso (ou 403, se for estrita). Saída possível: uma adaptação privada por paciente, como a do profissional. Decidir se aparecer na prática.
 - **Edição de ingredientes.** Implementada: `ingredientes` no `PATCH` substitui a lista inteira, e a receita aprovada volta para `pendente`, o que também cobre as adaptadas.
 - **Usuário `comum` com restrição.** Hoje só `Paciente` tem restrições. Se o `comum` também precisar do filtro, as restrições teriam que ser ligadas ao `Usuario`, não ao `Paciente`. Fica para depois.
 - **Custo da IA.** Gerar adaptações em segundo plano, logo que uma receita é aprovada, para as restrições mais comuns. Isso deixa a experiência instantânea também na primeira vez. Decidir depois de medir o uso da Fase 2.
