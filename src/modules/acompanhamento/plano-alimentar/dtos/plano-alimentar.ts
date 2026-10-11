@@ -1,10 +1,4 @@
-import {
-  ChecklistRefeicao,
-  ComentarioRefeicao,
-  DiaSemana,
-  Notificacao,
-  TipoRefeicao,
-} from '@prisma/client';
+import { DiaSemana, TipoRefeicao } from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
@@ -26,6 +20,8 @@ export class PlanoAlimentarDto {
 }
 
 export class PlanoAlimentarItemDto {
+  @IsNotEmpty()
+  @IsUUID('4', { message: 'receitaId deve ser um UUID válido' })
   receitaId!: string;
   @IsNotEmpty()
   diaSemana!: DiaSemana;
@@ -36,10 +32,6 @@ export class PlanoAlimentarItemDto {
     message: 'horarioSugerido deve estar no formato HH:mm ou HH:mm:ss',
   })
   horarioSugerido!: string;
-
-  checklistRefeicoes?: ChecklistRefeicao[];
-  comentarios?: ComentarioRefeicao[];
-  notificacoes?: Notificacao[];
 }
 
 export class UpdatePlanoAlimentarDto {

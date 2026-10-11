@@ -95,7 +95,9 @@ describe('Ingrediente - edição e remoção (integration)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+    );
     await app.init();
     prisma = moduleRef.get(PrismaService);
   });
@@ -130,7 +132,7 @@ describe('Ingrediente - edição e remoção (integration)', () => {
     expect(atual().sodioMg).toBe(39943);
   });
 
-  it('o body não marca o ingrediente como revisado nem troca o código da fonte', async () => {
+  it('recusa o body que tenta marcar o ingrediente como revisado ou trocar o código da fonte', async () => {
     sal.restricoesRevisadasEm = null;
 
     await request(app.getHttpServer())
@@ -141,10 +143,10 @@ describe('Ingrediente - edição e remoção (integration)', () => {
         restricoesRevisadasEm: '2026-10-02T00:00:00Z',
         codigoFonteExterno: 'OUTRO',
       })
-      .expect(200);
+      .expect(400);
 
     expect(atual()).toMatchObject({
-      sodioMg: 38000,
+      sodioMg: 39943,
       restricoesRevisadasEm: null,
       codigoFonteExterno: 'TACO-4-Sal, grosso',
     });

@@ -1,4 +1,4 @@
-import { IsNotEmpty } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class IngredienteDTO {
   @IsNotEmpty()
@@ -15,5 +15,8 @@ export class IngredienteDTO {
   fibrasG!: number;
   @IsNotEmpty()
   sodioMg!: number;
-  fonteDados!: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  fonteDados?: string;
 }

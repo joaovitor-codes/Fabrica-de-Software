@@ -107,7 +107,7 @@ export class UsuarioService {
     const updatedUser = await this.prismaService.usuario.update({
       where: { id },
       data: {
-        ...updateUsuarioDto,
+        fotoPerfilUrl: updateUsuarioDto.fotoPerfilUrl,
         dataNascimento: updateUsuarioDto.dataNascimento
           ? new Date(updateUsuarioDto.dataNascimento)
           : undefined,
