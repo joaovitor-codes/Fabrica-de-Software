@@ -51,7 +51,9 @@ describe('Receita - validação do body (integration)', () => {
 
     app = moduleRef.createNestApplication();
     // Mesmo pipe do main.ts.
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+    );
     await app.init();
   });
 

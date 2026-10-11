@@ -13,7 +13,6 @@ async function bootstrap() {
 
   app.use(cookieParser());
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
-
   const config = new DocumentBuilder()
     .setTitle('Nutrify API')
     .setDescription('Documentação da API do sistema Nutrify')
@@ -24,7 +23,12 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
   await app.listen(configService.get<number>('PORT') ?? 3000);
 }

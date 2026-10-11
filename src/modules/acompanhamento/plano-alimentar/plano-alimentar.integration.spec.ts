@@ -253,7 +253,9 @@ describe('PlanoAlimentar (integration)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+    );
     await app.init();
 
     prisma = moduleRef.get(PrismaService);
