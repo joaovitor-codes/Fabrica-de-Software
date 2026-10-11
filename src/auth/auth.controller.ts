@@ -51,7 +51,7 @@ export class AuthController {
     return tokens;
   }
 
-  @Throttle({ default: { ttl: 900_000, limit: 5 } })
+  @Throttle({ escrita: { ttl: 900_000, limit: 5 } })
   @ApiOperation({ summary: 'Endpoint para fazer login' })
   @Post('signin')
   async signin(
