@@ -1,7 +1,72 @@
 // ============================================================
-// NUTRIFY - schema.prisma (v4 - vínculo ingrediente x restrição)
+// NUTRIFY - schema.prisma (v5 - marketplace: venda de receitas e
+// vitrine de produtos)
 //
-// Este arquivo aplica, sobre a v3, as decisões da discussão sobre
+// Este arquivo aplica, sobre a v4, as decisões da discussão sobre
+// o marketplace (seção "Marketplace" da documentação da API):
+//
+//   1. Venda de receitas: ReceitaOferta (preço e público-alvo de uma
+//      Receita), ReceitaCompra (a compra e a cópia entregue) e
+//      ContaRecebedor (cadastro do vendedor no gateway, para o split).
+//      A cópia entregue ao comprador é uma Receita comum, privada —
+//      mesmo padrão de ReceitaAdaptacao ("a adaptada é uma Receita
+//      comum"). Por isso restricoesVioladas, adaptação e plano
+//      alimentar funcionam sobre ela sem modelagem nova.
+//   2. Pagamento deixa de ser exclusivo de Assinatura: assinaturaId
+//      vira opcional e entra receitaCompraId (exclusive arc, igual a
+//      Notificacao). Ganha gatewayCobrancaId para o webhook ser
+//      idempotente.
+//   3. Vitrine de produtos: Produto, ProdutoMidia, ProdutoPublicoAlvo,
+//      ProdutoDenuncia e a lookup table CategoriaProduto. Sem
+//      pagamento, carrinho ou frete: a plataforma só intermedia o
+//      contato. O nome "Produto" (e não "Anuncio") é de propósito,
+//      para não confundir com Anunciante/CampanhaPublicitaria.
+//   4. Gateway: Mercado Pago, split 1:1. O vendedor conecta a conta
+//      Mercado Pago dele por OAuth; ContaRecebedor guarda os tokens
+//      (cifrados). A cobrança é uma preferência do Checkout Pro criada
+//      com o token do vendedor e a comissão em `marketplace_fee`.
+//   5. Reembolso: o comprador pede em até 7 dias. Se a cópia nunca foi
+//      aberta (ReceitaCompra.primeiroAcessoEm nulo), o estorno é
+//      automático; se já foi, o pedido vai para análise do admin
+//      (status `reembolso_em_analise`).
+//   6. Notificacao ganha produtoId no exclusive arc, para avisar o
+//      vendedor quando a moderação remove um produto.
+//   7. TipoConsentimento ganha `termos_marketplace`: comprar, vender e
+//      anunciar exigem o aceite da versão atual dos termos.
+//   8. Fora do schema, por decisão explícita: dados bancários do
+//      vendedor (ficam só no Mercado Pago), percentual de comissão e
+//      preço mínimo (variáveis de ambiente; o valor cobrado fica
+//      congelado em ReceitaCompra.taxaPlataforma), chat interno (o
+//      contato do produto é por telefone/WhatsApp) e a regra "o
+//      profissional não anuncia produto" (validada na aplicação pelo
+//      tipoUsuario do vendedor).
+//
+// SQL raw a adicionar na migration da v5 (o Prisma não expressa):
+//
+//   ALTER TABLE pagamentos ADD CONSTRAINT chk_pagamento_exclusive_arc
+//     CHECK (num_nonnulls(assinatura_id, receita_compra_id) = 1);
+//
+//   -- No máximo uma compra "viva" por comprador e oferta. Compras
+//   -- canceladas ou reembolsadas ficam como histórico e não impedem
+//   -- uma nova tentativa.
+//   CREATE UNIQUE INDEX uq_receita_compra_viva
+//     ON receita_compras (oferta_id, comprador_id)
+//     WHERE status IN ('pendente', 'paga', 'reembolso_em_analise');
+//
+//   -- Notificacao: o arco passa a ter 6 colunas (entra produto_id).
+//   ALTER TABLE notificacoes DROP CONSTRAINT chk_notificacao_exclusive_arc;
+//   ALTER TABLE notificacoes ADD CONSTRAINT chk_notificacao_exclusive_arc
+//     CHECK (
+//       num_nonnulls(receita_id, assinatura_id, plano_alimentar_item_id,
+//                     indicacao_id, anamnese_id, produto_id) = 1
+//     );
+//
+// Tudo mais abaixo é idêntico à v4.
+//
+// ------------------------------------------------------------
+// Histórico: v4 - vínculo ingrediente x restrição
+//
+// A v4 aplicou, sobre a v3, as decisões da discussão sobre
 // curadoria de vínculo Ingrediente x RestricaoAlimentar:
 //
 //   1. IngredienteRestricao ganha o campo `origem`, pra distinguir
@@ -38,8 +103,6 @@
 //     suporta a linha, só falta preencher valorLimite quando decidido.
 //   - Doenças renais/gota: fora de escopo por enquanto, faltam campos
 //     nutricionais (potássio, fósforo, purinas) em Ingrediente.
-//
-// Tudo mais abaixo é idêntico à v3.
 // ============================================================
 
 generator client {
@@ -247,6 +310,9 @@ enum TipoConsentimento {
   termos_uso
   dados_saude
   marketing
+  // v5: termos do marketplace. Exigido (na versão atual do documento)
+  // antes da primeira compra, venda ou anúncio.
+  termos_marketplace
 
   @@map("tipo_consentimento_enum")
 }
@@ -267,6 +333,65 @@ enum TipoContato {
   whatsapp
 
   @@map("tipo_contato_enum")
+}
+
+// v5 (venda de receitas). Fluxo de estados da compra: cada valor tem
+// lógica própria (paga libera a cópia, reembolsada revoga o acesso),
+// por isso enum nativo.
+//   pendente             -> preferência criada no gateway, aguardando
+//                           pagamento
+//   paga                 -> webhook confirmou; a cópia existe
+//                           (receitaCopiaId)
+//   cancelada            -> pagamento falhou ou expirou; nunca houve cópia
+//   reembolso_em_analise -> o comprador pediu reembolso de uma cópia já
+//                           aberta (ou que o gateway não conseguiu
+//                           estornar sozinho); o admin decide. O acesso
+//                           à cópia continua até a decisão. Negado,
+//                           volta para `paga`.
+//   reembolsada          -> dinheiro devolvido; a cópia sai do ar
+//                           (deletedAt)
+enum StatusCompraReceita {
+  pendente
+  paga
+  cancelada
+  reembolso_em_analise
+  reembolsada
+
+  @@map("status_compra_receita_enum")
+}
+
+// v5 (venda de receitas). Situação da conexão do vendedor com o
+// Mercado Pago. Só vendedor `ativo` pode ter oferta à venda. A linha de
+// ContaRecebedor só nasce quando o OAuth termina, por isso não existe
+// "pendente".
+//   ativo        -> conta conectada, token válido
+//   desconectado -> o vendedor desconectou, revogou a autorização no
+//                   Mercado Pago, ou a renovação do token falhou
+enum StatusRecebedor {
+  ativo
+  desconectado
+
+  @@map("status_recebedor_enum")
+}
+
+// v5 (vitrine). `vendido` e `pausado` são do vendedor; `removido` é da
+// moderação (admin) e o vendedor não consegue reverter.
+enum StatusProduto {
+  ativo
+  pausado
+  vendido
+  removido
+
+  @@map("status_produto_enum")
+}
+
+// v5 (vitrine). Denúncia procedente remove o produto.
+enum StatusDenuncia {
+  aberta
+  procedente
+  improcedente
+
+  @@map("status_denuncia_enum")
 }
 
 // ============================================================
@@ -345,6 +470,14 @@ model Usuario {
   indicacoesFeitas        Indicacao[]             @relation("IndicacaoIndicador")
   indicacoesRecebidas     Indicacao[]             @relation("IndicacaoIndicado")
 
+  // v5: marketplace. Comprar e vender é do Usuario (qualquer tipo), não
+  // de Paciente/Profissional.
+  contaRecebedor      ContaRecebedor?
+  receitasCompradas   ReceitaCompra[]
+  produtos            Produto[]
+  denunciasFeitas     ProdutoDenuncia[] @relation("DenunciaDenunciante")
+  denunciasResolvidas ProdutoDenuncia[] @relation("DenunciaResolvidaPor")
+
   // NOTA (consistência polimórfica, ver documentação): nada aqui impede
   // um Usuario tipoUsuario = "comum" de também ter linha em Profissional.
   // Precisa de trigger SQL manual na migration, igual no modelo anterior.
@@ -385,6 +518,9 @@ model Telefone {
   // onDelete: Cascade: um telefone sem dono não tem razão de existir.
   usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   clinica Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+
+  // v5: produtos da vitrine que usam este número como contato.
+  produtos Produto[]
 
   @@index([usuarioId])
   @@index([clinicaId])
@@ -587,6 +723,9 @@ model RestricaoAlimentar {
   regrasNutricionais     RestricaoRegraNutricional[]
   ingredienteSubstitutos IngredienteSubstituto[]
   receitaAdaptacoes      ReceitaAdaptacao[]
+  // v5: público-alvo no marketplace (filtro de receitas à venda e de produtos).
+  ofertasPublicoAlvo     ReceitaOfertaPublicoAlvo[]
+  produtosPublicoAlvo    ProdutoPublicoAlvo[]
 
   @@map("restricoes_alimentares")
 }
@@ -716,6 +855,9 @@ model IngredienteSubstituto {
 // o enum dava; ganhamos flexibilidade de cadastro via INSERT simples.
 // A validação de "código é válido" passa a ser responsabilidade de a
 // aplicação consultar a tabela (ou cachear os códigos ativos).
+//
+// v5: CategoriaProduto entra aqui pelo mesmo motivo — a lista de
+// categorias da vitrine cresce por decisão operacional.
 // ============================================================
 
 model UnidadeMedida {
@@ -739,6 +881,17 @@ model TipoNotificacao {
   notificacoes Notificacao[]
 
   @@map("tipos_notificacao")
+}
+
+model CategoriaProduto {
+  id     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo String  @unique @db.VarChar(50) // alimentos, suplementos, utensilios, livros...
+  nome   String  @db.VarChar(100)
+  ativo  Boolean @default(true)
+
+  produtos Produto[]
+
+  @@map("categorias_produto")
 }
 
 // ============================================================
@@ -779,6 +932,12 @@ model Receita {
   adaptacoes            ReceitaAdaptacao[]   @relation("AdaptacaoOrigem")
   // Preenchido quando esta receita é a versão adaptada de outra.
   adaptacaoDe           ReceitaAdaptacao?    @relation("AdaptacaoAdaptada")
+  // v5: preenchido quando esta receita tem oferta (está, ou esteve, à
+  // venda). Com oferta, o conteúdo completo sai das rotas públicas.
+  oferta                ReceitaOferta?
+  // v5: preenchido quando esta receita é a cópia entregue numa compra.
+  // Cópia é privada do comprador, imutável e nunca pode ter oferta.
+  copiaDeCompra         ReceitaCompra?       @relation("CompraCopia")
 
   @@index([status])
   @@index([criadoPor])
@@ -792,6 +951,11 @@ model Receita {
 //   reaproveitada por quem tem a mesma restrição;
 // - para um paciente (pacienteId, sem restricaoId): escolhida pelo
 //   profissional dele, já verificada e visível só para esse paciente.
+//
+// v5: quando a origem é uma receita à venda ou uma cópia comprada, a
+// adaptação herda a visibilidade da origem — nunca é pública nem
+// reaproveitada por terceiros, senão o conteúdo pago vazaria pelo
+// catálogo. Não muda a modelagem: a regra é da camada de visibilidade.
 model ReceitaAdaptacao {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   receitaOrigemId   String   @map("receita_origem_id") @db.Uuid
@@ -921,6 +1085,9 @@ model PlanoAlimentar {
   @@map("planos_alimentares")
 }
 
+// v5: receitaId pode apontar para a cópia de uma receita comprada, desde
+// que a cópia seja do paciente do plano (validado na aplicação). Uma
+// receita à venda que o paciente não comprou não entra no plano.
 model PlanoAlimentarItem {
   id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   planoAlimentarId String       @map("plano_alimentar_id") @db.Uuid
@@ -1109,18 +1276,39 @@ model Assinatura {
   @@map("assinaturas")
 }
 
+// v5 (Exclusive Arc): um pagamento é de uma Assinatura OU de uma
+// ReceitaCompra, nunca dos dois. assinaturaId deixou de ser obrigatório
+// (migration sem perda: toda linha existente já tem assinaturaId). A
+// CHECK chk_pagamento_exclusive_arc do cabeçalho garante o "exatamente
+// um".
+//
+// Uma ReceitaCompra pode ter mais de um Pagamento (tentativa que falhou
+// e outra que passou); por isso a relação é N:1 e não 1:1.
+//
+// Na compra de receita o Pagamento nasce no webhook, não na criação da
+// compra: com o Checkout Pro, o ID do pagamento só existe depois que o
+// comprador paga. Até lá a compra tem só a preferência
+// (ReceitaCompra.gatewayPreferenciaId).
 model Pagamento {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  assinaturaId    String          @map("assinatura_id") @db.Uuid
-  valor           Decimal         @db.Decimal(10, 2)
-  statusPagamento StatusPagamento @default(pendente) @map("status_pagamento")
-  metodoPagamento String?         @map("metodo_pagamento") @db.VarChar(100)
-  dataPagamento   DateTime?       @map("data_pagamento") @db.Timestamptz(6)
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assinaturaId      String?         @map("assinatura_id") @db.Uuid
+  receitaCompraId   String?         @map("receita_compra_id") @db.Uuid
+  valor             Decimal         @db.Decimal(10, 2)
+  statusPagamento   StatusPagamento @default(pendente) @map("status_pagamento")
+  metodoPagamento   String?         @map("metodo_pagamento") @db.VarChar(100)
+  // v5: ID do pagamento no gateway (no Mercado Pago, o `data.id` da
+  // notificação). @unique para o webhook ser idempotente:
+  // o gateway reenvia o mesmo evento, e a segunda entrega acha a linha já
+  // processada em vez de liberar a cópia duas vezes.
+  gatewayCobrancaId String?         @unique @map("gateway_cobranca_id") @db.VarChar(255)
+  dataPagamento     DateTime?       @map("data_pagamento") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  assinatura Assinatura @relation(fields: [assinaturaId], references: [id])
+  assinatura    Assinatura?    @relation(fields: [assinaturaId], references: [id])
+  receitaCompra ReceitaCompra? @relation(fields: [receitaCompraId], references: [id])
 
   @@index([assinaturaId])
+  @@index([receitaCompraId])
   @@map("pagamentos")
 }
 
@@ -1190,6 +1378,15 @@ model CampanhaPublicitaria {
 //   checklist_pendente / comentario_novo   -> planoAlimentarItemId
 //   indicacao_convertida                   -> indicacaoId
 //   anamnese_pendente                      -> anamneseId
+//
+// v5: as notificações da venda de receitas cabem no arco atual, sem
+// coluna nova, porque sempre há uma Receita envolvida:
+//   receita_vendida (para o vendedor)      -> receitaId (a original)
+//   compra_liberada (para o comprador)     -> receitaId (a cópia)
+//   reembolso_resolvido (para o comprador) -> receitaId (a original)
+// A vitrine precisou de uma coluna nova, produtoId. A CHECK acima passa
+// a contar 6 colunas (ver o SQL no cabeçalho do arquivo):
+//   produto_removido (para o vendedor)     -> produtoId
 // ============================================================
 
 model Notificacao {
@@ -1203,6 +1400,7 @@ model Notificacao {
   planoAlimentarItemId String? @map("plano_alimentar_item_id") @db.Uuid
   indicacaoId          String? @map("indicacao_id") @db.Uuid
   anamneseId           String? @map("anamnese_id") @db.Uuid
+  produtoId            String? @map("produto_id") @db.Uuid
 
   titulo    String    @db.VarChar(255)
   mensagem  String?   @db.Text
@@ -1213,16 +1411,17 @@ model Notificacao {
   usuario         Usuario         @relation(fields: [usuarioId], references: [id])
   tipoNotificacao TipoNotificacao @relation(fields: [tipoNotificacaoId], references: [id])
 
-  // onDelete: Cascade nas 5 abaixo (Exclusive Arc): se a entidade de
+  // onDelete: Cascade nas 6 abaixo (Exclusive Arc): se a entidade de
   // origem for excluída de verdade, a notificação perdeu sua única
   // razão de existir e deve ser removida junto — nunca deve sobrar
-  // uma linha com as 5 colunas nulas, isso violaria a CHECK
+  // uma linha com as 6 colunas nulas, isso violaria a CHECK
   // constraint chk_notificacao_exclusive_arc (ver migration).
   receita            Receita?            @relation(fields: [receitaId], references: [id], onDelete: Cascade)
   assinatura         Assinatura?         @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
   planoAlimentarItem PlanoAlimentarItem? @relation(fields: [planoAlimentarItemId], references: [id], onDelete: Cascade)
   indicacao          Indicacao?          @relation(fields: [indicacaoId], references: [id], onDelete: Cascade)
   anamnese           Anamnese?           @relation(fields: [anamneseId], references: [id], onDelete: Cascade)
+  produto            Produto?            @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
   @@index([usuarioId, lida])
   @@map("notificacoes")
@@ -1262,4 +1461,241 @@ model LogAcessoDadoSensivel {
   @@index([pacienteId])
   @@index([usuarioAcessanteId])
   @@map("log_acessos_dados_sensiveis")
+}
+
+// ============================================================
+// 13. VENDA DE RECEITAS (v5)
+//
+// Regras completas na seção "Marketplace" da documentação da API.
+// Resumo do que a modelagem assume:
+// - Vende quem é autor de uma Receita `aprovada` e tem ContaRecebedor
+//   `ativo`. Compra qualquer usuário logado.
+// - O pagamento passa pelo Mercado Pago com split 1:1: o valor cai na
+//   conta Mercado Pago do vendedor e a comissão (`marketplace_fee`) na
+//   da plataforma. A plataforma nunca guarda saldo de terceiros, por
+//   isso não existe tabela de carteira/saque aqui.
+// - A compra só entrega conteúdo depois do webhook de pagamento: é
+//   nesse momento que a Receita-cópia é criada.
+// ============================================================
+
+// Conexão do vendedor com o Mercado Pago (OAuth). Dados bancários e
+// documentos ficam só lá; aqui ficam o ID da conta e os tokens que a
+// API usa para criar a cobrança em nome do vendedor.
+//
+// Os tokens dão acesso à conta do vendedor: são gravados cifrados
+// (chave fora do banco) e nunca saem em resposta de rota. O access
+// token do Mercado Pago vale 180 dias; um job o renova pelo refresh
+// token antes de tokenExpiraEm. Se a renovação falhar, o status vira
+// `desconectado` e as ofertas do vendedor saem do ar.
+model ContaRecebedor {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId           String          @unique @map("usuario_id") @db.Uuid
+  gateway             String          @default("mercado_pago") @db.VarChar(50)
+  // No Mercado Pago, o user_id da conta do vendedor.
+  gatewayRecebedorId  String          @map("gateway_recebedor_id") @db.VarChar(255)
+  accessTokenCifrado  String          @map("access_token_cifrado") @db.Text
+  refreshTokenCifrado String          @map("refresh_token_cifrado") @db.Text
+  tokenExpiraEm       DateTime        @map("token_expira_em") @db.Timestamptz(6)
+  status              StatusRecebedor @default(ativo)
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@unique([gateway, gatewayRecebedorId])
+  @@map("contas_recebedor")
+}
+
+// A oferta de venda de uma Receita. 1:1 com Receita (receitaId @unique).
+// "Está à venda" não é uma coluna: é ativa = true E receita aprovada e
+// não excluída E vendedor com ContaRecebedor ativo. Assim, editar a
+// receita (que a devolve para `pendente`) tira a oferta do ar sozinha,
+// e a nova aprovação a devolve, sem job de sincronização.
+//
+// ativa = false é "pausada": continua com o conteúdo fechado, só não
+// pode ser comprada. Para a receita voltar a ser pública e gratuita, a
+// oferta é apagada (só possível sem compras; ver documentação).
+model ReceitaOferta {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receitaId String   @unique @map("receita_id") @db.Uuid
+  preco     Decimal  @db.Decimal(10, 2)
+  ativa     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  receita     Receita                    @relation(fields: [receitaId], references: [id])
+  publicoAlvo ReceitaOfertaPublicoAlvo[]
+  compras     ReceitaCompra[]
+
+  @@index([ativa])
+  @@map("receita_ofertas")
+}
+
+// Público-alvo da oferta: para quais restrições o vendedor oferece a
+// receita. Só entra aqui restrição para a qual a receita passou na
+// mesma checagem de segurança do filtro `seguraPara`. A linha registra
+// a intenção do vendedor; o filtro da listagem continua conferindo a
+// segurança na hora, porque a curadoria de ingredientes muda depois.
+model ReceitaOfertaPublicoAlvo {
+  ofertaId    String   @map("oferta_id") @db.Uuid
+  restricaoId String   @map("restricao_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  oferta    ReceitaOferta      @relation(fields: [ofertaId], references: [id], onDelete: Cascade)
+  restricao RestricaoAlimentar @relation(fields: [restricaoId], references: [id], onDelete: Restrict)
+
+  @@id([ofertaId, restricaoId])
+  @@index([restricaoId])
+  @@map("receita_oferta_publico_alvo")
+}
+
+// Uma compra. precoPago e taxaPlataforma são congelados na criação:
+// mudar o preço da oferta ou a comissão depois não reescreve o passado.
+//
+// receitaCopiaId fica null até o pagamento ser confirmado. A cópia é
+// uma Receita nova, com os ingredientes e mídias da original naquele
+// momento (versaoComprada), status `aprovada` e o mesmo criadoPor do
+// vendedor (a autoria não muda). ReceitaVersao não guarda ingredientes,
+// então apontar para "a versão comprada" da original não bastaria.
+//
+// Unicidade "uma compra viva por comprador e oferta" é o índice parcial
+// uq_receita_compra_viva do cabeçalho — um @@unique comum impediria
+// comprar de novo depois de um cancelamento.
+//
+// Reembolso: o prazo de 7 dias conta de pagaEm. primeiroAcessoEm é
+// gravado na primeira vez que o comprador abre o conteúdo da cópia
+// (detalhe ou ingredientes; a listagem de compradas não conta). Nulo =
+// estorno automático; preenchido = análise do admin. Um pedido por
+// compra: reembolsoSolicitadoEm preenchido bloqueia um segundo.
+model ReceitaCompra {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ofertaId              String              @map("oferta_id") @db.Uuid
+  compradorId           String              @map("comprador_id") @db.Uuid
+  precoPago             Decimal             @map("preco_pago") @db.Decimal(10, 2)
+  taxaPlataforma        Decimal             @map("taxa_plataforma") @db.Decimal(10, 2)
+  versaoComprada        Int                 @map("versao_comprada")
+  status                StatusCompraReceita @default(pendente)
+  // Preferência do Checkout Pro e o link de pagamento dela. Uma compra
+  // pendente devolve o mesmo link em vez de criar outra preferência.
+  gatewayPreferenciaId  String?             @unique @map("gateway_preferencia_id") @db.VarChar(255)
+  checkoutUrl           String?             @map("checkout_url") @db.VarChar(500)
+  receitaCopiaId        String?             @unique @map("receita_copia_id") @db.Uuid
+  pagaEm                DateTime?           @map("paga_em") @db.Timestamptz(6)
+  primeiroAcessoEm      DateTime?           @map("primeiro_acesso_em") @db.Timestamptz(6)
+  reembolsoSolicitadoEm DateTime?           @map("reembolso_solicitado_em") @db.Timestamptz(6)
+  reembolsoMotivo       String?             @map("reembolso_motivo") @db.Text
+  reembolsoResolvidoEm  DateTime?           @map("reembolso_resolvido_em") @db.Timestamptz(6)
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  oferta       ReceitaOferta @relation(fields: [ofertaId], references: [id])
+  comprador    Usuario       @relation(fields: [compradorId], references: [id])
+  receitaCopia Receita?      @relation("CompraCopia", fields: [receitaCopiaId], references: [id])
+  pagamentos   Pagamento[]
+
+  @@index([compradorId, status])
+  @@index([ofertaId])
+  @@map("receita_compras")
+}
+
+// ============================================================
+// 14. VITRINE DE PRODUTOS (v5)
+//
+// Classificados: o vendedor publica, o interessado vê o contato e os
+// dois se resolvem fora da plataforma. Não há pagamento, carrinho,
+// estoque nem frete — por isso nada aqui se liga a Pagamento.
+//
+// Diferença importante para a venda de receitas: o público-alvo de um
+// produto é DECLARADO pelo vendedor e não tem como ser verificado pela
+// API (o produto é físico, não é uma lista de Ingrediente). Serve de
+// filtro de busca e nunca deve ser apresentado como "seguro para" uma
+// restrição.
+//
+// Quem anuncia: usuário `comum` ou `paciente`. O `profissional` não
+// anuncia produto (o código de ética do CFN, arts. 60 e 63, veda ao
+// nutricionista divulgar marcas de alimentos, suplementos e
+// utensílios). A regra é da aplicação: o banco não a impõe.
+// ============================================================
+
+model Produto {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vendedorId        String        @map("vendedor_id") @db.Uuid
+  categoriaId       String        @map("categoria_id") @db.Uuid
+  titulo            String        @db.VarChar(255)
+  descricao         String?       @db.Text
+  // null = "a combinar".
+  preco             Decimal?      @db.Decimal(10, 2)
+  // Só cidade e UF, copiados para o produto. De propósito não é FK para
+  // Endereco: a vitrine não deve expor o endereço completo do vendedor.
+  cidade            String?       @db.VarChar(100)
+  estado            String?       @db.VarChar(2)
+  // Número (do próprio vendedor) exibido como contato. SetNull: se o
+  // vendedor apagar o telefone, o produto fica sem contato e a aplicação
+  // o tira da vitrine até outro número ser escolhido.
+  telefoneContatoId String?       @map("telefone_contato_id") @db.Uuid
+  status            StatusProduto @default(ativo)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  vendedor        Usuario              @relation(fields: [vendedorId], references: [id])
+  categoria       CategoriaProduto     @relation(fields: [categoriaId], references: [id])
+  telefoneContato Telefone?            @relation(fields: [telefoneContatoId], references: [id], onDelete: SetNull)
+  midias          ProdutoMidia[]
+  publicoAlvo     ProdutoPublicoAlvo[]
+  denuncias       ProdutoDenuncia[]
+  notificacoes    Notificacao[]
+
+  @@index([status, categoriaId])
+  @@index([estado, cidade])
+  @@index([vendedorId])
+  @@map("produtos")
+}
+
+model ProdutoMidia {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  produtoId String   @map("produto_id") @db.Uuid
+  url       String   @db.VarChar(500)
+  ordem     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([produtoId])
+  @@map("produto_midias")
+}
+
+model ProdutoPublicoAlvo {
+  produtoId   String   @map("produto_id") @db.Uuid
+  restricaoId String   @map("restricao_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  produto   Produto            @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  restricao RestricaoAlimentar @relation(fields: [restricaoId], references: [id], onDelete: Restrict)
+
+  @@id([produtoId, restricaoId])
+  @@index([restricaoId])
+  @@map("produto_publico_alvo")
+}
+
+// Denúncia de um produto por um usuário. Uma por usuário e produto.
+// Sem onDelete: Cascade de propósito: produto sai do ar por status ou
+// deletedAt, e o histórico de moderação precisa continuar existindo.
+model ProdutoDenuncia {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  produtoId     String         @map("produto_id") @db.Uuid
+  denuncianteId String         @map("denunciante_id") @db.Uuid
+  motivo        String         @db.Text
+  status        StatusDenuncia @default(aberta)
+  resolvidoPor  String?        @map("resolvido_por") @db.Uuid
+  resolvidoEm   DateTime?      @map("resolvido_em") @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  produto             Produto  @relation(fields: [produtoId], references: [id])
+  denunciante         Usuario  @relation("DenunciaDenunciante", fields: [denuncianteId], references: [id])
+  resolvidoPorUsuario Usuario? @relation("DenunciaResolvidaPor", fields: [resolvidoPor], references: [id])
+
+  @@unique([produtoId, denuncianteId])
+  @@index([status])
+  @@map("produto_denuncias")
 }
