@@ -32,4 +32,15 @@ export const envValidationSchema = Joi.object({
   SMTP_USER: Joi.string().required(),
   SMTP_PASS: Joi.string().required(),
   SMTP_FROM: Joi.string().required(),
+  MP_CLIENT_ID: Joi.string().optional(),
+  MP_CLIENT_SECRET: Joi.string().optional(),
+  MP_REDIRECT_URI: Joi.string().uri().optional(),
+  MP_WEBHOOK_SECRET: Joi.string().optional(),
+  RECEBEDOR_TOKEN_KEY: Joi.string().optional(),
+  MARKETPLACE_TAXA_PERCENTUAL: Joi.number().min(0).max(100).default(15),
+  MARKETPLACE_PRECO_MINIMO: Joi.number().min(0).default(10),
+  MARKETPLACE_REEMBOLSO_DIAS: Joi.number().integer().min(0).default(7),
+  MARKETPLACE_TERMOS_VERSAO: Joi.string().default('1.0'),
+
+  OPENAI_API_KEY: Joi.string().optional(),
 });
