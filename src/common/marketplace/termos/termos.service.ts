@@ -26,7 +26,11 @@ export class TermosService {
     };
   }
 
-  async aceitar(usuarioId: string, versaoDocumento: string, ipAddress?: string,) {
+  async aceitar(
+    usuarioId: string,
+    versaoDocumento: string,
+    ipAddress?: string,
+  ) {
     if (versaoDocumento !== this.versaoAtual) {
       throw new UnprocessableEntityException('A versão enviada não é a atual.');
     }
@@ -63,5 +67,4 @@ export class TermosService {
       },
     });
   }
-
 }

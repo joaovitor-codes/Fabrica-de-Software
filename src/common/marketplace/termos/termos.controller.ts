@@ -27,7 +27,10 @@ import type { RequestAutenticado } from '../../../auth/auth.types';
 export class TermosController {
   constructor(private readonly termosService: TermosService) {}
 
-  @ApiOperation({ summary: 'Retorna a versão atual dos termos do marketplace e se o usuário já a aceitou', })
+  @ApiOperation({
+    summary:
+      'Retorna a versão atual dos termos do marketplace e se o usuário já a aceitou',
+  })
   @ApiOkResponse({ description: 'Objeto com versaoAtual, aceito e aceitoEm.' })
   @Get()
   async consultar(@Request() request: RequestAutenticado) {
@@ -36,12 +39,18 @@ export class TermosController {
 
   @ApiOperation({ summary: 'Registra o aceite dos termos do marketplace' })
   @ApiCreatedResponse({ description: 'Aceite registrado.' })
-  @ApiUnprocessableEntityResponse({ description: 'A versão enviada não é a atual.', })
+  @ApiUnprocessableEntityResponse({
+    description: 'A versão enviada não é a atual.',
+  })
   @Post('aceite')
   async aceitar(
     @Request() request: RequestAutenticado,
     @Body() dto: AceiteTermosMarketplaceDto,
   ) {
-    return this.termosService.aceitar(request.user.sub, dto.versaoDocumento, request.ip,);
+    return this.termosService.aceitar(
+      request.user.sub,
+      dto.versaoDocumento,
+      request.ip,
+    );
   }
 }
