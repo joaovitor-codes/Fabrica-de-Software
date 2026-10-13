@@ -27,6 +27,7 @@ import { PlanoAlimentarModule } from './modules/acompanhamento/plano-alimentar/p
 import { DiarioDeSintomasModule } from './modules/acompanhamento/diario-de-sintomas/diario-de-sintomas.module';
 import { PontosTransacaoModule } from './modules/receitas/pontos-transacao/pontos-transacao.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
+import { NotificacaoModule } from './modules/notificacao/notificacao.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { MarketplaceModule } from './modules/marketplace/marketplace.module';
     DiarioDeSintomasModule,
     PontosTransacaoModule,
     MarketplaceModule,
+    NotificacaoModule,
   ],
   controllers: [],
   providers: [PrismaService],

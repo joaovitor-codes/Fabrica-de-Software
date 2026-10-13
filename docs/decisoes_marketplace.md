@@ -225,7 +225,7 @@ Substitui o limite único de 10 requisições por minuto por IP.
 2. Índice único parcial em `receita_compras (oferta_id, comprador_id)` para os status `pendente`, `paga` e `reembolso_em_analise`. Garante uma compra viva por comprador e oferta sem impedir nova tentativa depois de um cancelamento.
 3. CHECK de `notificacoes` refeita para contar 6 colunas, com `produto_id`.
 
-**Códigos novos em `TipoNotificacao`** (tabela de domínio; entram por seed)
+**Códigos novos em `TipoNotificacao`** (tabela de domínio; entram por migration)
 
 | Código | Para quem | Referência |
 |---|---|---|
