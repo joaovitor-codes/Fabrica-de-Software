@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TipoConsentimento } from '@prisma/client';
 import { TermosService } from './termos.service';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
 
 /** Fake em memória da tabela consentimentos_lgpd. */
 class FakePrismaService {
