@@ -53,7 +53,10 @@ describe('CategoriaService', () => {
   beforeEach(async () => {
     prisma = new FakePrismaService();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CategoriaService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CategoriaService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
 
     service = module.get<CategoriaService>(CategoriaService);
@@ -65,7 +68,10 @@ describe('CategoriaService', () => {
   }
 
   it('cria a categoria ativa', async () => {
-    const resposta = await service.create({ codigo: 'alimentos', nome: 'Alimentos' });
+    const resposta = await service.create({
+      codigo: 'alimentos',
+      nome: 'Alimentos',
+    });
 
     expect(resposta.success).toBe('Categoria criada com sucesso.');
     expect(prisma.categorias).toEqual([
@@ -75,7 +81,9 @@ describe('CategoriaService', () => {
 
   it('recusa codigo duplicado com Conflict', async () => {
     await criar('alimentos');
-    await expect(criar('alimentos', 'Outro')).rejects.toThrow(ConflictException);
+    await expect(criar('alimentos', 'Outro')).rejects.toThrow(
+      ConflictException,
+    );
     expect(prisma.categorias).toHaveLength(1);
   });
 
@@ -85,8 +93,12 @@ describe('CategoriaService', () => {
       const livros = await criar('livros', 'Livros');
       await service.remove(livros.id);
 
-      await expect(service.findAllAtivos()).resolves.toMatchObject([{ codigo: 'alimentos' }]);
-      await expect(service.findAllDesativados()).resolves.toMatchObject([{ codigo: 'livros' }]);
+      await expect(service.findAllAtivos()).resolves.toMatchObject([
+        { codigo: 'alimentos' },
+      ]);
+      await expect(service.findAllDesativados()).resolves.toMatchObject([
+        { codigo: 'livros' },
+      ]);
     });
 
     it('retorna lista vazia quando não há categorias', async () => {
@@ -102,13 +114,17 @@ describe('CategoriaService', () => {
     });
 
     it('lança NotFound para id inexistente', async () => {
-      await expect(service.findOne('nao-existe')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nao-existe')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('trata categoria inativa como não encontrada', async () => {
       const categoria = await criar();
       await service.remove(categoria.id);
-      await expect(service.findOne(categoria.id)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(categoria.id)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -119,22 +135,32 @@ describe('CategoriaService', () => {
       await service.remove(categoria.id);
       expect(prisma.categorias[0].ativo).toBe(false);
 
-      await expect(service.restaurar(categoria.id)).resolves.toMatchObject({ ativo: true });
+      await expect(service.restaurar(categoria.id)).resolves.toMatchObject({
+        ativo: true,
+      });
     });
 
     it('recusa remover categoria já inativa ou inexistente', async () => {
       const categoria = await criar();
       await service.remove(categoria.id);
 
-      await expect(service.remove(categoria.id)).rejects.toThrow(ConflictException);
-      await expect(service.remove('nao-existe')).rejects.toThrow(NotFoundException);
+      await expect(service.remove(categoria.id)).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.remove('nao-existe')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('recusa restaurar categoria já ativa ou inexistente', async () => {
       const categoria = await criar();
 
-      await expect(service.restaurar(categoria.id)).rejects.toThrow(ConflictException);
-      await expect(service.restaurar('nao-existe')).rejects.toThrow(NotFoundException);
+      await expect(service.restaurar(categoria.id)).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.restaurar('nao-existe')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -142,11 +168,15 @@ describe('CategoriaService', () => {
     it('altera só os campos enviados', async () => {
       const categoria = await criar();
 
-      await expect(service.update(categoria.id, { nome: 'Comidas' } as any)).resolves.toEqual({
+      await expect(
+        service.update(categoria.id, { nome: 'Comidas' } as any),
+      ).resolves.toEqual({
         ...categoria,
         nome: 'Comidas',
       });
-      await expect(service.update(categoria.id, { codigo: 'comidas' } as any)).resolves.toEqual({
+      await expect(
+        service.update(categoria.id, { codigo: 'comidas' } as any),
+      ).resolves.toEqual({
         ...categoria,
         nome: 'Comidas',
         codigo: 'comidas',
@@ -157,31 +187,33 @@ describe('CategoriaService', () => {
       const categoria = await criar('alimentos');
       await criar('livros', 'Livros');
 
-      await expect(service.update(categoria.id, { codigo: 'livros' } as any)).rejects.toThrow(
-        ConflictException,
-      );
-      await expect(service.update(categoria.id, { codigo: 'alimentos' } as any)).resolves.toEqual(
-        categoria,
-      );
+      await expect(
+        service.update(categoria.id, { codigo: 'livros' } as any),
+      ).rejects.toThrow(ConflictException);
+      await expect(
+        service.update(categoria.id, { codigo: 'alimentos' } as any),
+      ).resolves.toEqual(categoria);
     });
 
     it('body vazio não altera nada', async () => {
       const categoria = await criar();
-      await expect(service.update(categoria.id, {} as any)).resolves.toEqual(categoria);
+      await expect(service.update(categoria.id, {} as any)).resolves.toEqual(
+        categoria,
+      );
     });
 
     it('lança NotFound para id inexistente', async () => {
-      await expect(service.update('nao-existe', { nome: 'X' } as any)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.update('nao-existe', { nome: 'X' } as any),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('recusa atualizar categoria inativa', async () => {
       const categoria = await criar();
       await service.remove(categoria.id);
-      await expect(service.update(categoria.id, { nome: 'X' } as any)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.update(categoria.id, { nome: 'X' } as any),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });

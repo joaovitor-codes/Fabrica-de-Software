@@ -90,7 +90,11 @@ describe('CategoriaController (integration)', () => {
 
   describe('só admin', () => {
     it.each([
-      ['POST', () => http().post(base).send({ codigo: 'alimentos', nome: 'Alimentos' })],
+      [
+        'POST',
+        () =>
+          http().post(base).send({ codigo: 'alimentos', nome: 'Alimentos' }),
+      ],
       ['GET desativadas', () => http().get(`${base}/desativadas`)],
       ['PATCH', () => http().patch(`${base}/${id}`).send({ nome: 'X' })],
       ['PATCH restaurar', () => http().patch(`${base}/${id}/restaurar`)],
@@ -100,8 +104,15 @@ describe('CategoriaController (integration)', () => {
     });
 
     it('cria a categoria', async () => {
-      await http().post(base).set(admin).send({ codigo: 'alimentos', nome: 'Alimentos' }).expect(201);
-      expect(service.create).toHaveBeenCalledWith({ codigo: 'alimentos', nome: 'Alimentos' });
+      await http()
+        .post(base)
+        .set(admin)
+        .send({ codigo: 'alimentos', nome: 'Alimentos' })
+        .expect(201);
+      expect(service.create).toHaveBeenCalledWith({
+        codigo: 'alimentos',
+        nome: 'Alimentos',
+      });
     });
 
     it('lista as desativadas (não confunde com :id)', async () => {
@@ -111,7 +122,11 @@ describe('CategoriaController (integration)', () => {
     });
 
     it('atualiza só o campo enviado', async () => {
-      await http().patch(`${base}/${id}`).set(admin).send({ nome: 'Comidas' }).expect(200);
+      await http()
+        .patch(`${base}/${id}`)
+        .set(admin)
+        .send({ nome: 'Comidas' })
+        .expect(200);
       expect(service.update).toHaveBeenCalledWith(id, { nome: 'Comidas' });
     });
 
