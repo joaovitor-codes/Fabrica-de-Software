@@ -5,8 +5,8 @@ services:
     container_name: nutrify_postgres
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: nutrify_db
     ports:
       - "5454:5432" 
