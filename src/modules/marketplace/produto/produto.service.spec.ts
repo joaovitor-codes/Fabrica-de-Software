@@ -1,0 +1,432 @@
+/// <reference types="jest" />
+
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { StatusProduto } from '@prisma/client';
+import { ProdutoService } from './produto.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
+
+type Usuario = { id: string; telefones: { id: string }[] };
+type Restricao = { id: string; nome: string };
+type Categoria = { id: string; nome: string; ativo: boolean };
+type Produto = {
+  id: string;
+  vendedorId: string;
+  categoriaId: string;
+  titulo: string;
+  descricao?: string;
+  preco?: number;
+  cidade?: string;
+  estado?: string;
+  telefoneContatoId: string | null;
+  status: StatusProduto;
+  createdAt: Date;
+  deletedAt: Date | null;
+  publicoAlvo: { restricaoId: string; restricao: Restricao }[];
+};
+
+/** Aplica o subconjunto de filtros do Prisma usado pelo service. */
+function casa(registro: Record<string, any>, where: Record<string, any> = {}) {
+  return Object.entries(where).every(([campo, filtro]) => {
+    const valor = registro[campo];
+    if (filtro === null) return valor === null;
+    if (typeof filtro === 'object' && 'in' in filtro)
+      return filtro.in.includes(valor);
+    if (typeof filtro === 'object' && 'not' in filtro)
+      return valor !== filtro.not;
+    return valor === filtro;
+  });
+}
+
+/** Fake em memória das tabelas usadas pelo ProdutoService. */
+class FakePrismaService {
+  usuarios: Usuario[] = [];
+  restricoes: Restricao[] = [];
+  categorias: Categoria[] = [];
+  produtos: Produto[] = [];
+
+  usuario = {
+    findUnique: async ({ where }: any) =>
+      this.usuarios.find((u) => u.id === where.id) ?? null,
+  };
+
+  restricaoAlimentar = {
+    count: async ({ where }: any) =>
+      this.restricoes.filter((r) => casa(r, where)).length,
+    findMany: async () => this.restricoes,
+  };
+
+  categoriaProduto = {
+    findUnique: async ({ where }: any) =>
+      this.categorias.find((c) => c.id === where.id) ?? null,
+    findMany: async ({ where }: any) =>
+      this.categorias.filter((c) => casa(c, where)),
+  };
+
+  produto = {
+    create: async ({ data }: any) => {
+      const { publicoAlvo, ...campos } = data;
+      const registro: Produto = {
+        id: `prod${this.produtos.length + 1}`,
+        status: StatusProduto.ativo,
+        // Um ms por registro para a ordenação por createdAt ser determinística.
+        createdAt: new Date(2026, 0, 1, 0, 0, 0, this.produtos.length),
+        deletedAt: null,
+        ...campos,
+        telefoneContatoId: campos.telefoneContatoId ?? null,
+        publicoAlvo: publicoAlvo.create.map(
+          ({ restricaoId }: { restricaoId: string }) => ({
+            restricaoId,
+            restricao: this.restricoes.find((r) => r.id === restricaoId)!,
+          }),
+        ),
+      };
+      this.produtos.push(registro);
+      return registro;
+    },
+    findFirst: async ({ where }: any) =>
+      this.produtos.find((p) => casa(p, where)) ?? null,
+    findMany: async ({ where, skip = 0, take = Infinity, orderBy }: any) => {
+      const lista = this.produtos.filter((p) => casa(p, where));
+      if (orderBy?.createdAt === 'desc') {
+        lista.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+      return lista.slice(skip, skip + take);
+    },
+    count: async ({ where }: any) =>
+      this.produtos.filter((p) => casa(p, where)).length,
+    update: async ({ where, data }: any) => {
+      const registro = this.produtos.find((p) => p.id === where.id)!;
+      Object.assign(registro, data);
+      return registro;
+    },
+  };
+}
+
+describe('ProdutoService', () => {
+  let prisma: FakePrismaService;
+  let service: ProdutoService;
+
+  const VENDEDOR = 'vendedor';
+  const OUTRO = 'outro';
+
+  beforeEach(async () => {
+    prisma = new FakePrismaService();
+    prisma.usuarios = [
+      { id: VENDEDOR, telefones: [{ id: 'tel1' }, { id: 'tel2' }] },
+      { id: OUTRO, telefones: [] },
+    ];
+    prisma.restricoes = [
+      { id: 'r1', nome: 'Glúten' },
+      { id: 'r2', nome: 'Lactose' },
+    ];
+    prisma.categorias = [
+      { id: 'cat1', nome: 'Alimentos', ativo: true },
+      { id: 'cat2', nome: 'Livros', ativo: false },
+    ];
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProdutoService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+
+    service = module.get<ProdutoService>(ProdutoService);
+  });
+
+  function criar(usuarioId = VENDEDOR, restricaoIds?: string[]) {
+    return service.createProduto(usuarioId, {
+      categoriaId: 'cat1',
+      titulo: 'Pão sem glúten',
+      preco: 15.9,
+      restricaoIds,
+    });
+  }
+
+  describe('createProduto', () => {
+    it('cria o produto com o primeiro telefone do vendedor e o público-alvo', async () => {
+      const produto = await criar(VENDEDOR, ['r1', 'r2']);
+
+      expect(produto).toMatchObject({
+        vendedorId: VENDEDOR,
+        categoriaId: 'cat1',
+        titulo: 'Pão sem glúten',
+        preco: 15.9,
+        telefoneContatoId: 'tel1',
+        status: StatusProduto.ativo,
+      });
+      expect(produto.publicoAlvo.map((p) => p.restricao.nome)).toEqual([
+        'Glúten',
+        'Lactose',
+      ]);
+    });
+
+    it('cria sem restrições e sem telefone de contato', async () => {
+      const produto = await criar(OUTRO);
+
+      expect(produto.publicoAlvo).toEqual([]);
+      expect(produto.telefoneContatoId).toBeNull();
+    });
+
+    it('lança NotFound para usuário inexistente', async () => {
+      await expect(criar('nao-existe')).rejects.toThrow(
+        new NotFoundException('Usuário não encontrado'),
+      );
+      expect(prisma.produtos).toHaveLength(0);
+    });
+
+    it.each(['nao-existe', 'cat2'])(
+      'lança NotFound para categoria inexistente ou inativa: %s',
+      async (categoriaId) => {
+        await expect(
+          service.createProduto(VENDEDOR, { categoriaId, titulo: 'X' }),
+        ).rejects.toThrow(new NotFoundException('Categoria não encontrada'));
+        expect(prisma.produtos).toHaveLength(0);
+      },
+    );
+
+    it('lança NotFound se alguma restrição não existe', async () => {
+      await expect(criar(VENDEDOR, ['r1', 'nao-existe'])).rejects.toThrow(
+        new NotFoundException('Restrição alimentar não encontrada'),
+      );
+      expect(prisma.produtos).toHaveLength(0);
+    });
+  });
+
+  describe('opções do formulário', () => {
+    it('lista só categorias ativas, com id e nome', async () => {
+      await expect(service.produtoCategoriasOpcoes()).resolves.toEqual([
+        { id: 'cat1', nome: 'Alimentos' },
+      ]);
+    });
+
+    it('lista restrições só com id e nome', async () => {
+      await expect(
+        service.produtoRestricoesAlimentaresOpcoes(),
+      ).resolves.toEqual([
+        { id: 'r1', nome: 'Glúten' },
+        { id: 'r2', nome: 'Lactose' },
+      ]);
+    });
+
+    it('lança NotFound quando as listas estão vazias', async () => {
+      prisma.categorias = [];
+      prisma.restricoes = [];
+      await expect(service.produtoCategoriasOpcoes()).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(
+        service.produtoRestricoesAlimentaresOpcoes(),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getProdutoById', () => {
+    it('retorna produto ativo para qualquer usuário', async () => {
+      const produto = await criar();
+      await expect(service.getProdutoById(produto.id, OUTRO)).resolves.toBe(
+        produto,
+      );
+    });
+
+    it('produto não ativo só aparece para o dono', async () => {
+      const produto = await criar();
+      await service.desativarProduto(produto.id, VENDEDOR);
+
+      await expect(
+        service.getProdutoById(produto.id, VENDEDOR),
+      ).resolves.toMatchObject({ status: StatusProduto.pausado });
+      await expect(service.getProdutoById(produto.id, OUTRO)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lança NotFound para inexistente ou apagado', async () => {
+      const produto = await criar();
+      await service.apagarProduto(produto.id, VENDEDOR);
+
+      await expect(
+        service.getProdutoById(produto.id, VENDEDOR),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getProdutoById('nao-existe', VENDEDOR),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findAll', () => {
+    it('lista só ativos, não apagados e com telefone, paginado', async () => {
+      const [p1, p2, p3] = [await criar(), await criar(), await criar()];
+      const pausado = await criar();
+      await service.desativarProduto(pausado.id, VENDEDOR);
+      const apagado = await criar();
+      await service.apagarProduto(apagado.id, VENDEDOR);
+      await criar(OUTRO); // sem telefone
+
+      await expect(service.findAll(1, 2)).resolves.toEqual({
+        data: [p1, p2],
+        meta: { total: 3, page: 1, last_page: 2, limit: 2 },
+      });
+      await expect(service.findAll(2, 2)).resolves.toMatchObject({
+        data: [p3],
+      });
+    });
+
+    it.each([
+      [0, 10],
+      [-1, 10],
+      [1, 0],
+      [1, -5],
+    ])('recusa page %p / limit %p com BadRequest', async (page, limit) => {
+      await expect(service.findAll(page, limit)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('usa page 1 e limit 10 por padrão', async () => {
+      await expect(service.findAll()).resolves.toEqual({
+        data: [],
+        meta: { total: 0, page: 1, last_page: 0, limit: 10 },
+      });
+    });
+  });
+
+  describe('getProdutosMeus', () => {
+    it('lista os produtos do usuário em qualquer status, mais novos primeiro', async () => {
+      const antigo = await criar(VENDEDOR, ['r1']);
+      const pausado = await criar();
+      await service.desativarProduto(pausado.id, VENDEDOR);
+      const removido = await criar();
+      await service.removerProduto(removido.id);
+
+      const meus = await service.getProdutosMeus(VENDEDOR);
+
+      expect(meus.map((p) => [p.id, p.status])).toEqual([
+        [removido.id, StatusProduto.removido],
+        [pausado.id, StatusProduto.pausado],
+        [antigo.id, StatusProduto.ativo],
+      ]);
+      expect(meus[2]).toEqual({
+        id: antigo.id,
+        categoriaId: 'cat1',
+        titulo: 'Pão sem glúten',
+        descricao: undefined,
+        preco: 15.9,
+        cidade: undefined,
+        estado: undefined,
+        status: StatusProduto.ativo,
+        createdAt: antigo.createdAt,
+        publicoAlvo: [{ id: 'r1', nome: 'Glúten' }],
+      });
+    });
+
+    it('não inclui produtos apagados nem de outros usuários', async () => {
+      const meu = await criar();
+      const apagado = await criar();
+      await service.apagarProduto(apagado.id, VENDEDOR);
+      await criar(OUTRO);
+
+      await expect(service.getProdutosMeus(VENDEDOR)).resolves.toMatchObject([
+        { id: meu.id },
+      ]);
+    });
+
+    it('retorna lista vazia quando o usuário não tem produtos', async () => {
+      await criar(OUTRO);
+      await expect(service.getProdutosMeus(VENDEDOR)).resolves.toEqual([]);
+    });
+  });
+
+  describe('ações do vendedor', () => {
+    it('desativa e ativa o próprio produto', async () => {
+      const produto = await criar();
+
+      await expect(
+        service.desativarProduto(produto.id, VENDEDOR),
+      ).resolves.toMatchObject({ status: StatusProduto.pausado });
+      await expect(
+        service.ativarProduto(produto.id, VENDEDOR),
+      ).resolves.toMatchObject({ status: StatusProduto.ativo });
+    });
+
+    it('apaga com soft delete', async () => {
+      const produto = await criar();
+      await service.apagarProduto(produto.id, VENDEDOR);
+
+      expect(prisma.produtos[0].deletedAt).toBeInstanceOf(Date);
+      await expect(service.apagarProduto(produto.id, VENDEDOR)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it.each(['desativarProduto', 'ativarProduto', 'apagarProduto'] as const)(
+      '%s recusa produto de outro usuário ou inexistente',
+      async (acao) => {
+        const produto = await criar();
+
+        await expect(service[acao](produto.id, OUTRO)).rejects.toThrow(
+          ForbiddenException,
+        );
+        await expect(service[acao]('nao-existe', VENDEDOR)).rejects.toThrow(
+          NotFoundException,
+        );
+        expect(prisma.produtos[0]).toMatchObject({
+          status: StatusProduto.ativo,
+          deletedAt: null,
+        });
+      },
+    );
+
+    it.each(['desativarProduto', 'ativarProduto'] as const)(
+      '%s recusa produto removido pela moderação',
+      async (acao) => {
+        const produto = await criar();
+        await service.removerProduto(produto.id);
+
+        await expect(service[acao](produto.id, VENDEDOR)).rejects.toThrow(
+          new ForbiddenException('Produto removido pela moderação'),
+        );
+        expect(prisma.produtos[0].status).toBe(StatusProduto.removido);
+      },
+    );
+
+    it('permite apagar produto removido pela moderação', async () => {
+      const produto = await criar();
+      await service.removerProduto(produto.id);
+
+      await expect(
+        service.apagarProduto(produto.id, VENDEDOR),
+      ).resolves.toMatchObject({ deletedAt: expect.any(Date) });
+    });
+  });
+
+  describe('moderação', () => {
+    it('remove e reativa o produto', async () => {
+      const produto = await criar();
+
+      await expect(service.removerProduto(produto.id)).resolves.toMatchObject({
+        status: StatusProduto.removido,
+      });
+      await expect(service.reativarProduto(produto.id)).resolves.toMatchObject({
+        status: StatusProduto.ativo,
+      });
+    });
+
+    it.each(['removerProduto', 'reativarProduto'] as const)(
+      '%s lança NotFound para inexistente ou apagado',
+      async (acao) => {
+        const produto = await criar();
+        await service.apagarProduto(produto.id, VENDEDOR);
+
+        await expect(service[acao](produto.id)).rejects.toThrow(
+          NotFoundException,
+        );
+        await expect(service[acao]('nao-existe')).rejects.toThrow(
+          NotFoundException,
+        );
+      },
+    );
+  });
+});

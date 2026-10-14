@@ -29,6 +29,7 @@ import { PontosTransacaoModule } from './modules/receitas/pontos-transacao/ponto
 import { TermosModule } from './modules/marketplace/termos/termos.module';
 import { CategoriaModule } from './modules/marketplace/categoria/categoria.module';
 import { NotificacaoModule } from './modules/notificacao/notificacao.module';
+import { ProdutoModule } from './modules/marketplace/produto/produto.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { NotificacaoModule } from './modules/notificacao/notificacao.module';
     TermosModule,
     CategoriaModule,
     NotificacaoModule,
+    ProdutoModule,
   ],
   controllers: [],
   providers: [PrismaService],
