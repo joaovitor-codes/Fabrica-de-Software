@@ -8,6 +8,7 @@ import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateProduto } from './dtos/produto';
+import { ListarProdutosQuery } from './dtos/listar-produtos';
 import { Prisma, Produto, StatusProduto } from '@prisma/client';
 
 @Injectable()
@@ -194,7 +195,7 @@ export class ProdutoService {
     });
   }
 
-  async getProdutoById(produtoId: string, usuarioId: string) {
+  async getProdutoById(produtoId: string, usuarioId?: string) {
     const produto = await this.prismaService.produto.findFirst({
       where: {
         id: produtoId,
@@ -204,6 +205,13 @@ export class ProdutoService {
         publicoAlvo: {
           include: { restricao: true },
         },
+        ...(usuarioId
+          ? {
+              telefoneContato: {
+                select: { ddi: true, numero: true, tipo: true },
+              },
+            }
+          : {}),
       },
     });
 
@@ -215,10 +223,23 @@ export class ProdutoService {
       throw new NotFoundException('Produto não encontrado');
     }
 
+    if (usuarioId && 'telefoneContato' in produto) {
+      const { telefoneContato, ...produtoSemRelacao } = produto;
+
+      return {
+        ...produtoSemRelacao,
+        contato: telefoneContato,
+      };
+    }
+
     return produto;
   }
 
-  async findAll(page: number = 1, limit: number = 10) {
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    filters: ListarProdutosQuery = {},
+  ) {
     if (page < 1 || limit < 1) {
       throw new BadRequestException('page e limit devem ser maiores que 0');
     }
@@ -228,6 +249,15 @@ export class ProdutoService {
       status: StatusProduto.ativo,
       deletedAt: null,
       telefoneContatoId: { not: null },
+      ...(filters.categoria ? { categoriaId: filters.categoria } : {}),
+      ...(filters.estado ? { estado: filters.estado } : {}),
+      ...(filters.cidade ? { cidade: filters.cidade } : {}),
+      ...(filters.publicoAlvo
+        ? { publicoAlvo: { some: { restricaoId: filters.publicoAlvo } } }
+        : {}),
+      ...(filters.q
+        ? { titulo: { contains: filters.q, mode: 'insensitive' } }
+        : {}),
     };
 
     const [data, total] = await Promise.all([

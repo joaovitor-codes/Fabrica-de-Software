@@ -23,6 +23,7 @@ type Produto = {
   cidade?: string;
   estado?: string;
   telefoneContatoId: string | null;
+  telefoneContato?: { ddi: string | null; numero: string; tipo: string } | null;
   status: StatusProduto;
   createdAt: Date;
   deletedAt: Date | null;
@@ -38,6 +39,15 @@ function casa(registro: Record<string, any>, where: Record<string, any> = {}) {
       return filtro.in.includes(valor);
     if (typeof filtro === 'object' && 'not' in filtro)
       return valor !== filtro.not;
+    if (typeof filtro === 'object' && 'contains' in filtro) {
+      const texto = String(valor ?? '');
+      const trecho = String(filtro.contains);
+      return filtro.mode === 'insensitive'
+        ? texto.toLowerCase().includes(trecho.toLowerCase())
+        : texto.includes(trecho);
+    }
+    if (typeof filtro === 'object' && 'some' in filtro)
+      return valor.some((item: Record<string, any>) => casa(item, filtro.some));
     return valor === filtro;
   });
 }
@@ -88,8 +98,18 @@ class FakePrismaService {
       this.produtos.push(registro);
       return registro;
     },
-    findFirst: async ({ where }: any) =>
-      this.produtos.find((p) => casa(p, where)) ?? null,
+    findFirst: async ({ where, include }: any) => {
+      const registro = this.produtos.find((p) => casa(p, where)) ?? null;
+      if (
+        registro &&
+        !include?.telefoneContato &&
+        'telefoneContato' in registro
+      ) {
+        const { telefoneContato, ...semTelefone } = registro;
+        return semTelefone;
+      }
+      return registro;
+    },
     findMany: async ({ where, skip = 0, take = Infinity, orderBy }: any) => {
       const lista = this.produtos.filter((p) => casa(p, where));
       if (orderBy?.createdAt === 'desc') {
@@ -254,6 +274,24 @@ describe('ProdutoService', () => {
         service.getProdutoById('nao-existe', VENDEDOR),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('só inclui o telefone no detalhe quando há usuário autenticado', async () => {
+      const produto = await criar();
+      produto.telefoneContato = {
+        ddi: '+55',
+        numero: '62999999999',
+        tipo: 'celular',
+      };
+
+      const anonimo = await service.getProdutoById(produto.id);
+      expect(anonimo).not.toHaveProperty('contato');
+
+      await expect(service.getProdutoById(produto.id, OUTRO)).resolves.toEqual(
+        expect.objectContaining({
+          contato: produto.telefoneContato,
+        }),
+      );
+    });
   });
 
   describe('findAll', () => {
@@ -290,6 +328,38 @@ describe('ProdutoService', () => {
         data: [],
         meta: { total: 0, page: 1, last_page: 0, limit: 10 },
       });
+    });
+
+    it('combina os filtros de categoria, local, público-alvo e título', async () => {
+      const alvo = await criar();
+      Object.assign(alvo, {
+        categoriaId: 'cat-especial',
+        cidade: 'Recife',
+        estado: 'PE',
+        titulo: 'Bolo de aveia',
+      });
+      alvo.publicoAlvo = [
+        { restricaoId: 'r1', restricao: prisma.restricoes[0] },
+      ];
+
+      const foraDaCategoria = await criar();
+      Object.assign(foraDaCategoria, {
+        categoriaId: 'cat-outra',
+        cidade: 'Recife',
+        estado: 'PE',
+        titulo: 'Bolo de aveia',
+      });
+      foraDaCategoria.publicoAlvo = alvo.publicoAlvo;
+
+      await expect(
+        service.findAll(1, 10, {
+          categoria: 'cat-especial',
+          estado: 'PE',
+          cidade: 'Recife',
+          publicoAlvo: 'r1',
+          q: 'AVEIA',
+        }),
+      ).resolves.toMatchObject({ data: [alvo], meta: { total: 1 } });
     });
   });
 
