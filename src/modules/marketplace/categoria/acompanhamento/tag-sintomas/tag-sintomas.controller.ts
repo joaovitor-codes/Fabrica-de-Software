@@ -19,9 +19,9 @@ import {
 } from '@nestjs/swagger';
 import { TagSintomasService } from './tag-sintomas.service';
 import { CreateTagSintomaDto, UpdateTagSintomaDto } from './dtos/tag-sintoma';
-import { AuthGuard } from '../../../auth/auth.guard';
-import { RolesGuard } from '../../../auth/roles.guard';
-import { Roles } from '../../../auth/roles.decorator';
+import { AuthGuard } from '../../../../../auth/auth.guard';
+import { RolesGuard } from '../../../../../auth/roles.guard';
+import { Roles } from '../../../../../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 
 @ApiTags('Tag Sintomas')

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../../../common/prisma/prisma.service';
+import { PrismaService } from '../../../../../common/prisma/prisma.service';
 import { CreateDiarioSintomasDto } from './dtos/diario-de-sintomas';
 import { TipoUsuario } from '@prisma/client';
 

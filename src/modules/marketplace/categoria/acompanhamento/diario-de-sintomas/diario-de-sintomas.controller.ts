@@ -12,8 +12,8 @@ import {
 } from '@nestjs/common';
 import { DiarioDeSintomasService } from './diario-de-sintomas.service';
 import { CreateDiarioSintomasDto } from './dtos/diario-de-sintomas';
-import { RolesGuard } from '../../../auth/roles.guard';
-import { AuthGuard } from '../../../auth/auth.guard';
+import { RolesGuard } from '../../../../../auth/roles.guard';
+import { AuthGuard } from '../../../../../auth/auth.guard';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -21,9 +21,9 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { TipoUsuario } from '@prisma/client';
-import { Roles } from '../../../auth/roles.decorator';
+import { Roles } from '../../../../../auth/roles.decorator';
 
-import type { RequestAutenticado } from '../../../auth/auth.types';
+import type { RequestAutenticado } from '../../../../../auth/auth.types';
 const uuidPipe = (mensagem: string) =>
   new ParseUUIDPipe({
     version: '4',
