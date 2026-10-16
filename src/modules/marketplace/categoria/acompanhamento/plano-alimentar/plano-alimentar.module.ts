@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ProfissionalService } from '../../identidade/profissional/profissional.service';
-import { ClinicasService } from '../../identidade/clinicas/clinicas.service';
-import { PacientesService } from '../../identidade/pacientes/pacientes.service';
+import { ProfissionalService } from '../../../../identidade/profissional/profissional.service';
+import { ClinicasService } from '../../../../identidade/clinicas/clinicas.service';
+import { PacientesService } from '../../../../identidade/pacientes/pacientes.service';
 import { PlanoAlimentarController } from './plano-alimentar.controller';
 import { PlanoAlimentarService } from './plano-alimentar.service';
 import { ChecklistRefeicaoService } from './checklist-refeicao.service';

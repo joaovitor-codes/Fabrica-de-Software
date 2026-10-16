@@ -6,12 +6,12 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { TipoUsuario } from '@prisma/client';
-import { PrismaService } from '../../../common/prisma/prisma.service';
+import { PrismaService } from '../../../../../common/prisma/prisma.service';
 import {
   clausulaSegura,
   restricoesDoPaciente,
   restricoesVioladas,
-} from '../../receitas/visibilidade/restricoes-receita';
+} from '../../../../receitas/visibilidade/restricoes-receita';
 import {
   PlanoAlimentarDto,
   PlanoAlimentarItemDto,

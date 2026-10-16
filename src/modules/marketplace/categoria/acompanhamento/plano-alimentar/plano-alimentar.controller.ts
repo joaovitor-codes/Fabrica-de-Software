@@ -17,9 +17,9 @@ import {
   ApiOperation,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { AuthGuard } from '../../../auth/auth.guard';
-import { RolesGuard } from '../../../auth/roles.guard';
-import { Roles } from '../../../auth/roles.decorator';
+import { AuthGuard } from '../../../../../auth/auth.guard';
+import { RolesGuard } from '../../../../../auth/roles.guard';
+import { Roles } from '../../../../../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 import {
   PlanoAlimentarDto,
@@ -28,14 +28,14 @@ import {
   UpdatePlanoAlimentarItemDto,
 } from './dtos/plano-alimentar';
 import { PlanoAlimentarService } from './plano-alimentar.service';
-import { ProfissionalService } from '../../identidade/profissional/profissional.service';
-import { PacientesService } from '../../identidade/pacientes/pacientes.service';
+import { ProfissionalService } from '../../../../identidade/profissional/profissional.service';
+import { PacientesService } from '../../../../identidade/pacientes/pacientes.service';
 import { ChecklistRefeicaoService } from './checklist-refeicao.service';
 import { ComentarioRefeicaoService } from './comentario-refeicao.service';
 import { MarcarCheckListDto } from './dtos/checklist-refeicao';
 import { CreateComentarioRefeicaoDto } from './dtos/comentario-refeicao';
 
-import type { RequestAutenticado } from '../../../auth/auth.types';
+import type { RequestAutenticado } from '../../../../../auth/auth.types';
 const uuidPipe = (mensagem: string) =>
   new ParseUUIDPipe({
     version: '4',

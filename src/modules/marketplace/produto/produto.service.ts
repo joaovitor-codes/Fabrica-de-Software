@@ -4,6 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { unlink } from 'fs/promises';
+import { join } from 'path';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateProduto } from './dtos/produto';
 import { Prisma, Produto, StatusProduto } from '@prisma/client';
@@ -304,5 +306,64 @@ export class ProdutoService {
         nome: restricao.nome,
       })),
     }));
+  }
+
+  async uploadMidia(
+    produtoId: string,
+    usuarioId: string,
+    file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('file is required');
+    }
+
+    if (!file.mimetype.startsWith('image/')) {
+      await unlink(file.path).catch(() => undefined);
+      throw new BadRequestException('invalid file type');
+    }
+
+    try {
+      const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
+      this.garantirNaoRemovido(produto);
+
+      const midia = await this.prismaService.produtoMidia.create({
+        data: {
+          produtoId,
+          url: `/uploads/produtos/${file.filename}`,
+        },
+      });
+
+      return {
+        success: 'Mídia enviada com sucesso.',
+        data: midia,
+      };
+    } catch (error) {
+      await unlink(file.path).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async removerMidia(produtoId: string, midiaId: string, usuarioId: string) {
+    const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
+    this.garantirNaoRemovido(produto);
+
+    const midia = await this.prismaService.produtoMidia.findFirst({
+      where: { id: midiaId, produtoId },
+    });
+
+    if (!midia) {
+      throw new NotFoundException('Mídia não encontrada');
+    }
+
+    const caminho = join(process.cwd(), midia.url.replace(/^\/+/, ''));
+    await unlink(caminho).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    });
+
+    await this.prismaService.produtoMidia.delete({ where: { id: midiaId } });
+
+    return { success: 'Mídia removida com sucesso.' };
   }
 }

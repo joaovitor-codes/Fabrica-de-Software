@@ -18,6 +18,8 @@ import { join } from 'path';
             destination = join(process.cwd(), 'uploads', 'receitas', 'videos');
           } else if (file.fieldname === 'avatar') {
             destination = join(process.cwd(), 'uploads', 'avatars');
+          } else if (file.fieldname === 'produto') {
+            destination = join(process.cwd(), 'uploads', 'produtos');
           } else {
             return callback(new BadRequestException('Invalid file field'), '');
           }
