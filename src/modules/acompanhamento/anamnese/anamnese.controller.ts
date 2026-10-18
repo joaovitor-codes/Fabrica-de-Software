@@ -32,12 +32,12 @@ import {
   updateAnamnesePerguntaDto,
   updateAnamneseRespostaDto,
 } from './dtos/anamnese';
-import { AuthGuard } from '../../../../../auth/auth.guard';
-import { RolesGuard } from '../../../../../auth/roles.guard';
-import { Roles } from '../../../../../auth/roles.decorator';
+import { AuthGuard } from '../../../auth/auth.guard';
+import { RolesGuard } from '../../../auth/roles.guard';
+import { Roles } from '../../../auth/roles.decorator';
 import { TipoUsuario } from '@prisma/client';
 
-import type { RequestAutenticado } from '../../../../../auth/auth.types';
+import type { RequestAutenticado } from '../../../auth/auth.types';
 const uuidPipe = (mensagem: string) =>
   new ParseUUIDPipe({
     version: '4',
