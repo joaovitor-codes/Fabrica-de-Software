@@ -66,7 +66,7 @@ Backend do **Nutrify**, uma plataforma que conecta nutricionistas e pacientes. P
 
 ## Como rodar localmente
 
-**Pré-requisitos:** Node.js 20+, npm e Docker.
+**Pré-requisitos:** Node.js 22 (versão em `.nvmrc`; com nvm, rode `nvm use`), npm e Docker.
 
 ```bash
 # 1. Clonar e instalar dependências

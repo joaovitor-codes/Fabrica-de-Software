@@ -11,6 +11,9 @@ import { CreateProduto } from './dtos/produto';
 import { ListarProdutosQuery } from './dtos/listar-produtos';
 import { Prisma, Produto, StatusProduto } from '@prisma/client';
 
+const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
+const TAMANHO_MAXIMO_FOTO = 5 * 1024 * 1024;
+
 @Injectable()
 export class ProdutoService {
   constructor(private readonly prismaService: PrismaService) {}
@@ -347,19 +350,27 @@ export class ProdutoService {
       throw new BadRequestException('file is required');
     }
 
-    if (!file.mimetype.startsWith('image/')) {
-      await unlink(file.path).catch(() => undefined);
-      throw new BadRequestException('invalid file type');
-    }
-
     try {
+      if (!TIPOS_FOTO.includes(file.mimetype)) {
+        throw new BadRequestException('A foto precisa ser JPEG, PNG ou WebP');
+      }
+
+      if (file.size > TAMANHO_MAXIMO_FOTO) {
+        throw new BadRequestException('A foto pode ter no máximo 5 MB');
+      }
+
       const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
       this.garantirNaoRemovido(produto);
+
+      const ordem = await this.prismaService.produtoMidia.count({
+        where: { produtoId },
+      });
 
       const midia = await this.prismaService.produtoMidia.create({
         data: {
           produtoId,
           url: `/uploads/produtos/${file.filename}`,
+          ordem,
         },
       });
 
