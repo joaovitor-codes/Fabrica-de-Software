@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../../../../../common/prisma/prisma.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
 import { MarcarCheckListDto } from './dtos/checklist-refeicao';
 import { TipoUsuario } from '@prisma/client';
 

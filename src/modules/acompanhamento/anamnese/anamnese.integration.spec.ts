@@ -9,9 +9,9 @@ import request from 'supertest';
 import { randomUUID } from 'crypto';
 import { TipoResposta, TipoUsuario } from '@prisma/client';
 import { AnamneseModule } from './anamnese.module';
-import { PrismaModule } from '../../../../../common/prisma/prisma.module';
-import { PrismaService } from '../../../../../common/prisma/prisma.service';
-import { AuthGuard } from '../../../../../auth/auth.guard';
+import { PrismaModule } from '../../../common/prisma/prisma.module';
+import { PrismaService } from '../../../common/prisma/prisma.service';
+import { AuthGuard } from '../../../auth/auth.guard';
 
 /**
  * Guard de teste: substitui o AuthGuard real (que depende de JWT + banco) por

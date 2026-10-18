@@ -4,7 +4,7 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../../../../../common/prisma/prisma.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
 import { createAnamneseDto } from './dtos/anamnese';
 import { TipoUsuario } from '@prisma/client';
 import { AnamneseAcessoService } from './anamnese-acesso.service';
