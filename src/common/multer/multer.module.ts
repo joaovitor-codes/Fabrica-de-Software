@@ -41,5 +41,6 @@ import { join } from 'path';
   ],
   controllers: [],
   providers: [],
+  exports: [MulterModule],
 })
 export class MulterConfigModule {}

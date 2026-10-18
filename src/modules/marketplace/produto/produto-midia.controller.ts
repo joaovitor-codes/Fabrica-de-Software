@@ -12,10 +12,13 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -37,12 +40,23 @@ export class ProdutoMidiaController {
     schema: {
       type: 'object',
       properties: {
-        produto: { type: 'string', format: 'binary' },
+        produto: {
+          type: 'string',
+          format: 'binary',
+          description: 'Imagem JPEG, PNG ou WebP de até 5 MB',
+        },
       },
       required: ['produto'],
     },
   })
   @ApiCreatedResponse({ description: 'Mídia enviada com sucesso.' })
+  @ApiBadRequestResponse({
+    description: 'Arquivo ausente, não é imagem ou é grande demais.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Produto não pertence ao usuário ou foi removido.',
+  })
+  @ApiNotFoundResponse({ description: 'Produto não encontrado.' })
   @Post(':id/midias')
   @UseInterceptors(FileInterceptor('produto'))
   async upload(
@@ -59,6 +73,10 @@ export class ProdutoMidiaController {
 
   @ApiOperation({ summary: 'Remove uma foto de um produto do vendedor' })
   @ApiOkResponse({ description: 'Mídia removida com sucesso.' })
+  @ApiForbiddenResponse({
+    description: 'Produto não pertence ao usuário ou foi removido.',
+  })
+  @ApiNotFoundResponse({ description: 'Produto ou mídia não encontrados.' })
   @Delete(':id/midias/:midiaId')
   async remove(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
