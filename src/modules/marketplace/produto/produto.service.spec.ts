@@ -35,7 +35,13 @@ type Produto = {
   deletedAt: Date | null;
   publicoAlvo: { restricaoId: string; restricao: Restricao }[];
 };
-type Midia = { id: string; produtoId: string; url: string; ordem: number };
+type Midia = {
+  id: string;
+  produtoId: string;
+  url: string;
+  ordem: number;
+  createdAt?: Date;
+};
 
 /** Aplica o subconjunto de filtros do Prisma usado pelo service. */
 function casa(registro: Record<string, any>, where: Record<string, any> = {}) {
@@ -66,6 +72,21 @@ class FakePrismaService {
   categorias: Categoria[] = [];
   produtos: Produto[] = [];
   midias: Midia[] = [];
+
+  /** Anexa as fotos do produto quando o include pede `midias`. */
+  private comMidias<T extends Produto>(registro: T, include: any) {
+    if (!include?.midias) return registro;
+    const midias = this.midias
+      .filter((m) => m.produtoId === registro.id)
+      .sort(
+        (a, b) =>
+          a.ordem - b.ordem ||
+          (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0),
+      )
+      .slice(0, include.midias.take ?? Infinity)
+      .map(({ id, url, ordem }) => ({ id, url, ordem }));
+    return { ...registro, midias };
+  }
 
   produtoMidia = {
     count: async ({ where }: any) =>
@@ -130,16 +151,24 @@ class FakePrismaService {
         'telefoneContato' in registro
       ) {
         const { telefoneContato, ...semTelefone } = registro;
-        return semTelefone;
+        return this.comMidias(semTelefone, include);
       }
-      return registro;
+      return registro && this.comMidias(registro, include);
     },
-    findMany: async ({ where, skip = 0, take = Infinity, orderBy }: any) => {
+    findMany: async ({
+      where,
+      skip = 0,
+      take = Infinity,
+      orderBy,
+      include,
+    }: any) => {
       const lista = this.produtos.filter((p) => casa(p, where));
       if (orderBy?.createdAt === 'desc') {
         lista.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       }
-      return lista.slice(skip, skip + take);
+      return lista
+        .slice(skip, skip + take)
+        .map((p) => this.comMidias(p, include));
     },
     count: async ({ where }: any) =>
       this.produtos.filter((p) => casa(p, where)).length,
@@ -270,9 +299,26 @@ describe('ProdutoService', () => {
   describe('getProdutoById', () => {
     it('retorna produto ativo para qualquer usuário', async () => {
       const produto = await criar();
-      await expect(service.getProdutoById(produto.id, OUTRO)).resolves.toBe(
-        produto,
-      );
+      await expect(service.getProdutoById(produto.id, OUTRO)).resolves.toEqual({
+        ...produto,
+        midias: [],
+      });
+    });
+
+    it('retorna todas as fotos na ordem de envio', async () => {
+      const produto = await criar();
+      prisma.midias = [
+        { id: 'm2', produtoId: produto.id, url: '/b.jpg', ordem: 1 },
+        { id: 'm1', produtoId: produto.id, url: '/a.jpg', ordem: 0 },
+        { id: 'mx', produtoId: 'outro-produto', url: '/x.jpg', ordem: 0 },
+      ];
+
+      await expect(service.getProdutoById(produto.id)).resolves.toMatchObject({
+        midias: [
+          { id: 'm1', url: '/a.jpg', ordem: 0 },
+          { id: 'm2', url: '/b.jpg', ordem: 1 },
+        ],
+      });
     });
 
     it('produto não ativo só aparece para o dono', async () => {
@@ -328,12 +374,26 @@ describe('ProdutoService', () => {
       await criar(OUTRO); // sem telefone
 
       await expect(service.findAll(1, 2)).resolves.toEqual({
-        data: [p1, p2],
+        data: [
+          { ...p1, midias: [] },
+          { ...p2, midias: [] },
+        ],
         meta: { total: 3, page: 1, last_page: 2, limit: 2 },
       });
       await expect(service.findAll(2, 2)).resolves.toMatchObject({
         data: [p3],
       });
+    });
+
+    it('traz só a primeira foto de cada produto como capa', async () => {
+      const produto = await criar();
+      prisma.midias = [
+        { id: 'm2', produtoId: produto.id, url: '/b.jpg', ordem: 1 },
+        { id: 'm1', produtoId: produto.id, url: '/a.jpg', ordem: 0 },
+      ];
+
+      const { data } = await service.findAll();
+      expect(data[0].midias).toEqual([{ id: 'm1', url: '/a.jpg', ordem: 0 }]);
     });
 
     it.each([

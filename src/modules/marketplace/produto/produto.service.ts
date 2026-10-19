@@ -14,6 +14,13 @@ import { Prisma, Produto, StatusProduto } from '@prisma/client';
 const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
 const TAMANHO_MAXIMO_FOTO = 5 * 1024 * 1024;
 
+// Fotos expostas na vitrine, na ordem em que o vendedor enviou. O createdAt
+// desempata, porque remover uma foto pode deixar duas com a mesma ordem.
+const MIDIAS_DA_VITRINE = {
+  select: { id: true, url: true, ordem: true },
+  orderBy: [{ ordem: 'asc' }, { createdAt: 'asc' }],
+} satisfies Prisma.Produto$midiasArgs;
+
 @Injectable()
 export class ProdutoService {
   constructor(private readonly prismaService: PrismaService) {}
@@ -208,6 +215,7 @@ export class ProdutoService {
         publicoAlvo: {
           include: { restricao: true },
         },
+        midias: MIDIAS_DA_VITRINE,
         ...(usuarioId
           ? {
               telefoneContato: {
@@ -272,6 +280,8 @@ export class ProdutoService {
           publicoAlvo: {
             include: { restricao: true },
           },
+          // Na listagem basta a capa.
+          midias: { ...MIDIAS_DA_VITRINE, take: 1 },
         },
       }),
       this.prismaService.produto.count({ where }),
