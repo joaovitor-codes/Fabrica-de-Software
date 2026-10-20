@@ -7,6 +7,7 @@ import {
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { NotificacaoService } from '../../notificacao/notificacao.service';
 import { CreateProduto } from './dtos/produto';
 import { ListarProdutosQuery } from './dtos/listar-produtos';
 import { Prisma, Produto, StatusProduto } from '@prisma/client';
@@ -23,7 +24,10 @@ const MIDIAS_DA_VITRINE = {
 
 @Injectable()
 export class ProdutoService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly notificacaoService: NotificacaoService,
+  ) {}
 
   async createProduto(usuarioid: string, data: CreateProduto) {
     const usuario = await this.prismaService.usuario.findUnique({
@@ -195,14 +199,39 @@ export class ProdutoService {
       throw new NotFoundException('Produto não encontrado');
     }
 
-    return this.prismaService.produto.update({
+    return this.prismaService.$transaction((tx) =>
+      this.marcarRemovido(produto, tx),
+    );
+  }
+
+  // Usado pela remoção direta e pela denúncia procedente. Se o produto já
+  // estava removido, não notifica o vendedor de novo.
+  async marcarRemovido(produto: Produto, tx: Prisma.TransactionClient) {
+    if (produto.status === StatusProduto.removido) {
+      return produto;
+    }
+
+    const removido = await tx.produto.update({
       where: {
-        id: produtoId,
+        id: produto.id,
       },
       data: {
         status: StatusProduto.removido,
       },
     });
+
+    await this.notificacaoService.criar(
+      {
+        usuarioId: produto.vendedorId,
+        codigo: 'produto_removido',
+        titulo: 'Seu produto foi removido da vitrine',
+        mensagem: `O produto "${produto.titulo}" foi removido pela moderação.`,
+        referencia: { produtoId: produto.id },
+      },
+      tx,
+    );
+
+    return removido;
   }
 
   async getProdutoById(produtoId: string, usuarioId?: string) {

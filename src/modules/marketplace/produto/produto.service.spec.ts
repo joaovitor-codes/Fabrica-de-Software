@@ -11,6 +11,7 @@ import { join } from 'path';
 import { StatusProduto } from '@prisma/client';
 import { ProdutoService } from './produto.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { NotificacaoService } from '../../notificacao/notificacao.service';
 
 jest.mock('fs/promises', () => ({
   unlink: jest.fn().mockResolvedValue(undefined),
@@ -122,6 +123,9 @@ class FakePrismaService {
       this.categorias.filter((c) => casa(c, where)),
   };
 
+  /** Sem rollback: basta repassar o próprio fake como cliente da transação. */
+  $transaction = async (fn: (tx: this) => Promise<unknown>) => fn(this);
+
   produto = {
     create: async ({ data }: any) => {
       const { publicoAlvo, ...campos } = data;
@@ -183,6 +187,7 @@ class FakePrismaService {
 describe('ProdutoService', () => {
   let prisma: FakePrismaService;
   let service: ProdutoService;
+  let notificacao: { criar: jest.Mock };
 
   const VENDEDOR = 'vendedor';
   const OUTRO = 'outro';
@@ -202,8 +207,14 @@ describe('ProdutoService', () => {
       { id: 'cat2', nome: 'Livros', ativo: false },
     ];
 
+    notificacao = { criar: jest.fn().mockResolvedValue(null) };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ProdutoService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ProdutoService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NotificacaoService, useValue: notificacao },
+      ],
     }).compile();
 
     service = module.get<ProdutoService>(ProdutoService);
@@ -566,6 +577,31 @@ describe('ProdutoService', () => {
       await expect(service.reativarProduto(produto.id)).resolves.toMatchObject({
         status: StatusProduto.ativo,
       });
+    });
+
+    it('notifica o vendedor com produto_removido na mesma transação', async () => {
+      const produto = await criar();
+
+      await service.removerProduto(produto.id);
+
+      expect(notificacao.criar).toHaveBeenCalledTimes(1);
+      expect(notificacao.criar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usuarioId: VENDEDOR,
+          codigo: 'produto_removido',
+          referencia: { produtoId: produto.id },
+        }),
+        prisma,
+      );
+    });
+
+    it('não notifica de novo um produto já removido', async () => {
+      const produto = await criar();
+
+      await service.removerProduto(produto.id);
+      await service.removerProduto(produto.id);
+
+      expect(notificacao.criar).toHaveBeenCalledTimes(1);
     });
 
     it.each(['removerProduto', 'reativarProduto'] as const)(
