@@ -7,10 +7,11 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, StatusDenuncia, StatusProduto } from '@prisma/client';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { NotificacaoService } from '../../notificacao/notificacao.service';
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { NotificacaoService } from '../../../notificacao/notificacao.service';
+import { TermosService } from '../../termos/termos.service';
 import { ProdutoDenunciaService } from './produto-denuncia.service';
-import { ProdutoService } from './produto.service';
+import { ProdutoService } from '../produto/produto.service';
 
 type Produto = {
   id: string;
@@ -132,6 +133,8 @@ describe('ProdutoDenunciaService', () => {
         ProdutoService,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificacaoService, useValue: notificacao },
+        // Dependência do ProdutoService; a denúncia não passa pelos termos.
+        { provide: TermosService, useValue: {} },
       ],
     }).compile();
 

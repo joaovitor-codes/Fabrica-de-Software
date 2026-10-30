@@ -30,8 +30,8 @@ Os módulos novos seguem a organização atual de `src/modules`, por domínio:
 | Pasta | Conteúdo |
 |---|---|
 | `src/modules/marketplace/termos` | Termos do marketplace e a verificação de aceite |
-| `src/modules/marketplace/categoria-produto` | CRUD de `CategoriaProduto` (padrão de `nutricao/unidade-medida`) |
-| `src/modules/marketplace/produto` | Produto, fotos e denúncias |
+| `src/modules/marketplace/categoria` | CRUD de `CategoriaProduto` (padrão de `nutricao/unidade-medida`) |
+| `src/modules/marketplace/produtos` | Agregador da vitrine, com os submódulos `produto`, `produto-midia` e `produto-denuncia` |
 | `src/modules/marketplace/recebedor` | OAuth do Mercado Pago, `ContaRecebedor` e renovação de token |
 | `src/modules/marketplace/pagamento` | Cliente do Mercado Pago, preferência do Checkout Pro e webhook |
 | `src/modules/receitas/oferta` | `ReceitaOferta` e público-alvo |
@@ -78,7 +78,7 @@ Hoje nenhum código grava `Notificacao`. O marketplace precisa de quatro tipos (
 
 ### 4.1 Categorias de produto
 
-- `GET /api/categoria-produto/all` (público), `POST` e `PATCH /api/categoria-produto/:id` (admin).
+- `GET /api/marketplace/categorias` (login), `POST`, `PATCH`, `DELETE` e `PATCH /:id/restaurar` (admin).
 - Desativar em vez de excluir, como em `UnidadeMedida`.
 
 ### 4.2 CRUD de produto
@@ -86,7 +86,7 @@ Hoje nenhum código grava `Notificacao`. O marketplace precisa de quatro tipos (
 - `POST /api/produto`: só `comum` e `paciente`; `profissional` e `admin` recebem `403` (D5, P14). Exige termos (3.2).
 - O telefone de contato precisa ser do próprio vendedor. Cidade e UF são copiadas do endereço dele, nunca o endereço inteiro.
 - `PATCH /api/produto/:id`: o vendedor muda dados e status entre `ativo`, `pausado` e `vendido`. `removido` não volta.
-- `DELETE /api/produto/:id`: vendedor ou admin.
+- `DELETE /api/produto/:id`: só o vendedor. A moderação usa `PATCH /api/produto/:id/remover`.
 - Público-alvo declarado, sem a checagem `seguraPara` (P3).
 - `GET /api/produto/meus`: produtos do usuário em qualquer status.
 

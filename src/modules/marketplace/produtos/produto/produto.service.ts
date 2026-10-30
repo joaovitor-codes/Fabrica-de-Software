@@ -3,17 +3,14 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
-import { unlink } from 'fs/promises';
-import { join } from 'path';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { NotificacaoService } from '../../notificacao/notificacao.service';
-import { CreateProduto } from './dtos/produto';
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { NotificacaoService } from '../../../notificacao/notificacao.service';
+import { TermosService } from '../../termos/termos.service';
+import { CreateProduto, UpdateProduto } from './dtos/produto';
 import { ListarProdutosQuery } from './dtos/listar-produtos';
 import { Prisma, Produto, StatusProduto } from '@prisma/client';
-
-const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
-const TAMANHO_MAXIMO_FOTO = 5 * 1024 * 1024;
 
 // Fotos expostas na vitrine, na ordem em que o vendedor enviou. O createdAt
 // desempata, porque remover uma foto pode deixar duas com a mesma ordem.
@@ -27,9 +24,12 @@ export class ProdutoService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly notificacaoService: NotificacaoService,
+    private readonly termosService: TermosService,
   ) {}
 
   async createProduto(usuarioid: string, data: CreateProduto) {
+    await this.termosService.garantirAceite(usuarioid);
+
     const usuario = await this.prismaService.usuario.findUnique({
       where: {
         id: usuarioid,
@@ -43,29 +43,10 @@ export class ProdutoService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const categoria = await this.prismaService.categoriaProduto.findUnique({
-      where: {
-        id: data.categoriaId,
-      },
-    });
-
-    if (!categoria || !categoria.ativo) {
-      throw new NotFoundException('Categoria não encontrada');
-    }
+    await this.garantirCategoriaAtiva(data.categoriaId);
 
     const restricaoIds = data.restricaoIds ?? [];
-
-    if (restricaoIds.length) {
-      const encontradas = await this.prismaService.restricaoAlimentar.count({
-        where: {
-          id: { in: restricaoIds },
-        },
-      });
-
-      if (encontradas !== restricaoIds.length) {
-        throw new NotFoundException('Restrição alimentar não encontrada');
-      }
-    }
+    await this.garantirRestricoesExistem(restricaoIds);
 
     return this.prismaService.produto.create({
       data: {
@@ -80,6 +61,91 @@ export class ProdutoService {
         publicoAlvo: {
           create: restricaoIds.map((restricaoId) => ({ restricaoId })),
         },
+      },
+      include: {
+        publicoAlvo: {
+          include: { restricao: true },
+        },
+      },
+    });
+  }
+
+  private async garantirCategoriaAtiva(categoriaId: string) {
+    const categoria = await this.prismaService.categoriaProduto.findUnique({
+      where: {
+        id: categoriaId,
+      },
+    });
+
+    if (!categoria || !categoria.ativo) {
+      throw new UnprocessableEntityException('Categoria não encontrada');
+    }
+  }
+
+  private async garantirRestricoesExistem(restricaoIds: string[]) {
+    if (!restricaoIds.length) {
+      return;
+    }
+
+    const encontradas = await this.prismaService.restricaoAlimentar.count({
+      where: {
+        id: { in: restricaoIds },
+      },
+    });
+
+    if (encontradas !== restricaoIds.length) {
+      throw new UnprocessableEntityException(
+        'Restrição alimentar não encontrada',
+      );
+    }
+  }
+
+  async updateProduto(
+    produtoId: string,
+    usuarioId: string,
+    data: UpdateProduto,
+  ) {
+    const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
+    this.garantirNaoRemovido(produto);
+
+    const { restricaoIds, ...campos } = data;
+
+    if (campos.categoriaId) {
+      await this.garantirCategoriaAtiva(campos.categoriaId);
+    }
+
+    if (restricaoIds) {
+      await this.garantirRestricoesExistem(restricaoIds);
+    }
+
+    if (campos.telefoneContatoId) {
+      const telefone = await this.prismaService.telefone.findFirst({
+        where: {
+          id: campos.telefoneContatoId,
+          usuarioId,
+        },
+      });
+
+      if (!telefone) {
+        throw new UnprocessableEntityException('Telefone não encontrado');
+      }
+    }
+
+    return this.prismaService.produto.update({
+      where: {
+        id: produtoId,
+      },
+      data: {
+        ...campos,
+        // Na mesma escrita: apaga o público-alvo antigo e grava o novo.
+        ...(restricaoIds
+          ? {
+              publicoAlvo: {
+                deleteMany: {},
+                create: restricaoIds.map((restricaoId) => ({ restricaoId })),
+              },
+            }
+          : {}),
       },
       include: {
         publicoAlvo: {
@@ -121,7 +187,8 @@ export class ProdutoService {
     ];
   }
 
-  private async buscarProdutoDoVendedor(produtoId: string, usuarioId: string) {
+  // Também usados pelo ProdutoMidiaService.
+  async buscarProdutoDoVendedor(produtoId: string, usuarioId: string) {
     const produto = await this.prismaService.produto.findFirst({
       where: {
         id: produtoId,
@@ -140,7 +207,7 @@ export class ProdutoService {
     return produto;
   }
 
-  private garantirNaoRemovido(produto: Produto) {
+  garantirNaoRemovido(produto: Produto) {
     if (produto.status === StatusProduto.removido) {
       throw new ForbiddenException('Produto removido pela moderação');
     }
@@ -378,72 +445,5 @@ export class ProdutoService {
         nome: restricao.nome,
       })),
     }));
-  }
-
-  async uploadMidia(
-    produtoId: string,
-    usuarioId: string,
-    file: Express.Multer.File,
-  ) {
-    if (!file) {
-      throw new BadRequestException('file is required');
-    }
-
-    try {
-      if (!TIPOS_FOTO.includes(file.mimetype)) {
-        throw new BadRequestException('A foto precisa ser JPEG, PNG ou WebP');
-      }
-
-      if (file.size > TAMANHO_MAXIMO_FOTO) {
-        throw new BadRequestException('A foto pode ter no máximo 5 MB');
-      }
-
-      const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
-      this.garantirNaoRemovido(produto);
-
-      const ordem = await this.prismaService.produtoMidia.count({
-        where: { produtoId },
-      });
-
-      const midia = await this.prismaService.produtoMidia.create({
-        data: {
-          produtoId,
-          url: `/uploads/produtos/${file.filename}`,
-          ordem,
-        },
-      });
-
-      return {
-        success: 'Mídia enviada com sucesso.',
-        data: midia,
-      };
-    } catch (error) {
-      await unlink(file.path).catch(() => undefined);
-      throw error;
-    }
-  }
-
-  async removerMidia(produtoId: string, midiaId: string, usuarioId: string) {
-    const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
-    this.garantirNaoRemovido(produto);
-
-    const midia = await this.prismaService.produtoMidia.findFirst({
-      where: { id: midiaId, produtoId },
-    });
-
-    if (!midia) {
-      throw new NotFoundException('Mídia não encontrada');
-    }
-
-    const caminho = join(process.cwd(), midia.url.replace(/^\/+/, ''));
-    await unlink(caminho).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') {
-        throw error;
-      }
-    });
-
-    await this.prismaService.produtoMidia.delete({ where: { id: midiaId } });
-
-    return { success: 'Mídia removida com sucesso.' };
   }
 }
