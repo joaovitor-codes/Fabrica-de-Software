@@ -30,6 +30,8 @@ import { TermosModule } from './modules/marketplace/termos/termos.module';
 import { CategoriaModule } from './modules/marketplace/categoria/categoria.module';
 import { NotificacaoModule } from './modules/notificacao/notificacao.module';
 import { ProdutoModule } from './modules/marketplace/produto/produto.module';
+import { RecebedorModule } from './modules/marketplace/recebedor/recebedor.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -40,6 +42,7 @@ import { ProdutoModule } from './modules/marketplace/produto/produto.module';
         abortEarly: false,
       },
     }),
+    ScheduleModule.forRoot(),
     ThrottlerConfigModule,
     MulterConfigModule,
     CacheModule,
@@ -68,6 +71,7 @@ import { ProdutoModule } from './modules/marketplace/produto/produto.module';
     CategoriaModule,
     NotificacaoModule,
     ProdutoModule,
+    RecebedorModule,
   ],
   controllers: [],
   providers: [PrismaService],

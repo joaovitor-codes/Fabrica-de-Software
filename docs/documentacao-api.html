@@ -1659,32 +1659,32 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 </article>
 </section>
 <section id="venda-receitas" class="dominio"><h2><span class="grupo">Marketplace</span>Venda de receitas</h2>
-<div class="nota aviso"><strong>Planejado</strong>Rotas do schema v5, ainda não implementadas. As regras estão em <a href="#marketplace">Marketplace</a>.</div>
+<div class="nota aviso"><strong>Parcialmente implementado</strong>As rotas de <code>/api/recebedor</code> (conexão com o Mercado Pago) já estão no ar. As demais rotas desta seção, com o selo <span class="selo planejado">Planejado</span>, ainda não foram implementadas. As regras estão em <a href="#marketplace">Marketplace</a>.</div>
 <article class="endpoint" id="op-get-api-recebedor-conectar" data-busca="get /api/recebedor/conectar inicia a conexão da conta mercado pago do vendedor">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/recebedor/conectar</code><a class="link" href="#op-get-api-recebedor-conectar" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Inicia a conexão da conta Mercado Pago do vendedor</p>
-<div class="selos"><span class="selo planejado">Planejado</span><span class="selo login">Login</span></div>
+<div class="selos"><span class="selo login">Login</span></div>
 <h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Objeto com <code>url</code>: a página de autorização do Mercado Pago, para onde o app leva o vendedor.</span></li></ul>
 </article>
 <article class="endpoint" id="op-get-api-recebedor-callback" data-busca="get /api/recebedor/callback conclui a conexão: destino do redirecionamento do mercado pago">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/recebedor/callback</code><a class="link" href="#op-get-api-recebedor-callback" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Conclui a conexão: destino do redirecionamento do Mercado Pago</p>
-<div class="selos"><span class="selo planejado">Planejado</span><span class="selo publico">Público</span></div>
+<div class="selos"><span class="selo publico">Público</span></div>
 <p class="descricao">Sem token de usuário: quem identifica o vendedor é o <code>state</code>.</p>
-<h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>code</code> <span class="obrig">obrigatório</span></td><td>query</td><td><span class="tipo">string</span></td><td>Código de autorização, válido por 10 minutos.</td></tr><tr><td><code>state</code> <span class="obrig">obrigatório</span></td><td>query</td><td><span class="tipo">string</span></td><td>Valor gerado em <code>/conectar</code>, que liga a resposta ao usuário.</td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status sd">302</span><span>Tokens gravados e recebedor <code>ativo</code>; redireciona para o app com o resultado.</span></li><li><span class="status s4">400</span><span><code>state</code> inválido ou expirado, ou autorização negada pelo vendedor.</span></li></ul>
+<h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>code</code> <span class="obrig">obrigatório</span></td><td>query</td><td><span class="tipo">string</span></td><td>Código de autorização, válido por 10 minutos.</td></tr><tr><td><code>state</code> <span class="obrig">obrigatório</span></td><td>query</td><td><span class="tipo">string</span></td><td>Valor gerado em <code>/conectar</code>, que liga a resposta ao usuário. Vale 10 minutos e só pode ser usado uma vez.</td></tr><tr><td><code>error</code></td><td>query</td><td><span class="tipo">string</span></td><td>Enviado pelo Mercado Pago quando o vendedor nega a autorização.</td></tr></tbody></table></div>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Tokens gravados cifrados e recebedor <code>ativo</code>. Objeto com <code>conectado: true</code> e <code>contaMercadoPagoId</code>.</span></li><li><span class="status s4">400</span><span><code>state</code> inválido, expirado ou já usado, falta de <code>code</code>, ou autorização negada pelo vendedor.</span></li><li><span class="status s4">409</span><span>A conta do Mercado Pago já está conectada a outro usuário.</span></li><li><span class="status s5">502</span><span>O Mercado Pago recusou a troca do código pelos tokens.</span></li><li><span class="status s5">503</span><span>Integração com o Mercado Pago não configurada (variáveis <code>MP_*</code> ou <code>RECEBEDOR_TOKEN_KEY</code> ausentes).</span></li></ul>
 </article>
 <article class="endpoint" id="op-get-api-recebedor-me" data-busca="get /api/recebedor/me retorna a situação da conexão do usuário autenticado com o mercado pago">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/recebedor/me</code><a class="link" href="#op-get-api-recebedor-me" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Retorna a situação da conexão do usuário autenticado com o Mercado Pago</p>
-<div class="selos"><span class="selo planejado">Planejado</span><span class="selo login">Login</span></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Objeto com <code>status</code>: <code>ativo</code> ou <code>desconectado</code>. Os tokens nunca são devolvidos.</span></li><li><span class="status s4">404</span><span>O usuário nunca conectou uma conta.</span></li></ul>
+<div class="selos"><span class="selo login">Login</span></div>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Objeto com <code>conectado</code>, <code>status</code> (<code>ativo</code>, <code>desconectado</code> ou <code>null</code> se o usuário nunca conectou), <code>contaMercadoPagoId</code> e <code>tokenExpiraEm</code>. Os tokens nunca são devolvidos.</span></li></ul>
 </article>
 <article class="endpoint" id="op-delete-api-recebedor" data-busca="delete /api/recebedor desconecta a conta mercado pago do vendedor">
 <header><span class="metodo m-delete">DELETE</span><code class="rota">/api/recebedor</code><a class="link" href="#op-delete-api-recebedor" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Desconecta a conta Mercado Pago do vendedor</p>
-<div class="selos"><span class="selo planejado">Planejado</span><span class="selo login">Login</span></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Recebedor <code>desconectado</code>; as ofertas do usuário saem do ar até uma nova conexão.</span></li></ul>
+<div class="selos"><span class="selo login">Login</span></div>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">204</span><span>Recebedor <code>desconectado</code> e tokens apagados; as ofertas do usuário saem do ar até uma nova conexão.</span></li><li><span class="status s4">404</span><span>Nenhuma conta do Mercado Pago conectada.</span></li></ul>
 </article>
 <article class="endpoint" id="op-post-api-receita-id-oferta" data-busca="post /api/receita/{id}/oferta coloca uma receita à venda (autor)">
 <header><span class="metodo m-post">POST</span><code class="rota">/api/receita/<span class="param">:id</span>/oferta</code><a class="link" href="#op-post-api-receita-id-oferta" aria-label="Link para esta rota">#</a></header>
