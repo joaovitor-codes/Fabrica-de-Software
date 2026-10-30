@@ -15,6 +15,7 @@ Backend do **Nutrify**, uma plataforma que conecta nutricionistas e pacientes. P
   - [Stack](#stack)
   - [Como rodar localmente](#como-rodar-localmente)
   - [Variáveis de ambiente](#variáveis-de-ambiente)
+  - [Integração com o Mercado Pago](#integração-com-o-mercado-pago)
   - [Estrutura do projeto](#estrutura-do-projeto)
   - [Scripts úteis](#scripts-úteis)
   - [Perfis de acesso](#perfis-de-acesso)
@@ -46,6 +47,7 @@ Backend do **Nutrify**, uma plataforma que conecta nutricionistas e pacientes. P
 - **Pontos de incentivo**: o profissional ganha pontos ao aprovar/rejeitar receitas; saldo, histórico e ajuste manual pelo admin.
 - **Plano alimentar**: criação, consulta e edição do plano e dos itens, checklist de refeições e comentários por refeição.
 - **Diário de sintomas**: registros do paciente com tags de sintomas.
+- **Conexão do vendedor com o Mercado Pago** (marketplace): o vendedor autoriza a plataforma pelo OAuth do Mercado Pago; os tokens ficam cifrados no banco e são renovados automaticamente por um job diário. Base para a venda de receitas com split de pagamento.
 
 
 ## Stack
@@ -60,6 +62,8 @@ Backend do **Nutrify**, uma plataforma que conecta nutricionistas e pacientes. P
 | Validação | `class-validator` / `class-transformer`, Joi para o `.env` |
 | E-mail | Nodemailer + templates Handlebars |
 | IA | OpenAI SDK (sugestão de substitutos) |
+| Pagamentos | Mercado Pago (OAuth e Split de Pagamentos 1:1, Checkout Pro) |
+| Tarefas agendadas | `@nestjs/schedule` (renovação dos tokens do Mercado Pago) |
 | Documentação da API | Swagger (`@nestjs/swagger`) |
 | Testes | Jest + Supertest |
 | Infra local | Docker Compose |
@@ -126,8 +130,78 @@ O `.env` é validado na inicialização (`src/common/config/env.validation.ts`).
 | `LOGIN_MAX_FAILED_ATTEMPTS` / `LOGIN_LOCKOUT_MINUTES` | | Padrão: `5` tentativas / `15` min de bloqueio. |
 | `EMAIL_VERIFICATION_*` | | Validade do código e limite de reenvios. |
 | `SITE_URL` | | Domínio usado nos links dos e-mails. |
+| `MP_CLIENT_ID`, `MP_CLIENT_SECRET` | | Credenciais da aplicação no Mercado Pago, usadas no OAuth do vendedor. Sem elas, as rotas de `/api/recebedor` respondem `503`. |
+| `MP_REDIRECT_URI` | | Destino do OAuth: `https://<seu-endereço>/api/recebedor/callback`. Tem que ser **idêntica** à URL de redirecionamento cadastrada no painel do Mercado Pago e usar HTTPS. |
+| `RECEBEDOR_TOKEN_KEY` | | Chave (mínimo 32 caracteres) que cifra os tokens dos vendedores no banco. Não troque com contas já conectadas: os tokens gravados deixam de abrir. |
+| `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY` | | Credenciais da conta da plataforma (Checkout Pro). |
+| `MP_WEBHOOK_SECRET` | | Assinatura das notificações do Mercado Pago (webhook da compra). |
+| `MARKETPLACE_*` | | Comissão da plataforma, preço mínimo, prazo de reembolso e versão dos termos do marketplace. |
 
 > O `DATABASE_URL` do `.env.example` é só um modelo. Ajuste usuário, senha e nome do banco para os mesmos valores do `docker-compose.yml`.
+
+## Integração com o Mercado Pago
+
+O marketplace usa o **Split de Pagamentos 1:1** do Mercado Pago: cada vendedor conecta a própria conta pelo OAuth, e a cobrança da receita é feita com o token dele, com a comissão da plataforma em `marketplace_fee`. As decisões estão em [`docs/decisoes_marketplace.md`](docs/decisoes_marketplace.md).
+
+**Implementado:** a conexão do vendedor (`src/modules/marketplace/recebedor`).
+
+| Rota | Acesso | O que faz |
+|---|---|---|
+| `GET /api/recebedor/conectar` | Login | Devolve a `url` de autorização do Mercado Pago |
+| `GET /api/recebedor/callback` | Público | Destino do redirecionamento; troca o código pelos tokens e cria ou reativa a `ContaRecebedor` |
+| `GET /api/recebedor/me` | Login | Situação da conexão (nunca devolve tokens) |
+| `DELETE /api/recebedor` | Login | Desconecta e apaga os tokens |
+
+- O `state` do OAuth é aleatório, fica 10 minutos no Redis e só pode ser usado uma vez.
+- Os tokens são cifrados com AES-256-GCM (`RECEBEDOR_TOKEN_KEY`) e nunca saem em resposta nem em log.
+- O token vale 180 dias. Um job diário (3h) renova as contas que vencem em até 30 dias; se a renovação falhar, a conta fica `desconectado` e o vendedor precisa conectar de novo.
+
+### Ambiente de teste
+
+O Mercado Pago não deixa uma conta de teste autorizar uma aplicação de conta real. Por isso, nos testes, **todas as contas são de teste**:
+
+| Conta de teste | Papel |
+|---|---|
+| **Integrador** | Representa o Nutrify. É a dona da aplicação de teste cujas credenciais vão no `.env`. |
+| **Vendedor** | Conecta a conta no Nutrify pelo OAuth. |
+| **Comprador** | Paga as receitas, com saldo ou com os cartões de teste. |
+
+1. Na sua conta real, em [Suas integrações](https://www.mercadopago.com.br/developers/panel/app) → **Contas de teste**, crie um Integrador, um Vendedor e um Comprador. Usuário, senha e código de verificação de cada um ficam nessa tela.
+2. Numa aba anônima, entre no mesmo painel com o **Integrador** e crie uma aplicação (Checkout Pro, API de Preferences).
+3. Em **Credenciais de produção** dessa aplicação, ative as credenciais e copie `Client ID`, `Client Secret`, `Access Token` e `Public Key` para o `.env`. Como a conta é de teste, elas não movimentam dinheiro real.
+
+### Túnel HTTPS para o OAuth
+
+O Mercado Pago só redireciona para endereços HTTPS, então o `localhost` precisa de um túnel. Com o [ngrok](https://ngrok.com) (conta grátis com um domínio fixo):
+
+```bash
+# uma vez: liga o ngrok à sua conta (authtoken no painel do ngrok)
+ngrok config add-authtoken <seu-authtoken>
+
+# sempre que precisar de acesso externo (OAuth ou webhook), com a API rodando
+ngrok http --url=<seu-dominio>.ngrok-free.app 3000
+```
+
+Depois, uma única vez:
+
+- no `.env`: `MP_REDIRECT_URI=https://<seu-dominio>.ngrok-free.app/api/recebedor/callback` (reinicie a API);
+- no painel, logado como Integrador: **Configurações da aplicação → URLs de redirecionamento** com a mesma URL.
+
+### Testar a conexão do vendedor
+
+1. Abra o Swagger pelo túnel (`https://<seu-dominio>.ngrok-free.app/api/docs`) e faça login em `POST /auth/signin`.
+2. Chame `GET /api/recebedor/conectar` e copie a `url` (vale 10 minutos).
+3. Abra a `url` numa **aba anônima**, entre com o **Vendedor de teste** e autorize. No plano grátis do ngrok aparece antes uma página de aviso: clique em **Visit Site**.
+4. A resposta deve ser `{ "conectado": true, "contaMercadoPagoId": "..." }`, e `GET /api/recebedor/me` passa a mostrar `status: "ativo"`.
+
+**Erros comuns**
+
+| Sintoma | Causa |
+|---|---|
+| "Desculpe, não foi possível conectar o aplicativo à sua conta" | URL de redirecionamento do painel diferente do `MP_REDIRECT_URI`, ou aplicação de conta real autorizada por conta de teste. |
+| `400` "Link de conexão inválido ou expirado" | O link passou de 10 minutos ou já foi usado. Gere outro em `/conectar`. |
+| `409` | Essa conta do Mercado Pago já está conectada a outro usuário do Nutrify. |
+| `503` | `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_REDIRECT_URI` ou `RECEBEDOR_TOKEN_KEY` faltando no `.env`. |
 
 ## Estrutura do projeto
 
@@ -141,6 +215,8 @@ src/
                       ingrediente-restricao, paciente-restricao
     receitas/         receita, pontos-transacao
     acompanhamento/   plano-alimentar, anamnese, diario-de-sintomas, tag-sintomas
+    marketplace/      termos, categoria, produto, recebedor (conexão com o Mercado Pago)
+    notificacao/
     ia/
   app.module.ts
   main.ts
@@ -197,3 +273,4 @@ O controle é feito com `AuthGuard` (usuário autenticado), `RolesGuard` + `@Rol
 - [`regra_negocio.md`](regra_negocio.md): decisões sobre ingredientes, restrições, importação da TACO e limiares nutricionais.
 - [`regra_negocio_anamnese.md`](regra_negocio_anamnese.md): decisões sobre anamnese, permissões e restrições do paciente.
 - [`docs/ci-cd.md`](docs/ci-cd.md): pipeline de CI, proteção de branch e deploy.
+- [`docs/decisoes_marketplace.md`](docs/decisoes_marketplace.md) e [`docs/plano-implementacao-marketplace.md`](docs/plano-implementacao-marketplace.md): decisões e plano do marketplace (venda de receitas e vitrine).
