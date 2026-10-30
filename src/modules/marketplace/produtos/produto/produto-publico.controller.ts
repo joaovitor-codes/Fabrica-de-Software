@@ -15,8 +15,8 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
-import type { RequestOpcional } from '../../../auth/auth.types';
+import { OptionalAuthGuard } from '../../../../auth/optional-auth.guard';
+import type { RequestOpcional } from '../../../../auth/auth.types';
 import { ListarProdutosQuery } from './dtos/listar-produtos';
 import { ProdutoService } from './produto.service';
 

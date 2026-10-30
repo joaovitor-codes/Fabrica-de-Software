@@ -274,25 +274,34 @@ Todas com prefixo `/api`. Acesso: **Público**, **Login opcional**, **Login**, o
 | PATCH | `/receita/compra/:compraId/reembolso` | admin | Aprova ou nega um pedido |
 | POST | `/pagamento/webhook` | Público | Recebe os avisos do Mercado Pago |
 
-**Vitrine de produtos (15)**
+**Vitrine de produtos (24)**
 
 | Método | Rota | Acesso | O que faz |
 |---|---|---|---|
-| POST | `/produto` | `comum`, `paciente` | Publica um produto |
+| POST | `/produto` | `comum`, `paciente` | Publica um produto; exige os termos |
 | GET | `/produto/page/:page/limit/:limit` | Login opcional | Lista paginada dos produtos ativos, com filtros |
 | GET | `/produto/meus` | Login | Produtos do usuário, em qualquer status |
+| GET | `/produto/opcoes/categorias` | Login | Categorias ativas para o formulário |
+| GET | `/produto/opcoes/restricoes` | Login | Restrições alimentares para o formulário |
 | GET | `/produto/:id` | Login opcional | Detalhe; o contato só vem com token |
 | PATCH | `/produto/:id` | Login (vendedor) | Atualiza ou muda o status |
-| DELETE | `/produto/:id` | Login (vendedor ou admin) | Exclui |
+| PATCH | `/produto/:id/desativar` | Login (vendedor) | Pausa |
+| PATCH | `/produto/:id/ativar` | Login (vendedor) | Ativa |
+| DELETE | `/produto/:id` | Login (vendedor) | Exclui (soft delete) |
 | POST | `/produto/:id/midias` | Login (vendedor) | Envia uma foto |
 | DELETE | `/produto/:id/midias/:midiaId` | Login (vendedor) | Remove uma foto |
 | POST | `/produto/:id/denuncia` | Login | Denuncia o produto |
 | GET | `/produto/denuncias` | admin | Fila de denúncias abertas |
 | PATCH | `/produto/denuncias/:denunciaId` | admin | Resolve uma denúncia |
 | PATCH | `/produto/:id/remover` | admin | Remove da vitrine, sem depender de denúncia |
-| GET | `/categoria-produto/all` | Público | Categorias ativas |
-| POST | `/categoria-produto` | admin | Cria uma categoria |
-| PATCH | `/categoria-produto/:id` | admin | Atualiza ou desativa uma categoria |
+| PATCH | `/produto/:id/reativar` | admin | Desfaz a remoção |
+| GET | `/marketplace/categorias` | Login | Categorias ativas |
+| GET | `/marketplace/categorias/desativadas` | admin | Categorias desativadas |
+| GET | `/marketplace/categorias/:id` | Login | Uma categoria ativa |
+| POST | `/marketplace/categorias` | admin | Cria uma categoria |
+| PATCH | `/marketplace/categorias/:id` | admin | Atualiza uma categoria |
+| PATCH | `/marketplace/categorias/:id/restaurar` | admin | Reativa uma categoria |
+| DELETE | `/marketplace/categorias/:id` | admin | Desativa uma categoria |
 
 Filtros da listagem de produtos: `categoria`, `estado`, `cidade`, `publicoAlvo` e `q`. Filtros de `/receita/a-venda`: `publicoAlvo` e `q`.
 

@@ -22,11 +22,11 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { TipoUsuario } from '@prisma/client';
-import { AuthGuard } from '../../../auth/auth.guard';
-import { RolesGuard } from '../../../auth/roles.guard';
-import { Roles } from '../../../auth/roles.decorator';
-import type { RequestAutenticado } from '../../../auth/auth.types';
-import { ProdutoService } from './produto.service';
+import { AuthGuard } from '../../../../auth/auth.guard';
+import { RolesGuard } from '../../../../auth/roles.guard';
+import { Roles } from '../../../../auth/roles.decorator';
+import type { RequestAutenticado } from '../../../../auth/auth.types';
+import { ProdutoService } from '../produto/produto.service';
 import { ProdutoDenunciaService } from './produto-denuncia.service';
 import {
   CreateProdutoDenunciaDto,

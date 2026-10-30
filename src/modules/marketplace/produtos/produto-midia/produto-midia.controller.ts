@@ -23,16 +23,16 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { AuthGuard } from '../../../auth/auth.guard';
-import type { RequestAutenticado } from '../../../auth/auth.types';
-import { ProdutoService } from './produto.service';
+import { AuthGuard } from '../../../../auth/auth.guard';
+import type { RequestAutenticado } from '../../../../auth/auth.types';
+import { ProdutoMidiaService } from './produto-midia.service';
 
 @ApiTags('Marketplace - Produtos')
 @ApiBearerAuth()
 @UseGuards(AuthGuard)
 @Controller('api/produto')
 export class ProdutoMidiaController {
-  constructor(private readonly produtoService: ProdutoService) {}
+  constructor(private readonly produtoMidiaService: ProdutoMidiaService) {}
 
   @ApiOperation({ summary: 'Envia uma foto para um produto do vendedor' })
   @ApiConsumes('multipart/form-data')
@@ -68,7 +68,7 @@ export class ProdutoMidiaController {
       throw new BadRequestException('file is required');
     }
 
-    return this.produtoService.uploadMidia(id, request.user.sub, file);
+    return this.produtoMidiaService.uploadMidia(id, request.user.sub, file);
   }
 
   @ApiOperation({ summary: 'Remove uma foto de um produto do vendedor' })
@@ -83,6 +83,6 @@ export class ProdutoMidiaController {
     @Param('midiaId', new ParseUUIDPipe({ version: '4' })) midiaId: string,
     @Request() request: RequestAutenticado,
   ) {
-    return this.produtoService.removerMidia(id, midiaId, request.user.sub);
+    return this.produtoMidiaService.removerMidia(id, midiaId, request.user.sub);
   }
 }

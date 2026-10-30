@@ -4,18 +4,14 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { unlink } from 'fs/promises';
-import { join } from 'path';
 import { StatusProduto } from '@prisma/client';
 import { ProdutoService } from './produto.service';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { NotificacaoService } from '../../notificacao/notificacao.service';
-
-jest.mock('fs/promises', () => ({
-  unlink: jest.fn().mockResolvedValue(undefined),
-}));
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { NotificacaoService } from '../../../notificacao/notificacao.service';
+import { TermosService } from '../../termos/termos.service';
 
 type Usuario = { id: string; telefones: { id: string }[] };
 type Restricao = { id: string; nome: string };
@@ -178,9 +174,25 @@ class FakePrismaService {
       this.produtos.filter((p) => casa(p, where)).length,
     update: async ({ where, data }: any) => {
       const registro = this.produtos.find((p) => p.id === where.id)!;
-      Object.assign(registro, data);
+      const { publicoAlvo, ...campos } = data;
+      Object.assign(registro, campos);
+      if (publicoAlvo) {
+        registro.publicoAlvo = publicoAlvo.create.map(
+          ({ restricaoId }: { restricaoId: string }) => ({
+            restricaoId,
+            restricao: this.restricoes.find((r) => r.id === restricaoId)!,
+          }),
+        );
+      }
       return registro;
     },
+  };
+
+  telefone = {
+    findFirst: async ({ where }: any) =>
+      this.usuarios
+        .find((u) => u.id === where.usuarioId)
+        ?.telefones.find((t) => t.id === where.id) ?? null,
   };
 }
 
@@ -188,6 +200,7 @@ describe('ProdutoService', () => {
   let prisma: FakePrismaService;
   let service: ProdutoService;
   let notificacao: { criar: jest.Mock };
+  let termos: { garantirAceite: jest.Mock };
 
   const VENDEDOR = 'vendedor';
   const OUTRO = 'outro';
@@ -208,12 +221,14 @@ describe('ProdutoService', () => {
     ];
 
     notificacao = { criar: jest.fn().mockResolvedValue(null) };
+    termos = { garantirAceite: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProdutoService,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificacaoService, useValue: notificacao },
+        { provide: TermosService, useValue: termos },
       ],
     }).compile();
 
@@ -254,6 +269,17 @@ describe('ProdutoService', () => {
       expect(produto.telefoneContatoId).toBeNull();
     });
 
+    it('exige o aceite dos termos do marketplace', async () => {
+      const semAceite = new UnprocessableEntityException(
+        'É preciso aceitar a versão atual dos termos do marketplace.',
+      );
+      termos.garantirAceite.mockRejectedValueOnce(semAceite);
+
+      await expect(criar()).rejects.toThrow(semAceite);
+      expect(termos.garantirAceite).toHaveBeenCalledWith(VENDEDOR);
+      expect(prisma.produtos).toHaveLength(0);
+    });
+
     it('lança NotFound para usuário inexistente', async () => {
       await expect(criar('nao-existe')).rejects.toThrow(
         new NotFoundException('Usuário não encontrado'),
@@ -262,18 +288,20 @@ describe('ProdutoService', () => {
     });
 
     it.each(['nao-existe', 'cat2'])(
-      'lança NotFound para categoria inexistente ou inativa: %s',
+      'lança 422 para categoria inexistente ou inativa: %s',
       async (categoriaId) => {
         await expect(
           service.createProduto(VENDEDOR, { categoriaId, titulo: 'X' }),
-        ).rejects.toThrow(new NotFoundException('Categoria não encontrada'));
+        ).rejects.toThrow(
+          new UnprocessableEntityException('Categoria não encontrada'),
+        );
         expect(prisma.produtos).toHaveLength(0);
       },
     );
 
-    it('lança NotFound se alguma restrição não existe', async () => {
+    it('lança 422 se alguma restrição não existe', async () => {
       await expect(criar(VENDEDOR, ['r1', 'nao-existe'])).rejects.toThrow(
-        new NotFoundException('Restrição alimentar não encontrada'),
+        new UnprocessableEntityException('Restrição alimentar não encontrada'),
       );
       expect(prisma.produtos).toHaveLength(0);
     });
@@ -567,6 +595,130 @@ describe('ProdutoService', () => {
     });
   });
 
+  describe('updateProduto', () => {
+    it('altera só os campos enviados', async () => {
+      const produto = await criar(VENDEDOR, ['r1']);
+
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, {
+          titulo: 'Pão integral',
+          cidade: 'Goiânia',
+        }),
+      ).resolves.toMatchObject({
+        titulo: 'Pão integral',
+        cidade: 'Goiânia',
+        preco: 15.9,
+        categoriaId: 'cat1',
+        publicoAlvo: [{ restricaoId: 'r1' }],
+      });
+    });
+
+    it('limpa o preço com null ("a combinar")', async () => {
+      const produto = await criar();
+
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, { preco: null }),
+      ).resolves.toMatchObject({ preco: null });
+    });
+
+    it('substitui o público-alvo inteiro e limpa com lista vazia', async () => {
+      const produto = await criar(VENDEDOR, ['r1']);
+
+      await service.updateProduto(produto.id, VENDEDOR, {
+        restricaoIds: ['r2'],
+      });
+      expect(prisma.produtos[0].publicoAlvo).toEqual([
+        { restricaoId: 'r2', restricao: { id: 'r2', nome: 'Lactose' } },
+      ]);
+
+      await service.updateProduto(produto.id, VENDEDOR, { restricaoIds: [] });
+      expect(prisma.produtos[0].publicoAlvo).toEqual([]);
+    });
+
+    it('muda o status entre ativo, pausado e vendido', async () => {
+      const produto = await criar();
+
+      for (const status of [
+        StatusProduto.vendido,
+        StatusProduto.pausado,
+        StatusProduto.ativo,
+      ] as const) {
+        await expect(
+          service.updateProduto(produto.id, VENDEDOR, { status }),
+        ).resolves.toMatchObject({ status });
+      }
+    });
+
+    it('troca o telefone de contato por outro do próprio vendedor', async () => {
+      const produto = await criar();
+
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, {
+          telefoneContatoId: 'tel2',
+        }),
+      ).resolves.toMatchObject({ telefoneContatoId: 'tel2' });
+    });
+
+    it('lança 422 para telefone de outro usuário', async () => {
+      prisma.usuarios[1].telefones = [{ id: 'tel-outro' }];
+      const produto = await criar();
+
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, {
+          telefoneContatoId: 'tel-outro',
+        }),
+      ).rejects.toThrow(
+        new UnprocessableEntityException('Telefone não encontrado'),
+      );
+      expect(prisma.produtos[0].telefoneContatoId).toBe('tel1');
+    });
+
+    it('lança 422 para categoria inativa ou restrição inexistente', async () => {
+      const produto = await criar();
+
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, { categoriaId: 'cat2' }),
+      ).rejects.toThrow(
+        new UnprocessableEntityException('Categoria não encontrada'),
+      );
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, {
+          restricaoIds: ['r1', 'nao-existe'],
+        }),
+      ).rejects.toThrow(
+        new UnprocessableEntityException('Restrição alimentar não encontrada'),
+      );
+      expect(prisma.produtos[0]).toMatchObject({
+        categoriaId: 'cat1',
+        publicoAlvo: [],
+      });
+    });
+
+    it('recusa produto de outro usuário, inexistente ou removido', async () => {
+      const produto = await criar();
+
+      await expect(
+        service.updateProduto(produto.id, OUTRO, { titulo: 'X' }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.updateProduto('nao-existe', VENDEDOR, { titulo: 'X' }),
+      ).rejects.toThrow(NotFoundException);
+
+      await service.removerProduto(produto.id);
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, {
+          status: StatusProduto.ativo,
+        }),
+      ).rejects.toThrow(
+        new ForbiddenException('Produto removido pela moderação'),
+      );
+      expect(prisma.produtos[0]).toMatchObject({
+        titulo: 'Pão sem glúten',
+        status: StatusProduto.removido,
+      });
+    });
+  });
+
   describe('moderação', () => {
     it('remove e reativa o produto', async () => {
       const produto = await criar();
@@ -618,131 +770,5 @@ describe('ProdutoService', () => {
         );
       },
     );
-  });
-
-  describe('fotos', () => {
-    const unlinkMock = unlink as jest.Mock;
-
-    function arquivo(mimetype = 'image/png', size = 1024) {
-      return {
-        mimetype,
-        size,
-        filename: 'foto.png',
-        path: '/tmp/uploads/produtos/foto.png',
-      } as Express.Multer.File;
-    }
-
-    beforeEach(() => unlinkMock.mockClear());
-
-    it('o vendedor envia fotos com ordem crescente', async () => {
-      const produto = await criar();
-
-      await expect(
-        service.uploadMidia(produto.id, VENDEDOR, arquivo()),
-      ).resolves.toMatchObject({
-        data: {
-          produtoId: produto.id,
-          url: '/uploads/produtos/foto.png',
-          ordem: 0,
-        },
-      });
-      await expect(
-        service.uploadMidia(produto.id, VENDEDOR, arquivo('image/jpeg')),
-      ).resolves.toMatchObject({ data: { ordem: 1 } });
-      expect(unlinkMock).not.toHaveBeenCalled();
-    });
-
-    it('lança BadRequest sem arquivo', async () => {
-      const produto = await criar();
-
-      await expect(
-        service.uploadMidia(produto.id, VENDEDOR, undefined as any),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it.each([
-      ['não é imagem', arquivo('application/pdf')],
-      ['é grande demais', arquivo('image/png', 6 * 1024 * 1024)],
-    ])('recusa e apaga o arquivo que %s', async (_caso, file) => {
-      const produto = await criar();
-
-      await expect(
-        service.uploadMidia(produto.id, VENDEDOR, file),
-      ).rejects.toThrow(BadRequestException);
-      expect(unlinkMock).toHaveBeenCalledWith(file.path);
-      expect(prisma.midias).toHaveLength(0);
-    });
-
-    it('outro usuário recebe Forbidden e o arquivo é apagado', async () => {
-      const produto = await criar();
-
-      await expect(
-        service.uploadMidia(produto.id, OUTRO, arquivo()),
-      ).rejects.toThrow(ForbiddenException);
-      expect(unlinkMock).toHaveBeenCalledWith(arquivo().path);
-      expect(prisma.midias).toHaveLength(0);
-    });
-
-    it('não aceita foto em produto removido pela moderação', async () => {
-      const produto = await criar();
-      await service.removerProduto(produto.id);
-
-      await expect(
-        service.uploadMidia(produto.id, VENDEDOR, arquivo()),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('lança NotFound para produto inexistente', async () => {
-      await expect(
-        service.uploadMidia('nao-existe', VENDEDOR, arquivo()),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('o vendedor remove a foto e o arquivo sai do disco', async () => {
-      const produto = await criar();
-      const { data: midia } = await service.uploadMidia(
-        produto.id,
-        VENDEDOR,
-        arquivo(),
-      );
-
-      await expect(
-        service.removerMidia(produto.id, midia.id, VENDEDOR),
-      ).resolves.toEqual({ success: 'Mídia removida com sucesso.' });
-      expect(prisma.midias).toHaveLength(0);
-      expect(unlinkMock).toHaveBeenCalledWith(
-        join(process.cwd(), 'uploads', 'produtos', 'foto.png'),
-      );
-    });
-
-    it('outro usuário não remove a foto', async () => {
-      const produto = await criar();
-      const { data: midia } = await service.uploadMidia(
-        produto.id,
-        VENDEDOR,
-        arquivo(),
-      );
-
-      await expect(
-        service.removerMidia(produto.id, midia.id, OUTRO),
-      ).rejects.toThrow(ForbiddenException);
-      expect(prisma.midias).toHaveLength(1);
-      expect(unlinkMock).not.toHaveBeenCalled();
-    });
-
-    it('lança NotFound para foto de outro produto', async () => {
-      const produto = await criar();
-      const outroProduto = await criar();
-      const { data: midia } = await service.uploadMidia(
-        produto.id,
-        VENDEDOR,
-        arquivo(),
-      );
-
-      await expect(
-        service.removerMidia(outroProduto.id, midia.id, VENDEDOR),
-      ).rejects.toThrow(new NotFoundException('Mídia não encontrada'));
-      expect(prisma.midias).toHaveLength(1);
-    });
   });
 });

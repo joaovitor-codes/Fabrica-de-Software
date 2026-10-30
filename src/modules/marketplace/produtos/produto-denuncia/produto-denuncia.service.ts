@@ -5,8 +5,8 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusDenuncia, StatusProduto } from '@prisma/client';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { ProdutoService } from './produto.service';
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { ProdutoService } from '../produto/produto.service';
 import {
   CreateProdutoDenunciaDto,
   ResolverProdutoDenunciaDto,

@@ -5,7 +5,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -20,12 +19,12 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { TipoUsuario } from '@prisma/client';
-import { AuthGuard } from '../../../auth/auth.guard';
-import { RolesGuard } from '../../../auth/roles.guard';
-import { Roles } from '../../../auth/roles.decorator';
-import type { RequestAutenticado } from '../../../auth/auth.types';
+import { AuthGuard } from '../../../../auth/auth.guard';
+import { RolesGuard } from '../../../../auth/roles.guard';
+import { Roles } from '../../../../auth/roles.decorator';
+import type { RequestAutenticado } from '../../../../auth/auth.types';
 import { ProdutoService } from './produto.service';
-import { CreateProduto } from './dtos/produto';
+import { CreateProduto, UpdateProduto } from './dtos/produto';
 
 const idPipe = new ParseUUIDPipe({
   version: '4',
@@ -36,12 +35,13 @@ const idPipe = new ParseUUIDPipe({
 @ApiTags('Marketplace - Produtos')
 @UseGuards(AuthGuard, RolesGuard)
 @ApiBearerAuth()
-@Controller('api/marketplace/produtos')
+@Controller('api/produto')
 export class ProdutoController {
   constructor(private readonly produtoService: ProdutoService) {}
 
   @ApiOperation({ summary: 'Cria um novo produto do usuário logado' })
   @ApiCreatedResponse({ description: 'Produto criado com sucesso.' })
+  @Roles(TipoUsuario.comum, TipoUsuario.paciente)
   @Post()
   async create(
     @Request() request: RequestAutenticado,
@@ -78,26 +78,21 @@ export class ProdutoController {
     return this.produtoService.getProdutosMeus(request.user.sub);
   }
 
-  @ApiOperation({ summary: 'Lista os produtos de forma paginada' })
-  @ApiOkResponse({ description: 'Lista paginada de produtos.' })
-  @Get('page/:page/limit/:limit')
-  async findAll(
-    @Param('page', ParseIntPipe) page: number,
-    @Param('limit', ParseIntPipe) limit: number,
-  ) {
-    return this.produtoService.findAll(page, limit);
-  }
-
   @ApiOperation({
-    summary: 'Retorna um produto pelo ID (não ativo só para o dono)',
+    summary: 'Atualiza um produto do usuário logado ou muda o status dele',
   })
-  @ApiOkResponse({ description: 'Produto retornado com sucesso.' })
-  @Get(':id')
-  async findOne(
+  @ApiOkResponse({ description: 'Produto atualizado com sucesso.' })
+  @Patch(':id')
+  async update(
     @Request() request: RequestAutenticado,
     @Param('id', idPipe) id: string,
+    @Body() updateProdutoDto: UpdateProduto,
   ) {
-    return this.produtoService.getProdutoById(id, request.user.sub);
+    return this.produtoService.updateProduto(
+      id,
+      request.user.sub,
+      updateProdutoDto,
+    );
   }
 
   @ApiOperation({ summary: 'Pausa um produto do usuário logado' })
@@ -128,14 +123,6 @@ export class ProdutoController {
     @Param('id', idPipe) id: string,
   ) {
     return this.produtoService.apagarProduto(id, request.user.sub);
-  }
-
-  @ApiOperation({ summary: 'Remove um produto da vitrine (moderação)' })
-  @ApiOkResponse({ description: 'Produto removido com sucesso.' })
-  @Roles(TipoUsuario.admin)
-  @Patch(':id/remover')
-  async remover(@Param('id', idPipe) id: string) {
-    return this.produtoService.removerProduto(id);
   }
 
   @ApiOperation({ summary: 'Reativa um produto removido (moderação)' })
