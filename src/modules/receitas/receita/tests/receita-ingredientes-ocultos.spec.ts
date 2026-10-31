@@ -4,16 +4,18 @@ import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { NivelDificuldade, TipoUsuario } from '@prisma/client';
-import { ReceitaService } from './receita.service';
-import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
-import { IngredientesReceitaService } from './ingredientes-receita.service';
-import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
-import { interpretarIngredientesNaoListados } from './ingredientes-ocultos';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { CacheService } from '../../../common/cache/cache.service';
-import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { IaService } from '../../ia/ia.service';
-import { UsuarioAutenticado } from '../../../auth/auth.types';
+import { ReceitaService } from '../receita.service';
+import { TermosService } from '../../../marketplace/termos/termos.service';
+import { ConfigService } from '@nestjs/config';
+import { AdaptacaoCatalogoService } from '../../adaptacao/adaptacao-catalogo.service';
+import { IngredientesReceitaService } from '../ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../../visibilidade/visibilidade-receita.service';
+import { interpretarIngredientesNaoListados } from '../ingredientes-ocultos';
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { CacheService } from '../../../../common/cache/cache.service';
+import { UsuarioService } from '../../../identidade/usuario/usuario.service';
+import { IaService } from '../../../ia/ia.service';
+import { UsuarioAutenticado } from '../../../../auth/auth.types';
 
 describe('interpretarIngredientesNaoListados', () => {
   it('apara, tira repetição (ignorando maiúsculas) e descarta o que não é texto', () => {
@@ -90,6 +92,9 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         ReceitaService,
+        // Só a criação com oferta usa; estes testes não passam por ela.
+        { provide: TermosService, useValue: {} },
+        { provide: ConfigService, useValue: {} },
         IngredientesReceitaService,
         VisibilidadeReceitaService,
         { provide: AdaptacaoCatalogoService, useValue: {} },

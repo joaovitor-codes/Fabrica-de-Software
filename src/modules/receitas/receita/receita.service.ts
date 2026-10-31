@@ -3,17 +3,20 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { unlink } from 'fs/promises';
 import {
   Prisma,
   Receita,
+  StatusRecebedor,
   StatusReceita,
   TipoMidia,
   TipoRestricao,
   TipoUsuario,
 } from '@prisma/client';
-import { ReceitaDto } from './dtos/receita';
+import { ReceitaComOfertaDto, ReceitaDto } from './dtos/receita';
+import { UpdateReceitaOfertaDto } from './dtos/receita-oferta';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { UpdateReceitaDto } from './dtos/update-receita';
 import { CacheService } from '../../../common/cache/cache.service';
@@ -22,9 +25,16 @@ import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { IngredientesReceitaService } from './ingredientes-receita.service';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import {
+  OFERTA_NA_PREVIA,
+  previaDaReceita,
+  veConteudoPago,
+} from '../visibilidade/conteudo-pago';
+import { TermosService } from '../../marketplace/termos/termos.service';
+import {
   RestricaoDoPaciente,
   RestricaoViolada,
   clausulaSegura,
+  restricaoPorId,
   restricoesDoUsuario,
   restricoesVioladas,
 } from '../visibilidade/restricoes-receita';
@@ -33,6 +43,7 @@ import {
   AdaptacaoCatalogoService,
   peso,
 } from '../adaptacao/adaptacao-catalogo.service';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Receita: criar, editar, apagar, listar, abrir e mídia. Quem vê o quê fica
@@ -48,11 +59,255 @@ export class ReceitaService {
     private readonly visibilidade: VisibilidadeReceitaService,
     private readonly ingredientesReceita: IngredientesReceitaService,
     private readonly adaptacaoCatalogo: AdaptacaoCatalogoService,
+    private readonly termosService: TermosService,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(data: ReceitaDto, userId: string) {
     await this.cacheService.del('receitas:all');
 
+    const { receita, ingredientesNaoListados } = await this.gravarReceita(
+      this.prismaService,
+      data,
+      userId,
+    );
+
+    return {
+      success: 'Receita criada com sucesso.',
+      ...this.ingredientesReceita.avisoIngredientesOcultos(
+        ingredientesNaoListados,
+      ),
+      data: receita,
+    };
+  }
+
+  async createComOferta(data: ReceitaComOfertaDto, userId: string) {
+    const { oferta } = data;
+
+    await this.garantirVendedorApto(userId);
+    this.garantirPrecoMinimo(oferta.preco);
+    const restricaoIds = oferta.restricaoIds ?? [];
+    const restricoes = await this.carregarRestricoes(restricaoIds);
+
+    const { receita, ingredientesNaoListados } =
+      await this.prismaService.$transaction(async (tx) => {
+        const gravada = await this.gravarReceita(tx, data, userId);
+
+        // Público-alvo conferido contra os ingredientes recém-gravados.
+        await this.garantirPublicoAlvoSeguro(
+          tx,
+          gravada.receita.id,
+          restricoes,
+        );
+
+        await tx.receitaOferta.create({
+          data: {
+            receitaId: gravada.receita.id,
+            preco: oferta.preco,
+            publicoAlvo: {
+              create: restricaoIds.map((restricaoId) => ({ restricaoId })),
+            },
+          },
+        });
+
+        return gravada;
+      });
+
+    return {
+      success: 'Receita criada com sucesso.',
+      ...this.ingredientesReceita.avisoIngredientesOcultos(
+        ingredientesNaoListados,
+      ),
+      data: receita,
+    };
+  }
+
+  /**
+   * Altera a oferta de uma receita paga (só o autor). Pausar é sempre
+   * permitido; mudar preço, público-alvo ou reativar exige os termos e o
+   * Mercado Pago ativo, como na criação. A oferta nunca é removida (D15).
+   */
+  async atualizarOferta(
+    id: string,
+    data: UpdateReceitaOfertaDto,
+    usuario: UsuarioAutenticado,
+  ) {
+    const receita = await this.prismaService.receita.findFirst({
+      where: { id, deletedAt: null },
+      select: { criadoPor: true, oferta: { select: { id: true } } },
+    });
+    if (!receita) {
+      throw new NotFoundException('Receita não encontrada');
+    }
+    if (receita.criadoPor !== usuario.id) {
+      throw new ForbiddenException('Só o autor altera a oferta da receita.');
+    }
+    if (!receita.oferta) {
+      throw new NotFoundException('A receita não tem oferta.');
+    }
+
+    const soPausa =
+      data.ativa === false &&
+      data.preco === undefined &&
+      data.restricaoIds === undefined;
+    if (!soPausa) {
+      await this.garantirVendedorApto(usuario.id);
+    }
+    if (data.preco !== undefined) {
+      this.garantirPrecoMinimo(data.preco);
+    }
+    if (data.restricaoIds) {
+      const restricoes = await this.carregarRestricoes(data.restricaoIds);
+      await this.garantirPublicoAlvoSeguro(this.prismaService, id, restricoes);
+    }
+
+    const oferta = await this.prismaService.receitaOferta.update({
+      where: { id: receita.oferta.id },
+      data: {
+        preco: data.preco,
+        ativa: data.ativa,
+        ...(data.restricaoIds
+          ? {
+              publicoAlvo: {
+                deleteMany: {},
+                create: data.restricaoIds.map((restricaoId) => ({
+                  restricaoId,
+                })),
+              },
+            }
+          : {}),
+      },
+      select: { ...OFERTA_NA_PREVIA.select, ativa: true },
+    });
+
+    return {
+      success: 'Oferta atualizada com sucesso.',
+      data: {
+        preco: Number(oferta.preco),
+        ativa: oferta.ativa,
+        publicoAlvo: oferta.publicoAlvo.map((p) => p.restricao),
+      },
+    };
+  }
+
+  /** Termos do marketplace aceitos e Mercado Pago conectado (D4, D11). */
+  private async garantirVendedorApto(userId: string) {
+    await this.termosService.garantirAceite(userId);
+
+    const recebedor = await this.prismaService.contaRecebedor.findUnique({
+      where: { usuarioId: userId },
+    });
+    if (recebedor?.status !== StatusRecebedor.ativo) {
+      throw new UnprocessableEntityException(
+        'Conecte uma conta do Mercado Pago para vender receitas.',
+      );
+    }
+  }
+
+  private garantirPrecoMinimo(preco: number) {
+    const precoMinimo = this.configService.getOrThrow<number>(
+      'MARKETPLACE_PRECO_MINIMO',
+    );
+    if (preco < precoMinimo) {
+      throw new UnprocessableEntityException(
+        `O preço da oferta não pode ser menor que ${precoMinimo.toFixed(2)}.`,
+      );
+    }
+  }
+
+  private async carregarRestricoes(restricaoIds: string[]) {
+    const restricoes = await Promise.all(
+      restricaoIds.map((id) => restricaoPorId(this.prismaService, id)),
+    );
+    if (restricoes.some((r) => !r)) {
+      throw new UnprocessableEntityException(
+        'Restrição alimentar não encontrada',
+      );
+    }
+    return restricoes as RestricaoDoPaciente[];
+  }
+
+  /** 422 listando as restrições do público-alvo para as quais a receita não é segura. */
+  private async garantirPublicoAlvoSeguro(
+    db: Prisma.TransactionClient,
+    receitaId: string,
+    restricoes: RestricaoDoPaciente[],
+  ) {
+    const recusadas: string[] = [];
+    for (const restricao of restricoes) {
+      const segura = await db.receita.count({
+        where: { id: receitaId, ...clausulaSegura([restricao]) },
+      });
+      if (!segura) recusadas.push(restricao.nome);
+    }
+    if (recusadas.length) {
+      throw new UnprocessableEntityException({
+        message: 'A receita não é segura para parte do público-alvo.',
+        restricoesRecusadas: recusadas,
+      });
+    }
+  }
+
+  /**
+   * Vitrine das receitas pagas (D13): só as que estão à venda, sempre como
+   * prévia. Para o paciente, some a que fere uma restrição estrita, como nas
+   * listagens gratuitas; as flexíveis viram aviso.
+   */
+  async findAVenda(
+    usuario?: UsuarioAutenticado,
+    filtros: { publicoAlvo?: string; q?: string } = {},
+  ) {
+    const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
+    const receitas = await this.prismaService.receita.findMany({
+      where: {
+        AND: [
+          this.visibilidade.filtroAVenda(),
+          clausulaSegura(restricoes.filter((r) => r.estrita)),
+          ...(filtros.q
+            ? [{ nome: { contains: filtros.q, mode: 'insensitive' as const } }]
+            : []),
+          // Marcada pelo vendedor e ainda segura hoje: a curadoria de
+          // ingredientes muda depois da criação da oferta (seção 4.3).
+          ...(filtros.publicoAlvo
+            ? [
+                {
+                  oferta: {
+                    is: {
+                      publicoAlvo: {
+                        some: { restricaoId: filtros.publicoAlvo },
+                      },
+                    },
+                  },
+                },
+                await this.visibilidade.filtroSeguraPara(filtros.publicoAlvo),
+              ]
+            : []),
+        ],
+      },
+      include: { midias: true, oferta: OFERTA_NA_PREVIA },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (receitas.length === 0) {
+      throw new NotFoundException('Nenhuma receita à venda encontrada');
+    }
+
+    const anotadas = await this.visibilidade.comRestricoesVioladas(
+      receitas,
+      restricoes,
+    );
+    return anotadas.map((receita) => previaDaReceita(receita));
+  }
+
+  /**
+   * Valida e grava uma receita nova com os ingredientes. Recebe o cliente do
+   * Prisma para poder rodar dentro de uma transação (receita criada já com
+   * oferta); as validações leem pelo cliente normal.
+   */
+  private async gravarReceita(
+    db: Prisma.TransactionClient,
+    data: ReceitaDto,
+    userId: string,
+  ) {
     const userExists = await this.usuario.userExists(userId);
 
     if (!userExists) {
@@ -74,7 +329,7 @@ export class ReceitaService {
         ingredientes.map((i) => i.nome),
       );
 
-    const receita = await this.prismaService.receita.create({
+    const receita = await db.receita.create({
       data: {
         nome: data.nome,
         descricao: data.descricao,
@@ -103,13 +358,8 @@ export class ReceitaService {
         },
       },
     });
-    return {
-      success: 'Receita criada com sucesso.',
-      ...this.ingredientesReceita.avisoIngredientesOcultos(
-        ingredientesNaoListados,
-      ),
-      data: receita,
-    };
+
+    return { receita, ingredientesNaoListados };
   }
 
   async uploadMedia(
@@ -201,6 +451,7 @@ export class ReceitaService {
         AND: [
           this.visibilidade.filtroVisibilidade(usuario, restricoes),
           await this.visibilidade.filtroSeguraPara(seguraPara),
+          this.visibilidade.semReceitasPagas(),
         ],
       },
     });
@@ -237,6 +488,7 @@ export class ReceitaService {
           },
         },
         midias: true,
+        oferta: OFERTA_NA_PREVIA,
       },
     });
     if (receita) {
@@ -244,6 +496,11 @@ export class ReceitaService {
         [receita],
         restricoes,
       )) as (typeof receita & { restricoesVioladas?: RestricaoViolada[] })[];
+      // Paga e sem acesso ao conteúdo: só a prévia, e sem adaptação, que
+      // entregaria o conteúdo de graça (P6).
+      if (receita.oferta && !veConteudoPago(receita, usuario)) {
+        return previaDaReceita(anotada);
+      }
       const violadas = anotada.restricoesVioladas ?? [];
       if (usuario && violadas.length > 0) {
         const adaptada = await this.adaptacaoCatalogo.abrirAdaptada(
@@ -261,7 +518,12 @@ export class ReceitaService {
     // (a que existe ou uma nova). Sem como adaptar, 403 explicando o motivo.
     if (usuario && restricoes.some((r) => r.estrita)) {
       const origem = await this.prismaService.receita.findFirst({
-        where: { id, ...this.visibilidade.filtroBase(usuario) },
+        where: {
+          id,
+          ...this.visibilidade.filtroBase(usuario),
+          // Receita paga não é adaptada para quem não comprou (P6).
+          ...this.visibilidade.semReceitasPagas(),
+        },
         select: { id: true, nome: true },
       });
       const violadas = origem
@@ -387,6 +649,7 @@ export class ReceitaService {
         AND: [
           this.visibilidade.filtroVisibilidade(usuario, restricoes),
           await this.visibilidade.filtroSeguraPara(seguraPara),
+          this.visibilidade.semReceitasPagas(),
         ],
       },
     });
@@ -408,8 +671,13 @@ export class ReceitaService {
 
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
-      include: { ingredientes: true },
+      include: { ingredientes: true, oferta: { select: { id: true } } },
     });
+    if (receita!.oferta && !veConteudoPago(receita!, usuario)) {
+      throw new ForbiddenException(
+        'Receita paga: os ingredientes ficam disponíveis depois da compra.',
+      );
+    }
     return receita!.ingredientes;
   }
 
@@ -489,7 +757,10 @@ export class ReceitaService {
         status: 'aprovada',
         deletedAt: null,
         OR: [{ nivelDificuldade: 'facil' }, { nivelDificuldade: 'medio' }],
-        AND: [this.visibilidade.semPrivadasDeOutros(usuario)],
+        AND: [
+          this.visibilidade.semPrivadasDeOutros(usuario),
+          this.visibilidade.semReceitasPagas(),
+        ],
         ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });
@@ -517,7 +788,10 @@ export class ReceitaService {
       where: {
         status: 'aprovada',
         deletedAt: null,
-        AND: [this.visibilidade.semPrivadasDeOutros(usuario)],
+        AND: [
+          this.visibilidade.semPrivadasDeOutros(usuario),
+          this.visibilidade.semReceitasPagas(),
+        ],
         ...clausulaSegura(restricoes.filter((r) => r.estrita)),
       },
     });

@@ -4,6 +4,7 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
+  IsDefined,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -15,6 +16,7 @@ import {
 } from 'class-validator';
 import { NivelDificuldade } from '@prisma/client';
 import { ReceitaIngredienteDTO } from './receita-ingrediente';
+import { ReceitaOfertaDto } from './receita-oferta';
 
 /**
  * O que quem cria a receita informa. Status, autor, aprovação e versão são
@@ -68,4 +70,13 @@ export class ReceitaDto {
   @ValidateNested({ each: true })
   @Type(() => ReceitaIngredienteDTO)
   ingredientes!: ReceitaIngredienteDTO[];
+}
+
+/** Receita criada já paga: a receita e a oferta nascem juntas (D12). */
+export class ReceitaComOfertaDto extends ReceitaDto {
+  @ApiProperty({ type: ReceitaOfertaDto })
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => ReceitaOfertaDto)
+  oferta!: ReceitaOfertaDto;
 }
