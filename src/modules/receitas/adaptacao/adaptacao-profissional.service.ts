@@ -41,7 +41,7 @@ export class AdaptacaoProfissionalService {
     const restricoes = await restricoesDoPaciente(this.prismaService, {
       id: pacienteId,
     });
-    const origem = await this.base.carregarOrigem(receitaId, {});
+    const origem = await this.base.carregarOrigem(receitaId, {}, usuario);
     const resumoRestricoes = restricoes.map((r) => ({
       id: r.restricaoId,
       nome: r.nome,
@@ -155,7 +155,7 @@ export class AdaptacaoProfissionalService {
     const restricoes = await restricoesDoPaciente(this.prismaService, {
       id: dto.pacienteId,
     });
-    const origem = await this.base.carregarOrigem(receitaId, {});
+    const origem = await this.base.carregarOrigem(receitaId, {}, usuario);
     await this.ingredientesReceita.validarIngredientes(dto.ingredientes);
 
     const idsNovos = dto.ingredientes.map((i) => i.ingredienteId);

@@ -1,9 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, StatusReceita } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { IaService } from '../../ia/ia.service';
 import { IngredientesReceitaService } from '../receita/ingredientes-receita.service';
 import { ItemReceita, PropostaAdaptacao } from './adaptacao';
+import { UsuarioAutenticado } from '../../../auth/auth.types';
+import { podeAdaptarPaga } from '../visibilidade/conteudo-pago';
 import {
   RestricaoDoPaciente,
   RestricaoViolada,
@@ -18,6 +24,7 @@ const incluirIngredientes = {
       unidadeMedida: { select: { codigo: true } },
     },
   },
+  oferta: { select: { id: true } },
 } satisfies Prisma.ReceitaInclude;
 
 export type Origem = Prisma.ReceitaGetPayload<{
@@ -48,6 +55,7 @@ export class AdaptacaoBaseService {
   async carregarOrigem(
     receitaId: string,
     visibilidade: Prisma.ReceitaWhereInput,
+    usuario: UsuarioAutenticado,
   ): Promise<Origem> {
     const origem = await this.prismaService.receita.findFirst({
       where: { id: receitaId, deletedAt: null, ...visibilidade },
@@ -55,6 +63,13 @@ export class AdaptacaoBaseService {
     });
     if (!origem) {
       throw new NotFoundException('Receita não encontrada');
+    }
+    // Adaptar receita paga entregaria o conteúdo de graça (P6). Quem comprou
+    // adapta a própria cópia, que não tem oferta.
+    if (origem.oferta && !podeAdaptarPaga(origem, usuario)) {
+      throw new ForbiddenException(
+        'Receita paga: só pode ser adaptada a cópia de quem comprou.',
+      );
     }
     return origem;
   }

@@ -100,6 +100,13 @@ class FakePrismaService {
       this.adaptacoesPorReceita.get(where.receitaAdaptadaId) ?? null,
   };
 
+  /** Receitas pagas (com oferta), pelo id da receita. */
+  receitasPagas = new Set<string>();
+  receitaOferta = {
+    findUnique: async ({ where }: any) =>
+      this.receitasPagas.has(where.receitaId) ? { id: randomUUID() } : null,
+  };
+
   planoAlimentar = {
     create: async ({ data }: any) => {
       const planoAlimentar = { id: randomUUID(), ativo: true, ...data };
@@ -822,6 +829,33 @@ describe('PlanoAlimentar (integration)', () => {
         } finally {
           prisma.pacienteRestricoes = [];
         }
+      });
+
+      it('rejeita receita paga original, ao criar e ao trocar o item (422)', async () => {
+        const planoAlimentarId = await criarPlano();
+        const itemId = await criarItem(planoAlimentarId);
+        const receitaPaga = { id: randomUUID(), nome: 'Bolo pago' };
+        prisma.receitas.set(receitaPaga.id, receitaPaga);
+        prisma.receitasPagas.add(receitaPaga.id);
+
+        const res = await request(app.getHttpServer())
+          .post(`/api/plano-alimentar/${planoAlimentarId}/itens`)
+          .set(asProfissionalDono())
+          .send({
+            ...itemValido,
+            receitaId: receitaPaga.id,
+            tipoRefeicao: TipoRefeicao.ceia,
+          })
+          .expect(422);
+        expect(res.body.message).toBe(
+          'Receita paga: só entra no plano a cópia que o paciente comprou',
+        );
+
+        await request(app.getHttpServer())
+          .patch(`/api/plano-alimentar/itens/${itemId}`)
+          .set(asProfissionalDono())
+          .send({ receitaId: receitaPaga.id })
+          .expect(422);
       });
 
       it('rejeita adaptação feita para outro paciente (422)', async () => {

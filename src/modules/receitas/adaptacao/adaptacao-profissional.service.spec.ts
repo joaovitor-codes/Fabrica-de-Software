@@ -245,6 +245,39 @@ describe('AdaptacaoProfissionalService', () => {
     });
   });
 
+  describe('receita paga', () => {
+    const paga = {
+      ...origem,
+      criadoPor: 'vendedor',
+      status: 'aprovada',
+      oferta: { id: 'oferta' },
+    };
+    const recusa = new ForbiddenException(
+      'Receita paga: só pode ser adaptada a cópia de quem comprou.',
+    );
+
+    it('sugerir: 403, sem chamar a IA', async () => {
+      prisma.receita.findFirst.mockResolvedValue(paga);
+
+      await expect(service.sugerir('vitamina', 'ana', nutri)).rejects.toThrow(
+        recusa,
+      );
+      expect(ia.adaptarReceita).not.toHaveBeenCalled();
+    });
+
+    it('salvarDoProfissional: 403', async () => {
+      prisma.receita.findFirst.mockResolvedValue(paga);
+
+      await expect(
+        service.salvarDoProfissional(
+          'vitamina',
+          { pacienteId: 'ana', ingredientes: [], trocas: [] } as any,
+          nutri,
+        ),
+      ).rejects.toThrow(recusa);
+    });
+  });
+
   describe('salvarDoProfissional', () => {
     const escolha = {
       pacienteId: 'ana',

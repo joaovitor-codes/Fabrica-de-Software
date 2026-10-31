@@ -395,6 +395,18 @@ export class PlanoAlimentarService {
     receitaId: string,
     pacienteId: string,
   ) {
+    // Receita paga só entra no plano pela cópia que o paciente comprou, que
+    // não tem oferta (P10). A original, nunca.
+    const oferta = await this.prismaService.receitaOferta.findUnique({
+      where: { receitaId },
+      select: { id: true },
+    });
+    if (oferta) {
+      throw new UnprocessableEntityException(
+        'Receita paga: só entra no plano a cópia que o paciente comprou',
+      );
+    }
+
     // Adaptação feita para outro paciente não entra neste plano.
     const adaptacao = await this.prismaService.receitaAdaptacao.findUnique({
       where: { receitaAdaptadaId: receitaId },

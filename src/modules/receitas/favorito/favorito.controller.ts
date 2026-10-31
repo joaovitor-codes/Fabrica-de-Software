@@ -38,7 +38,7 @@ export class FavoritoController {
   @UseGuards(AuthGuard)
   @Get('favoritos')
   async findFavorites(@Request() request: RequestAutenticado) {
-    return await this.favoritoService.findFavorites(request.user.sub);
+    return await this.favoritoService.findFavorites(request.user);
   }
 
   @ApiOperation({ summary: 'Adiciona uma receita aos favoritos' })
@@ -50,7 +50,7 @@ export class FavoritoController {
     @Param('id', uuidPipe('ID inválido')) id: string,
     @Request() request: RequestAutenticado,
   ) {
-    return await this.favoritoService.addFavorite(id, request.user.sub);
+    return await this.favoritoService.addFavorite(id, request.user);
   }
 
   @ApiOperation({ summary: 'Remove uma receita dos favoritos' })
