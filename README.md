@@ -143,7 +143,7 @@ O `.env` é validado na inicialização (`src/common/config/env.validation.ts`).
 
 O marketplace usa o **Split de Pagamentos 1:1** do Mercado Pago: cada vendedor conecta a própria conta pelo OAuth, e a cobrança da receita é feita com o token dele, com a comissão da plataforma em `marketplace_fee`. As decisões estão em [`docs/decisoes_marketplace.md`](docs/decisoes_marketplace.md).
 
-**Implementado:** a conexão do vendedor (`src/modules/marketplace/recebedor`).
+**Implementado:** a conexão do vendedor (`src/modules/marketplace/recebedor`) e o cliente do Mercado Pago (`src/modules/marketplace/mercado-pago`), que cria a preferência do Checkout Pro e consulta pagamentos. A compra e o webhook ainda não existem.
 
 | Rota | Acesso | O que faz |
 |---|---|---|
@@ -172,24 +172,26 @@ O Mercado Pago não deixa uma conta de teste autorizar uma aplicação de conta 
 
 ### Túnel HTTPS para o OAuth
 
-O Mercado Pago só redireciona para endereços HTTPS, então o `localhost` precisa de um túnel. Com o [ngrok](https://ngrok.com) (conta grátis com um domínio fixo):
+O Mercado Pago só redireciona para endereços HTTPS, então o `localhost` precisa de um túnel. Com o [ngrok](https://ngrok.com) (conta grátis com um domínio fixo). O domínio grátis termina em `.ngrok-free.dev` nas contas novas e em `.ngrok-free.app` nas antigas: use o que aparece no painel do ngrok.
 
 ```bash
 # uma vez: liga o ngrok à sua conta (authtoken no painel do ngrok)
 ngrok config add-authtoken <seu-authtoken>
 
 # sempre que precisar de acesso externo (OAuth ou webhook), com a API rodando
-ngrok http --url=<seu-dominio>.ngrok-free.app 3000
+ngrok http --url=<seu-dominio>.ngrok-free.dev 3000
 ```
 
 Depois, uma única vez:
 
-- no `.env`: `MP_REDIRECT_URI=https://<seu-dominio>.ngrok-free.app/api/recebedor/callback` (reinicie a API);
-- no painel, logado como Integrador: **Configurações da aplicação → URLs de redirecionamento** com a mesma URL.
+- no `.env`, com o mesmo domínio (reinicie a API):
+  - `MP_REDIRECT_URI=https://<seu-dominio>.ngrok-free.dev/api/recebedor/callback`
+  - `API_URL_PUBLICA=https://<seu-dominio>.ngrok-free.dev` (só o domínio, sem barra nem caminho; a API não sobe com outro formato)
+- no painel, logado como Integrador: **Configurações da aplicação → URLs de redirecionamento** com a mesma URL do `MP_REDIRECT_URI`.
 
 ### Testar a conexão do vendedor
 
-1. Abra o Swagger pelo túnel (`https://<seu-dominio>.ngrok-free.app/api/docs`) e faça login em `POST /auth/signin`.
+1. Abra o Swagger pelo túnel (`https://<seu-dominio>.ngrok-free.dev/api/docs`) e faça login em `POST /auth/signin`.
 2. Chame `GET /api/recebedor/conectar` e copie a `url` (vale 10 minutos).
 3. Abra a `url` numa **aba anônima**, entre com o **Vendedor de teste** e autorize. No plano grátis do ngrok aparece antes uma página de aviso: clique em **Visit Site**.
 4. A resposta deve ser `{ "conectado": true, "contaMercadoPagoId": "..." }`, e `GET /api/recebedor/me` passa a mostrar `status: "ativo"`.
@@ -202,6 +204,30 @@ Depois, uma única vez:
 | `400` "Link de conexão inválido ou expirado" | O link passou de 10 minutos ou já foi usado. Gere outro em `/conectar`. |
 | `409` | Essa conta do Mercado Pago já está conectada a outro usuário do Nutrify. |
 | `503` | `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_REDIRECT_URI` ou `RECEBEDOR_TOKEN_KEY` faltando no `.env`. |
+
+### Testar um pagamento no sandbox
+
+Com um vendedor conectado, `scripts/sandbox-mercado-pago.ts` chama o cliente do Mercado Pago direto, sem a API rodando nem o túnel ligado. Precisa do banco, de `RECEBEDOR_TOKEN_KEY`, `API_URL_PUBLICA` e `FRONT_URL` no `.env`. Nenhum modo imprime tokens.
+
+```bash
+npx ts-node scripts/sandbox-mercado-pago.ts                                   # vendedores conectados (user_id)
+npx ts-node scripts/sandbox-mercado-pago.ts preferencia <user_id> 100         # cria a preferência e imprime o link
+npx ts-node scripts/sandbox-mercado-pago.ts pagamento <user_id> <payment_id>  # consulta um pagamento
+npx ts-node scripts/sandbox-mercado-pago.ts recentes <user_id>                # últimos pagamentos, com o motivo da recusa
+```
+
+1. Abra o link numa aba anônima nova e entre com o **Comprador de teste** (não com o vendedor nem com o Integrador).
+2. Pague com saldo (adicione saldo ao comprador, não ao vendedor) ou com um cartão de teste com titular `APRO` e CPF `12345678909`.
+3. Sem front, o `FRONT_URL` pode ser `https://example.com`: o comprador volta para uma página inexistente, mas o `payment_id` fica na barra de endereço.
+4. No pagamento aprovado, `fee_details` mostra a `application_fee` (a comissão da plataforma) e a `mercadopago_fee`, as duas pagas pelo vendedor.
+
+**Erros comuns**
+
+| Sintoma | Causa |
+|---|---|
+| Checkout mostra "Não foi possível processar seu pagamento" e nada aparece em `recentes` | O `notification_url` da preferência é inválido: confira `API_URL_PUBLICA`. O Mercado Pago cria a preferência mesmo assim e só recusa no pagamento. Outra causa possível é o comprador logado ser o próprio vendedor ou o Integrador. |
+| Aparece em `recentes` com `rejected` | O `status_detail` diz o motivo (saldo insuficiente, titular do cartão diferente de `APRO`, etc.). |
+| `404` em `pagamento` | ID errado (atenção a pontuação copiada junto). |
 
 ## Estrutura do projeto
 

@@ -32,6 +32,7 @@ import { NotificacaoModule } from './modules/notificacao/notificacao.module';
 import { ProdutosModule } from './modules/marketplace/produtos/produtos.module';
 import { RecebedorModule } from './modules/marketplace/recebedor/recebedor.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { MercadoPagoModule } from './modules/marketplace/mercado-pago/mercado-pago.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     NotificacaoModule,
     ProdutosModule,
     RecebedorModule,
+    MercadoPagoModule,
   ],
   controllers: [],
   providers: [PrismaService],

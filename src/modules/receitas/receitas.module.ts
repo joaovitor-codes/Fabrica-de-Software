@@ -3,6 +3,7 @@ import { FavoritoModule } from './favorito/favorito.module';
 import { CuradoriaReceitaModule } from './curadoria/curadoria-receita.module';
 import { AdaptacaoModule } from './adaptacao/adaptacao.module';
 import { ReceitaModule } from './receita/receita.module';
+import { CompraModule } from './compra/compra.module';
 
 /**
  * Junta os módulos de receita. A ORDEM IMPORTA: todos usam o prefixo
@@ -19,6 +20,7 @@ import { ReceitaModule } from './receita/receita.module';
     CuradoriaReceitaModule,
     AdaptacaoModule,
     ReceitaModule,
+    CompraModule,
   ],
 })
 export class ReceitasModule {}

@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -24,6 +25,10 @@ class FakePrismaService {
       if (campo === 'NOT') return !this.combina(conta, valor);
       if (valor && typeof valor === 'object' && 'lte' in valor) {
         return conta[campo] <= valor.lte;
+      }
+      // Chave única composta (ex.: gateway_gatewayRecebedorId).
+      if (valor && typeof valor === 'object' && !(campo in conta)) {
+        return this.combina(conta, valor);
       }
       return conta[campo] === valor;
     });
@@ -225,6 +230,88 @@ describe('RecebedorService', () => {
       await expect(service.desconectar(USUARIO_ID)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('token para o gateway', () => {
+    describe('tokenDoVendedor (compra)', () => {
+      it('devolve o token decifrado da conta ativa', async () => {
+        await conectar();
+
+        await expect(service.tokenDoVendedor(USUARIO_ID)).resolves.toBe(
+          'APP_USR-access-1',
+        );
+      });
+
+      it('recusa a conta desconectada', async () => {
+        await conectar();
+        await service.desconectar(USUARIO_ID);
+
+        await expect(service.tokenDoVendedor(USUARIO_ID)).rejects.toThrow(
+          UnprocessableEntityException,
+        );
+      });
+
+      it('recusa a conta cuja renovação falhou, mesmo com o token guardado', async () => {
+        await conectar();
+        prisma.contas[0].status = StatusRecebedor.desconectado;
+
+        await expect(service.tokenDoVendedor(USUARIO_ID)).rejects.toThrow(
+          UnprocessableEntityException,
+        );
+      });
+
+      it('recusa o usuário sem conta', async () => {
+        await expect(service.tokenDoVendedor(USUARIO_ID)).rejects.toThrow(
+          UnprocessableEntityException,
+        );
+      });
+    });
+
+    describe('tokenPorContaMercadoPago (webhook)', () => {
+      it('devolve o token decifrado pelo user_id do Mercado Pago', async () => {
+        await conectar();
+
+        await expect(service.tokenPorContaMercadoPago('123456')).resolves.toBe(
+          'APP_USR-access-1',
+        );
+      });
+
+      it('aceita a conta desconectada que ainda tem token, para confirmar um pagamento já feito', async () => {
+        await conectar();
+        prisma.contas[0].status = StatusRecebedor.desconectado;
+
+        await expect(service.tokenPorContaMercadoPago('123456')).resolves.toBe(
+          'APP_USR-access-1',
+        );
+      });
+
+      it('recusa a conta desconectada pelo vendedor, que teve o token apagado', async () => {
+        await conectar();
+        await service.desconectar(USUARIO_ID);
+
+        await expect(
+          service.tokenPorContaMercadoPago('123456'),
+        ).rejects.toThrow(UnprocessableEntityException);
+      });
+
+      it('recusa a conta do Mercado Pago desconhecida', async () => {
+        await conectar();
+
+        await expect(
+          service.tokenPorContaMercadoPago('999999'),
+        ).rejects.toThrow(UnprocessableEntityException);
+      });
+
+      it('não confunde contas de vendedores diferentes', async () => {
+        await conectar('usuario-1');
+        oauth.trocarCodigo.mockResolvedValueOnce(tokens(654321, 'outro'));
+        await conectar('usuario-2');
+
+        await expect(service.tokenPorContaMercadoPago('654321')).resolves.toBe(
+          'APP_USR-access-outro',
+        );
+      });
     });
   });
 

@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { StatusRecebedor } from '@prisma/client';
 import { randomBytes } from 'crypto';
@@ -162,6 +163,34 @@ export class RecebedorService {
     }
 
     return { renovadas, desconectadas };
+  }
+
+  /** Busca o token de acesso do vendedor. */
+  async tokenDoVendedor(usuarioId: string): Promise<string> {
+    const conta = await this.prismaService.contaRecebedor.findUnique({
+      where: { usuarioId },
+    });
+    if (!conta || conta.status !== StatusRecebedor.ativo) {
+      throw new UnprocessableEntityException(
+        'Nenhuma conta do Mercado Pago conectada a este usuário.',
+      );
+    }
+    return this.tokenCripto.decifrar(conta.accessTokenCifrado);
+  }
+
+  /** Busca o token de acesso de uma conta específica do Mercado Pago. */
+  async tokenPorContaMercadoPago(gatewayRecebedorId: string): Promise<string> {
+    const conta = await this.prismaService.contaRecebedor.findUnique({
+      where: {
+        gateway_gatewayRecebedorId: { gateway: GATEWAY, gatewayRecebedorId },
+      },
+    });
+    if (!conta?.accessTokenCifrado) {
+      throw new UnprocessableEntityException(
+        'A conta do Mercado Pago não está conectada ou não possui token válido.',
+      );
+    }
+    return this.tokenCripto.decifrar(conta.accessTokenCifrado);
   }
 
   private async consumirState(state: string): Promise<string> {

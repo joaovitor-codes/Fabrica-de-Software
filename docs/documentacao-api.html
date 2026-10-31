@@ -507,7 +507,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <li>O vendedor conecta a conta Mercado Pago dele (<code>GET /api/recebedor/conectar</code>) e autoriza a plataforma a cobrar em nome dele.</li>
 <li>O vendedor cria a receita já com a <strong>oferta</strong> (<code>POST /api/receita/paga</code>, com o campo <code>oferta</code>: preço e público-alvo). As duas nascem juntas; se a oferta for recusada, a receita também não é criada. A receita passa pela curadoria como qualquer outra. Uma receita gratuita não vira paga depois, e uma paga não vira gratuita: a oferta pode ser pausada, nunca removida.</li>
 <li>Aprovada, a receita aparece só em <code>GET /api/receita/a-venda</code>, fora das listagens gratuitas. O comprador vê a prévia e compra (<code>POST /api/receita/:id/comprar</code>). Nasce uma compra <code>pendente</code> e a resposta traz o link de pagamento do Mercado Pago.</li>
-<li>O Mercado Pago avisa o pagamento (<code>POST /api/pagamento/webhook</code>). A compra fica <code>paga</code>, a <strong>cópia</strong> é criada e os dois são notificados.</li>
+<li>O Mercado Pago avisa o pagamento (<code>POST /api/mercado-pago/webhook</code>). A compra fica <code>paga</code>, a <strong>cópia</strong> é criada e os dois são notificados.</li>
 <li>O comprador encontra a cópia em <code>GET /api/receita/compradas</code>.</li>
 </ol>
 <h3>Conexão com o Mercado Pago</h3>
@@ -626,7 +626,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <tr><td>Leitura (<code>GET</code>)</td><td>120 por minuto</td></tr>
 <tr><td>Escrita (<code>POST</code>, <code>PATCH</code>, <code>DELETE</code>)</td><td>30 por minuto</td></tr>
 <tr><td>Login</td><td>5 tentativas a cada 15 minutos, como hoje</td></tr>
-<tr><td><code>POST /api/pagamento/webhook</code></td><td>Sem limite por IP: a proteção é a assinatura do Mercado Pago</td></tr>
+<tr><td><code>POST /api/mercado-pago/webhook</code></td><td>Sem limite por IP: a proteção é a assinatura do Mercado Pago</td></tr>
 </tbody></table></div>
 <h3>Configuração</h3>
 <p>Variáveis de ambiente novas. Os nomes são uma proposta.</p>
@@ -1771,8 +1771,8 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <div class="tabela"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>aprovado</code> <span class="obrig">obrigatório</span></td><td><span class="tipo">boolean</span></td><td><code>true</code> estorna a compra; <code>false</code> a devolve para <code>paga</code></td></tr></tbody></table></div>
 <h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Aprovado: compra <code>reembolsada</code> e cópia fora do ar. Negado: compra de volta para <code>paga</code>. O comprador é notificado.</span></li><li><span class="status s4">409</span><span>A compra não está <code>reembolso_em_analise</code>.</span></li><li><span class="status s4">422</span><span>O Mercado Pago não estornou o valor inteiro (vendedor sem saldo, por exemplo); o pedido continua em análise.</span></li></ul>
 </article>
-<article class="endpoint" id="op-post-api-pagamento-webhook" data-busca="post /api/pagamento/webhook recebe do mercado pago o aviso de pagamento, falha ou estorno">
-<header><span class="metodo m-post">POST</span><code class="rota">/api/pagamento/webhook</code><a class="link" href="#op-post-api-pagamento-webhook" aria-label="Link para esta rota">#</a></header>
+<article class="endpoint" id="op-post-api-mercado-pago-webhook" data-busca="post /api/mercado-pago/webhook recebe do mercado pago o aviso de pagamento, falha ou estorno">
+<header><span class="metodo m-post">POST</span><code class="rota">/api/mercado-pago/webhook</code><a class="link" href="#op-post-api-mercado-pago-webhook" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Recebe do Mercado Pago o aviso de pagamento, falha ou estorno</p>
 <div class="selos"><span class="selo planejado">Planejado</span><span class="selo publico">Público</span></div>
 <p class="descricao">Sem token de usuário e fora do limite por IP: a autenticação é a assinatura do Mercado Pago. Pagamento aprovado marca a compra como <code>paga</code>, cria a cópia e notifica comprador e vendedor.</p>

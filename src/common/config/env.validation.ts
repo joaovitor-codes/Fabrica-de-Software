@@ -1,5 +1,22 @@
 import * as Joi from 'joi';
 
+// O Mercado Pago aceita criar a preferência com um notification_url que ele
+// não alcança, mas recusa o pagamento no checkout, sem dizer o motivo. Por
+// isso a API não sobe com um endereço que não seja HTTPS e público, só domínio.
+const urlPublicaHttps = Joi.string()
+  .uri({ scheme: ['https'] })
+  .custom((valor: string, helpers) => {
+    const url = new URL(valor);
+    const soDominio = url.pathname === '/' && !valor.endsWith('/');
+    return url.hostname.includes('.') && soDominio
+      ? valor
+      : helpers.error('any.invalid');
+  })
+  .messages({
+    'any.invalid':
+      '{{#label}} precisa ser só o domínio HTTPS público, sem barra no final (ex.: https://abc.ngrok-free.dev)',
+  });
+
 export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
@@ -37,6 +54,8 @@ export const envValidationSchema = Joi.object({
   MP_REDIRECT_URI: Joi.string().uri().optional(),
   MP_WEBHOOK_SECRET: Joi.string().optional(),
   RECEBEDOR_TOKEN_KEY: Joi.string().min(32).optional(),
+  API_URL_PUBLICA: urlPublicaHttps.optional(),
+  FRONT_URL: Joi.string().uri().optional(),
   MARKETPLACE_TAXA_PERCENTUAL: Joi.number().min(0).max(100).default(15),
   MARKETPLACE_PRECO_MINIMO: Joi.number().min(0).default(10),
   MARKETPLACE_REEMBOLSO_DIAS: Joi.number().integer().min(0).default(7),
