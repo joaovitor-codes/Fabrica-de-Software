@@ -1513,8 +1513,8 @@ model ContaRecebedor {
 // e a nova aprovação a devolve, sem job de sincronização.
 //
 // ativa = false é "pausada": continua com o conteúdo fechado, só não
-// pode ser comprada. Para a receita voltar a ser pública e gratuita, a
-// oferta é apagada (só possível sem compras; ver documentação).
+// pode ser comprada. A oferta nunca é apagada: receita paga não volta a
+// ser gratuita, nem gratuita vira paga (ver documentação).
 model ReceitaOferta {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   receitaId String   @unique @map("receita_id") @db.Uuid

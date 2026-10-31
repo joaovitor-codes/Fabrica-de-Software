@@ -23,7 +23,7 @@ Escolhas feitas explicitamente pelo time, com as alternativas que ficaram de for
 | D1 | Pagamento da receita | Gateway com split: o valor é dividido entre vendedor e plataforma, e a API é avisada por webhook. A plataforma não guarda saldo de terceiros. | Plataforma recebe tudo e repassa; pagamento fora da plataforma; compra simulada. |
 | D2 | Gateway | Mercado Pago, split 1:1. | Asaas (exige conta CNPJ da plataforma e a API coletaria dados pessoais do vendedor); Pagar.me (só para clientes PSP); decidir depois. |
 | D3 | Quem compra receita | Qualquer usuário logado. | Só paciente. |
-| D4 | Quem vende receita | Qualquer usuário logado, com a conta Mercado Pago conectada. | Só profissional aprovado. |
+| D4 | Quem vende receita | `comum`, `paciente` e `admin`, com a conta Mercado Pago conectada. O `profissional` não vende. | Qualquer usuário logado; só profissional aprovado. |
 | D5 | Quem anuncia produto | `comum` e `paciente`. O `profissional` não anuncia. | Profissional anuncia com termo de aceite; sem restrição. |
 | D6 | Uso da receita comprada | Leitura, adaptação e plano alimentar. | Só adaptação; só leitura. |
 | D7 | Comissão e preço mínimo | Configuráveis por variável de ambiente; os valores ainda não foram escolhidos. | Percentuais fixos de 10%, 15% ou 20%. |
@@ -31,8 +31,12 @@ Escolhas feitas explicitamente pelo time, com as alternativas que ficaram de for
 | D9 | Limite de requisições | Por tipo de rota, com o webhook fora do limite por IP. | Subir o limite global; só liberar o webhook. |
 | D10 | Notificação de produto | O vendedor é notificado quando a moderação remove um produto, já na v5. | Deixar para depois. |
 | D11 | Termos do marketplace | Aceite obrigatório, registrado na API, antes da primeira compra, venda ou anúncio. | Aceite só para quem vende ou anuncia; sem registro na API. |
+| D12 | Receita nova já paga | Pode nascer paga: `POST /api/receita/paga` recebe a receita com o campo `oferta`, e a receita e a oferta nascem juntas, numa transação. Se a oferta for recusada, a receita também não é criada. Assim a receita paga nunca fica pública e gratuita. | Criar a oferta só depois da aprovação, deixando a receita aberta de graça até lá; uma tabela de receitas só para as pagas, que duplicaria curadoria, versões e adaptação. |
+| D13 | Onde a receita paga aparece | Só em `GET /api/receita/a-venda`. As listagens gratuitas (`/all`, `/nome`, `/sugestoes`, `/validadas`) não mostram receita com oferta. | Prévia em todas as listagens, com selo de preço (a antiga P4). |
+| D14 | Receita gratuita virar paga | Não pode. A receita é paga desde a criação (D12) ou gratuita para sempre. Uma receita que já esteve pública já foi vista, favoritada e adaptada de graça, e fechar o conteúdo depois não desfaz isso. | Permitir a qualquer momento; permitir só enquanto nunca foi publicada (exigiria uma coluna nova para saber disso). |
+| D15 | Receita paga virar gratuita | Não pode. A oferta não é removida, só pausada (`ativa: false`), e o conteúdo continua fechado. Quem comprou tem uma cópia no inventário; a original aberta de graça tiraria o sentido da compra. | Remover a oferta quando não há compras, devolvendo a receita ao público (a antiga P9). |
 
-Motivo da D5: o código de ética do nutricionista (Resolução CFN 599/2018, arts. 60 e 63) veda divulgar marcas de alimentos, suplementos e utensílios. O profissional continua podendo vender receitas.
+Motivo da D5: o código de ética do nutricionista (Resolução CFN 599/2018, arts. 60 e 63) veda divulgar marcas de alimentos, suplementos e utensílios. Pelo mesmo motivo de ética profissional (CRN), o profissional também não vende receitas (D4).
 
 ## 3. Definições de projeto adotadas
 
@@ -43,12 +47,12 @@ Não foram votadas uma a uma. São as escolhas que o `schema.prisma` e a documen
 | P1 | A cópia entregue ao comprador é uma `Receita` comum e privada, no mesmo padrão de `ReceitaAdaptacao`. Por isso `restricoesVioladas`, adaptação e plano alimentar funcionam sobre ela sem modelagem nova. |
 | P2 | "Está à venda" não é uma coluna. É a combinação de quatro condições (seção 4.1). |
 | P3 | O público-alvo da receita é verificado pela checagem do filtro `seguraPara`. O do produto é só declarado pelo vendedor. |
-| P4 | Receita à venda aparece como prévia em todas as listagens atuais (`/all`, `/nome`, `/sugestoes`, `/validadas`), e não só em `/a-venda`. |
+| P4 | Substituída pela D13: a receita paga fica fora das listagens gratuitas e aparece só em `/a-venda`. |
 | P5 | `GET /api/receita/:id/alertas` continua aberta para quem não comprou. Quem tem restrição precisa saber o que a receita contém antes de pagar, mesmo que isso revele o nome dos ingredientes que disparam alerta. |
 | P6 | A adaptação automática do catálogo não roda sobre receita à venda. Uma adaptação pública entregaria de graça o conteúdo pago. |
 | P7 | Receita que é cópia de uma compra ou adaptação de outra não pode ser colocada à venda. |
 | P8 | O vendedor continua como autor (`criadoPor`) da cópia. O acesso do comprador vem de `ReceitaCompra`. Nenhum dos dois edita ou exclui a cópia. |
-| P9 | Oferta com compras registradas não pode ser removida, só pausada (`ativa: false`). Pausada, o conteúdo continua fechado. |
+| P9 | Substituída pela D15: nenhuma oferta é removida, com ou sem compras; só pausada. |
 | P10 | No plano alimentar entra só a cópia que o próprio paciente comprou. A cópia de outro usuário, inclusive a do profissional, não entra. |
 | P11 | Cobrança pelo Checkout Pro (redirecionamento para o Mercado Pago), e não pelo Checkout Transparente. |
 | P12 | Cópia que está em um plano alimentar manda o pedido de reembolso para análise do admin, mesmo que nunca tenha sido aberta. |
@@ -70,23 +74,40 @@ As quatro condições valem ao mesmo tempo:
 
 Consequências:
 
+- "Paga" e "à venda" são coisas diferentes. Receita **paga** é a que tem oferta, ativa ou pausada: o conteúdo fica fechado e ela sai das listagens gratuitas. Receita **à venda** é a paga que cumpre as quatro condições: aparece em `/a-venda` e pode ser comprada. Pausada, a oferta não aparece em lugar nenhum da listagem, mas o conteúdo continua fechado.
 - Editar uma receita aprovada a devolve para `pendente` (regra que já existe). A oferta sai do ar sozinha e volta quando a nova versão for aprovada. Quem já comprou não é afetado.
 - Se o vendedor desconectar o Mercado Pago, ou a renovação do token falhar, as ofertas dele saem do ar.
 - Criar ou alterar uma oferta com preço abaixo do mínimo responde `422`.
 
-### 4.2 Público-alvo
+### 4.2 Criação da receita paga
+
+A receita paga nasce paga (D12). `POST /api/receita/paga` recebe a receita com o campo obrigatório `oferta` (`preco` e `restricaoIds`). Só `comum`, `paciente` e `admin` chamam essa rota; o `profissional` recebe `403` (D4). `POST /api/receita` continua criando só receita gratuita.
+
+1. Antes de gravar qualquer coisa, a API confere os termos do marketplace, a conta Mercado Pago ativa e o preço mínimo.
+2. Numa transação, cria a receita (`pendente`, como qualquer receita nova) e os ingredientes.
+3. Na mesma transação, confere o público-alvo contra os ingredientes recém-gravados, com a checagem do filtro `seguraPara`.
+4. Cria a `ReceitaOferta`.
+
+Se qualquer passo falhar, nada é gravado e a resposta é `422`, com o motivo (no caso do público-alvo, as restrições recusadas). Enquanto `pendente`, a receita só é vista pelo autor, pelo admin e pelo curador, então não existe janela em que ela esteja pública e gratuita. A curadoria é a mesma das receitas gratuitas.
+
+O schema não muda: "é paga" é a receita ter `ReceitaOferta`, e o preço fica na oferta.
+
+Uma receita gratuita não vira paga (D14): a oferta só nasce no `POST /api/receita/paga`. A oferta só vai ao ar com a receita `aprovada`. Se a curadoria reprovar, a oferta não é apagada: fica fora do ar, porque a condição 2 da seção 4.1 não vale, e volta se uma nova versão for aprovada.
+
+### 4.3 Público-alvo
 
 - O vendedor informa IDs de `RestricaoAlimentar`.
 - A API só aceita uma restrição se a receita for segura para ela, pela mesma checagem do filtro `seguraPara`. Caso contrário responde `422`, listando as restrições recusadas e o motivo.
 - O filtro `publicoAlvo` da listagem confere a segurança de novo a cada consulta, porque a curadoria de ingredientes muda depois da criação da oferta.
 
-### 4.3 Prévia e conteúdo fechado
+### 4.4 Prévia e conteúdo fechado
 
-Uma receita com oferta deixa de entregar o conteúdo completo nas rotas que hoje são públicas, mesmo com a oferta pausada.
+Uma receita com oferta nunca entrega o conteúdo completo nas rotas públicas, mesmo com a oferta pausada.
 
 | Rota | Quem não comprou | Quem comprou |
 |---|---|---|
-| Listagens (`/all`, `/nome`, `/sugestoes`, `/validadas`, `/a-venda`) | Prévia, com o campo `oferta` | Prévia, com `oferta.comprada: true` |
+| Listagens gratuitas (`/all`, `/nome`, `/sugestoes`, `/validadas`) | Não aparece | Não aparece (a cópia está em `/compradas`) |
+| `GET /api/receita/a-venda` | Prévia, com o campo `oferta` | Prévia, com `oferta.comprada: true` |
 | `GET /api/receita/:id` | Prévia | A cópia dele, marcada com `compradaDe` |
 | `GET /api/receita/:id/ingredientes` | `403` | Ingredientes da cópia |
 | `GET /api/receita/:id/alertas` | Aberta | Aberta |
@@ -95,7 +116,7 @@ Uma receita com oferta deixa de entregar o conteúdo completo nas rotas que hoje
 - **A prévia não traz:** modo de preparo, lista de ingredientes com quantidades, mídias de passo a passo e vídeo.
 - **Veem a receita inteira:** o autor, o admin e o profissional que faz a curadoria (na fila de pendentes).
 
-### 4.4 Regras da compra
+### 4.5 Regras da compra
 
 - Exige o aceite dos termos do marketplace (`422` sem ele).
 - Ninguém compra a própria receita (`422`).
@@ -113,7 +134,7 @@ Uma receita com oferta deixa de entregar o conteúdo completo nas rotas que hoje
 | `reembolso_em_analise` | O comprador pediu reembolso e o admin ainda não decidiu | Continua liberada |
 | `reembolsada` | O valor foi devolvido | Sai do ar |
 
-### 4.5 A cópia
+### 4.6 A cópia
 
 - É uma `Receita` nova, com status `aprovada`, com os ingredientes e as mídias que a original tinha no momento da compra (`versaoComprada`). `ReceitaVersao` não guarda ingredientes, por isso a cópia não é um ponteiro para a versão.
 - **Não muda.** Edição posterior da original não chega à cópia. Ela continua existindo se o vendedor pausar a oferta ou excluir a original.
@@ -121,7 +142,7 @@ Uma receita com oferta deixa de entregar o conteúdo completo nas rotas que hoje
 - **Adaptação.** O comprador usa a rota de hoje, `POST /api/receita/:id/adaptar`, sobre a cópia. O resultado é visível só para ele. Para restrição estrita, a adaptação continua precisando da verificação de um profissional.
 - **Plano alimentar.** O profissional pode incluir a cópia que o próprio paciente comprou e adaptá-la para ele pelas rotas de sugestão. A checagem de segurança do item é a de hoje (`422` se insegura).
 
-### 4.6 Reembolso
+### 4.7 Reembolso
 
 O comprador pede em `POST /api/receita/compra/:compraId/reembolso`, em até 7 dias contados de `pagaEm`. Cada compra aceita um pedido só.
 
@@ -134,7 +155,7 @@ O comprador pede em `POST /api/receita/compra/:compraId/reembolso`, em até 7 di
 - **Abrir** é o comprador carregar o conteúdo da cópia: a rota de detalhe ou a de ingredientes. Isso grava `primeiroAcessoEm`. A listagem `/compradas` traz só o resumo e não conta.
 - No split do Mercado Pago, o estorno é descontado do vendedor e da plataforma na proporção de cada um. Se o vendedor não tiver saldo, o Mercado Pago não devolve o valor inteiro; o pedido automático cai então na análise do admin.
 
-### 4.7 Integração com o Mercado Pago
+### 4.8 Integração com o Mercado Pago
 
 - **Conta do vendedor.** Precisa de conta Mercado Pago com identificação completa (nível KYC 6). Dados bancários e documentos ficam só lá.
 - **Conexão (OAuth).** `GET /api/recebedor/conectar` devolve a URL de autorização. O Mercado Pago redireciona o vendedor para `GET /api/recebedor/callback` com `code` (válido por 10 minutos) e `state`. A API troca o código pelos tokens e cria `ContaRecebedor` como `ativo`.
@@ -253,7 +274,7 @@ Todas com prefixo `/api`. Acesso: **Público**, **Login opcional**, **Login**, o
 | GET | `/marketplace/termos` | Login | Versão atual e se o usuário já aceitou |
 | POST | `/marketplace/termos/aceite` | Login | Registra o aceite |
 
-**Venda de receitas (16)**
+**Venda de receitas (15)**
 
 | Método | Rota | Acesso | O que faz |
 |---|---|---|---|
@@ -261,9 +282,8 @@ Todas com prefixo `/api`. Acesso: **Público**, **Login opcional**, **Login**, o
 | GET | `/recebedor/callback` | Público | Destino do redirecionamento; troca o código pelos tokens |
 | GET | `/recebedor/me` | Login | Situação da conexão |
 | DELETE | `/recebedor` | Login | Desconecta; as ofertas saem do ar |
-| POST | `/receita/:id/oferta` | Login (autor) | Coloca a receita à venda |
+| POST | `/receita/paga` | `comum`, `paciente`, `admin` | Cria a receita já paga; a oferta só nasce aqui |
 | PATCH | `/receita/:id/oferta` | Login (autor) | Altera preço, público-alvo ou pausa |
-| DELETE | `/receita/:id/oferta` | Login (autor) | Remove a oferta; `409` se já houver compras |
 | GET | `/receita/a-venda` | Login opcional | Lista as receitas à venda, como prévia |
 | GET | `/receita/minhas-vendas` | Login | Vendas das receitas do usuário |
 | POST | `/receita/:id/comprar` | Login | Cria a compra e devolve o link de pagamento |
@@ -305,7 +325,7 @@ Todas com prefixo `/api`. Acesso: **Público**, **Login opcional**, **Login**, o
 
 Filtros da listagem de produtos: `categoria`, `estado`, `cidade`, `publicoAlvo` e `q`. Filtros de `/receita/a-venda`: `publicoAlvo` e `q`.
 
-**DTOs novos (11):** `AceiteTermosMarketplaceDto`, `CreateReceitaOfertaDto`, `UpdateReceitaOfertaDto`, `CreateReembolsoDto`, `ResolverReembolsoDto`, `CreateProdutoDto`, `UpdateProdutoDto`, `CreateProdutoDenunciaDto`, `ResolverProdutoDenunciaDto`, `CategoriaProdutoDto`, `UpdateCategoriaProdutoDto`. Os campos estão na seção de DTOs do `documentacao-api.html`.
+**DTOs novos (11):** `AceiteTermosMarketplaceDto`, `ReceitaOfertaDto`, `UpdateReceitaOfertaDto`, `CreateReembolsoDto`, `ResolverReembolsoDto`, `CreateProdutoDto`, `UpdateProdutoDto`, `CreateProdutoDenunciaDto`, `ResolverProdutoDenunciaDto`, `CategoriaProdutoDto`, `UpdateCategoriaProdutoDto`. Os campos estão na seção de DTOs do `documentacao-api.html`.
 
 ## 10. Variáveis de ambiente novas
 
