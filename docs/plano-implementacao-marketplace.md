@@ -40,7 +40,7 @@ Os módulos novos seguem a organização atual de `src/modules`, por domínio:
 
 Pontos do código atual que vão ser alterados:
 
-- `src/modules/receitas/receita/receita.service.ts` e `receita.controller.ts`: prévia nas listagens e no detalhe, `403` em `/ingredientes` e o campo `oferta`.
+- `src/modules/receitas/receita/receita.service.ts` e `receita.controller.ts`: receitas pagas fora das listagens gratuitas, prévia no detalhe, `403` em `/ingredientes` e as rotas `POST /paga`, `PATCH /:id/oferta` e `GET /a-venda`.
 - `src/modules/receitas/visibilidade/`: a cópia de compra e a receita à venda entram nas regras de visibilidade.
 - `src/modules/receitas/adaptacao/adaptacao-catalogo.service.ts`: não adaptar receita à venda (P6).
 - `src/modules/acompanhamento/plano-alimentar/`: aceitar a cópia que o próprio paciente comprou (P10).
@@ -126,23 +126,23 @@ Pré-requisito externo: aplicação de teste no Mercado Pago e duas contas de te
 
 ### 5.3 Ofertas
 
-- `POST`, `PATCH` e `DELETE /api/receita/:id/oferta`, só o autor. Exige termos e `ContaRecebedor` ativa.
+- `POST /api/receita/paga` (`comum`, `paciente`, `admin`; o `profissional` recebe `403`, D4) cria a receita e a oferta na mesma transação; se a oferta for recusada, a receita não é criada (D12, seção 4.2 das decisões).
+- Receita gratuita não vira paga (D14): não existe `POST /api/receita/:id/oferta`. Receita paga não vira gratuita (D15): não existe `DELETE`. `PATCH /api/receita/:id/oferta` altera preço e público-alvo ou pausa a oferta. Só o autor; exigem termos e `ContaRecebedor` ativa.
 - Preço abaixo de `MARKETPLACE_PRECO_MINIMO` responde `422`.
-- Público-alvo validado com a mesma checagem do `filtroSeguraPara` de `visibilidade-receita.service.ts`. Responde `422` listando as recusadas (seção 4.2 das decisões).
+- Público-alvo validado com a mesma checagem do `filtroSeguraPara` de `visibilidade-receita.service.ts`. Responde `422` listando as recusadas (seção 4.3 das decisões).
 - Cópia de compra e adaptação não podem ter oferta (P7).
-- `DELETE` com compras registradas responde `409`; nesse caso só pausar (P9).
 
 ### 5.4 "À venda", prévia e conteúdo fechado
 
-- Uma função única, no módulo de oferta, que monta o filtro Prisma das quatro condições da seção 4.1 das decisões. `/a-venda` e o campo `oferta` das listagens usam ela.
+- Duas funções no módulo de oferta: o filtro "paga" (tem oferta), que as listagens gratuitas usam para excluir, e o filtro "à venda" (as quatro condições da seção 4.1 das decisões), que `/a-venda` usa.
 - `GET /api/receita/a-venda` com `publicoAlvo` (rechecado a cada consulta) e `q`.
-- Receita com oferta, mesmo pausada, vira prévia em `/all`, `/nome`, `/sugestoes`, `/validadas` e no detalhe. `/ingredientes` responde `403`. Autor, admin e o curador na fila veem tudo.
+- Receita com oferta, mesmo pausada, sai de `/all`, `/nome`, `/sugestoes` e `/validadas` (D13). O detalhe devolve a prévia e `/ingredientes` responde `403`. Autor, admin e o curador na fila veem tudo.
 - `/alertas` continua aberta (P5).
 - A adaptação automática do catálogo ignora receita com oferta (P6).
 
 Esta etapa entra junto com 5.3. Sem ela, criar uma oferta não fecha nada e o conteúdo pago continua público.
 
-**M3 pronta quando:** um vendedor conecta a conta de teste, coloca uma receita aprovada à venda, ela aparece em `/a-venda` e quem não é autor vê só a prévia. Desconectar a conta tira a oferta do ar.
+**M3 pronta quando:** um vendedor conecta a conta de teste, cria uma receita já com oferta, ela é aprovada, aparece só em `/a-venda` (e não em `/all`) e quem não é autor vê só a prévia. Desconectar a conta tira a oferta do ar.
 
 ## 6. M4: Venda de Receitas: Compra
 

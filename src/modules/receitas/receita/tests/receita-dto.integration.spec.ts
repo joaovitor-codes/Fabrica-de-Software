@@ -10,10 +10,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { randomUUID } from 'crypto';
 import { TipoUsuario } from '@prisma/client';
-import { ReceitaController } from './receita.controller';
-import { ReceitaService } from './receita.service';
-import { AuthGuard } from '../../../auth/auth.guard';
-import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
+import { ReceitaController } from '../receita.controller';
+import { ReceitaService } from '../receita.service';
+import { AuthGuard } from '../../../../auth/auth.guard';
+import { OptionalAuthGuard } from '../../../../auth/optional-auth.guard';
 
 class FakeAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {

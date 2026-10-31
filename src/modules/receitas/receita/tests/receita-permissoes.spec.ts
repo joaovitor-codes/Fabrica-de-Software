@@ -4,17 +4,19 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { TipoMidia, TipoRestricao, TipoUsuario } from '@prisma/client';
-import { ReceitaService } from './receita.service';
-import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
-import { IngredientesReceitaService } from './ingredientes-receita.service';
-import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
-import { CuradoriaReceitaService } from '../curadoria/curadoria-receita.service';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { CacheService } from '../../../common/cache/cache.service';
-import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
-import { IaService } from '../../ia/ia.service';
-import { UsuarioAutenticado } from '../../../auth/auth.types';
+import { ReceitaService } from '../receita.service';
+import { TermosService } from '../../../marketplace/termos/termos.service';
+import { ConfigService } from '@nestjs/config';
+import { AdaptacaoCatalogoService } from '../../adaptacao/adaptacao-catalogo.service';
+import { IngredientesReceitaService } from '../ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../../visibilidade/visibilidade-receita.service';
+import { CuradoriaReceitaService } from '../../curadoria/curadoria-receita.service';
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { CacheService } from '../../../../common/cache/cache.service';
+import { UsuarioService } from '../../../identidade/usuario/usuario.service';
+import { PontosTransacaoService } from '../../pontos-transacao/pontos-transacao.service';
+import { IaService } from '../../../ia/ia.service';
+import { UsuarioAutenticado } from '../../../../auth/auth.types';
 
 /** Fake em memória cobrindo só o que update/remove/upload/alertas usam. */
 class FakePrismaService {
@@ -97,6 +99,9 @@ describe('ReceitaService - autor ou admin e alertas', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         ReceitaService,
+        // Só a criação com oferta usa; estes testes não passam por ela.
+        { provide: TermosService, useValue: {} },
+        { provide: ConfigService, useValue: {} },
         IngredientesReceitaService,
         VisibilidadeReceitaService,
         { provide: AdaptacaoCatalogoService, useValue: {} },

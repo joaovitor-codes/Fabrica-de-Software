@@ -15,18 +15,20 @@ import {
   TipoRestricao,
   TipoUsuario,
 } from '@prisma/client';
-import { ReceitaController } from './receita.controller';
-import { ReceitaService } from './receita.service';
-import { IngredientesReceitaService } from './ingredientes-receita.service';
-import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
-import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
-import { AdaptacaoPacienteService } from '../adaptacao/adaptacao-paciente.service';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { CacheService } from '../../../common/cache/cache.service';
-import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { IaService } from '../../ia/ia.service';
-import { AuthGuard } from '../../../auth/auth.guard';
-import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
+import { ReceitaController } from '../receita.controller';
+import { ReceitaService } from '../receita.service';
+import { TermosService } from '../../../marketplace/termos/termos.service';
+import { ConfigService } from '@nestjs/config';
+import { IngredientesReceitaService } from '../ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../../visibilidade/visibilidade-receita.service';
+import { AdaptacaoCatalogoService } from '../../adaptacao/adaptacao-catalogo.service';
+import { AdaptacaoPacienteService } from '../../adaptacao/adaptacao-paciente.service';
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { CacheService } from '../../../../common/cache/cache.service';
+import { UsuarioService } from '../../../identidade/usuario/usuario.service';
+import { IaService } from '../../../ia/ia.service';
+import { AuthGuard } from '../../../../auth/auth.guard';
+import { OptionalAuthGuard } from '../../../../auth/optional-auth.guard';
 
 class UsuarioDosHeaders implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -139,6 +141,11 @@ describe('Catálogo que se adapta ao paciente (integration)', () => {
   const pudim = nova('Pudim', [ingrediente([leite])]);
   const pudimAdaptado = nova('Pudim (adaptado na hora)', [ingrediente([])]);
   const salada = nova('Salada', [ingrediente([])]);
+  // Paga e com leite: nunca é adaptada para quem não comprou (P6).
+  const pudimPago = nova('Pudim pago', [ingrediente([leite])], {
+    midias: [],
+    oferta: { preco: 15, publicoAlvo: [] },
+  });
 
   const restricaoDe = (usuarioId: string, gravidade: Gravidade) => ({
     restricaoId: leite,
@@ -159,6 +166,9 @@ describe('Catálogo que se adapta ao paciente (integration)', () => {
       controllers: [ReceitaController],
       providers: [
         ReceitaService,
+        // Só a criação com oferta usa; estes testes não passam por ela.
+        { provide: TermosService, useValue: {} },
+        { provide: ConfigService, useValue: {} },
         VisibilidadeReceitaService,
         AdaptacaoCatalogoService,
         { provide: AdaptacaoPacienteService, useValue: { adaptar } },
@@ -178,7 +188,7 @@ describe('Catálogo que se adapta ao paciente (integration)', () => {
     app = moduleRef.createNestApplication();
     await app.init();
     prisma = moduleRef.get(PrismaService);
-    prisma.receitas.push(panqueca, panquecaAdaptada, pudim, salada);
+    prisma.receitas.push(panqueca, panquecaAdaptada, pudim, salada, pudimPago);
     prisma.pacienteRestricoes.push(
       restricaoDe(alergico.id, Gravidade.grave),
       restricaoDe(intolerante.id, Gravidade.moderada),
@@ -306,6 +316,32 @@ describe('Catálogo que se adapta ao paciente (integration)', () => {
         .expect(200);
 
       expect(res.body.id).toBe(pudim.id);
+      expect(adaptar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('receita paga (P6)', () => {
+    it('restrição leve/moderada: devolve a prévia com o aviso, sem adaptar', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/receita/${pudimPago.id}`)
+        .set(como(intolerante))
+        .expect(200);
+
+      expect(res.body.id).toBe(pudimPago.id);
+      expect(res.body.oferta).toMatchObject({ preco: 15 });
+      expect(res.body.restricoesVioladas).toHaveLength(1);
+      expect(adaptar).not.toHaveBeenCalled();
+    });
+
+    it('restrição estrita: não cria adaptação da receita paga', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/receita/${pudimPago.id}`)
+        .set(como(alergico))
+        .expect(403);
+
+      expect(res.body.message).toBe(
+        'Esta receita não é segura para as suas restrições',
+      );
       expect(adaptar).not.toHaveBeenCalled();
     });
   });

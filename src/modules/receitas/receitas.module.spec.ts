@@ -14,6 +14,8 @@ import { ReceitasModule } from './receitas.module';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { IaService } from '../ia/ia.service';
+import { TermosService } from '../marketplace/termos/termos.service';
+import { ConfigService } from '@nestjs/config';
 import { UsuarioService } from '../identidade/usuario/usuario.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { OptionalAuthGuard } from '../../auth/optional-auth.guard';
@@ -30,8 +32,9 @@ import { OptionalAuthGuard } from '../../auth/optional-auth.guard';
       },
     },
     { provide: CacheService, useValue: { get: async () => null } },
+    { provide: ConfigService, useValue: {} },
   ],
-  exports: [PrismaService, CacheService],
+  exports: [PrismaService, CacheService, ConfigService],
 })
 class InfraFalsaModule {}
 
@@ -56,6 +59,8 @@ describe('ReceitasModule - ordem das rotas', () => {
       imports: [InfraFalsaModule, ReceitasModule],
     })
       .overrideProvider(IaService)
+      .useValue({})
+      .overrideProvider(TermosService)
       .useValue({})
       .overrideProvider(UsuarioService)
       .useValue({})
@@ -85,6 +90,20 @@ describe('ReceitasModule - ordem das rotas', () => {
       .get('/api/receita/pendentes')
       .expect(200);
     expect(res.body).toEqual([]);
+  });
+
+  it('POST paga recusa o profissional antes de validar o corpo', async () => {
+    await request(app.getHttpServer())
+      .post('/api/receita/paga')
+      .send({})
+      .expect(403);
+  });
+
+  it('GET a-venda vai para a vitrine, não para GET :id', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/receita/a-venda')
+      .expect(404);
+    expect(res.body.message).toBe('Nenhuma receita à venda encontrada');
   });
 
   it('as rotas do ReceitaController continuam respondendo', async () => {

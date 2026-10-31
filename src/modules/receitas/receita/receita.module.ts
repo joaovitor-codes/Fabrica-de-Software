@@ -5,9 +5,15 @@ import { IngredientesReceitaModule } from './ingredientes-receita.module';
 import { UsuarioService } from '../../identidade/usuario/usuario.service';
 import { VisibilidadeModule } from '../visibilidade/visibilidade.module';
 import { AdaptacaoModule } from '../adaptacao/adaptacao.module';
+import { TermosModule } from '../../marketplace/termos/termos.module';
 
 @Module({
-  imports: [IngredientesReceitaModule, VisibilidadeModule, AdaptacaoModule],
+  imports: [
+    IngredientesReceitaModule,
+    VisibilidadeModule,
+    AdaptacaoModule,
+    TermosModule,
+  ],
   controllers: [ReceitaController],
   providers: [ReceitaService, UsuarioService],
 })

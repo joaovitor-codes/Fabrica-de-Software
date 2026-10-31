@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import {
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -274,6 +275,24 @@ describe('AdaptacaoPacienteService.adaptar', () => {
     await expect(
       service.adaptar('arroz-feijao', 'hipertensao', usuario),
     ).rejects.toThrow('não tratou: Sal, grosso');
+  });
+
+  it('receita paga de outro autor: 403, sem chamar a IA nem gravar', async () => {
+    prisma.receita.findFirst.mockResolvedValue({
+      ...origem,
+      criadoPor: 'vendedor',
+      status: 'aprovada',
+      oferta: { id: 'oferta' },
+    });
+
+    await expect(
+      service.adaptar('arroz-feijao', 'hipertensao', usuario),
+    ).rejects.toThrow(
+      new ForbiddenException(
+        'Receita paga: só pode ser adaptada a cópia de quem comprou.',
+      ),
+    );
+    expect(ia.adaptarReceita).not.toHaveBeenCalled();
   });
 
   it('receita ou restrição inexistentes: 404', async () => {

@@ -55,6 +55,7 @@ export class AdaptacaoPacienteService {
     const origem = await this.base.carregarOrigem(
       receitaId,
       this.visibilidade.filtroBase(usuario),
+      usuario,
     );
 
     // 1. Já existe adaptação desta receita, nesta versão, para a restrição.

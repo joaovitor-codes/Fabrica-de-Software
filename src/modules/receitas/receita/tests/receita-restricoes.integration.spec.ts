@@ -17,18 +17,20 @@ import {
   TipoRestricao,
   TipoUsuario,
 } from '@prisma/client';
-import { ReceitaController } from './receita.controller';
-import { ReceitaService } from './receita.service';
-import { AdaptacaoCatalogoService } from '../adaptacao/adaptacao-catalogo.service';
-import { AdaptacaoPacienteService } from '../adaptacao/adaptacao-paciente.service';
-import { IngredientesReceitaService } from './ingredientes-receita.service';
-import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { CacheService } from '../../../common/cache/cache.service';
-import { UsuarioService } from '../../identidade/usuario/usuario.service';
-import { IaService } from '../../ia/ia.service';
-import { AuthGuard } from '../../../auth/auth.guard';
-import { OptionalAuthGuard } from '../../../auth/optional-auth.guard';
+import { ReceitaController } from '../receita.controller';
+import { ReceitaService } from '../receita.service';
+import { TermosService } from '../../../marketplace/termos/termos.service';
+import { ConfigService } from '@nestjs/config';
+import { AdaptacaoCatalogoService } from '../../adaptacao/adaptacao-catalogo.service';
+import { AdaptacaoPacienteService } from '../../adaptacao/adaptacao-paciente.service';
+import { IngredientesReceitaService } from '../ingredientes-receita.service';
+import { VisibilidadeReceitaService } from '../../visibilidade/visibilidade-receita.service';
+import { PrismaService } from '../../../../common/prisma/prisma.service';
+import { CacheService } from '../../../../common/cache/cache.service';
+import { UsuarioService } from '../../../identidade/usuario/usuario.service';
+import { IaService } from '../../../ia/ia.service';
+import { AuthGuard } from '../../../../auth/auth.guard';
+import { OptionalAuthGuard } from '../../../../auth/optional-auth.guard';
 
 const usuarioDosHeaders = (req: any) => {
   const id = req.headers['x-user-id'];
@@ -276,6 +278,9 @@ describe('Receita - filtro por restrições do paciente (integration)', () => {
       controllers: [ReceitaController],
       providers: [
         ReceitaService,
+        // Só a criação com oferta usa; estes testes não passam por ela.
+        { provide: TermosService, useValue: {} },
+        { provide: ConfigService, useValue: {} },
         IngredientesReceitaService,
         VisibilidadeReceitaService,
         AdaptacaoCatalogoService,

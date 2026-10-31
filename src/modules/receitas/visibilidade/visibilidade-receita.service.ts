@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, StatusReceita, TipoUsuario } from '@prisma/client';
+import {
+  Prisma,
+  StatusReceita,
+  StatusRecebedor,
+  TipoUsuario,
+} from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 import {
@@ -51,6 +56,33 @@ export class VisibilidadeReceitaService {
         },
         { criadoPor: usuario.id },
       ],
+    };
+  }
+
+  /**
+   * Para as listagens gratuitas (/all, /nome, /sugestoes, /validadas): receita
+   * com oferta, ativa ou pausada, é paga e só aparece em /a-venda (D13). Vale
+   * para todos, inclusive autor e equipe. O detalhe não usa este filtro.
+   */
+  semReceitasPagas(): Prisma.ReceitaWhereInput {
+    return { oferta: { is: null } };
+  }
+
+  /**
+   * Receita à venda: as quatro condições da seção 4.1 das decisões do
+   * marketplace. Oferta pausada ou vendedor sem Mercado Pago ativo saem da
+   * vitrine, mas o conteúdo continua fechado (semReceitasPagas).
+   */
+  filtroAVenda(): Prisma.ReceitaWhereInput {
+    return {
+      status: StatusReceita.aprovada,
+      deletedAt: null,
+      adaptacaoDe: { is: null },
+      copiaDeCompra: { is: null },
+      oferta: { is: { ativa: true } },
+      criador: {
+        contaRecebedor: { is: { status: StatusRecebedor.ativo } },
+      },
     };
   }
 
