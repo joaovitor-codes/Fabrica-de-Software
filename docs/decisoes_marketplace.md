@@ -161,7 +161,10 @@ O comprador pede em `POST /api/receita/compra/:compraId/reembolso`, em até 7 di
 - **Conexão (OAuth).** `GET /api/recebedor/conectar` devolve a URL de autorização. O Mercado Pago redireciona o vendedor para `GET /api/recebedor/callback` com `code` (válido por 10 minutos) e `state`. A API troca o código pelos tokens e cria `ContaRecebedor` como `ativo`.
 - **Tokens.** Gravados cifrados, com a chave fora do banco, e nunca devolvidos por nenhuma rota. O token de acesso vale 180 dias; um job o renova pelo refresh token antes de `tokenExpiraEm`. Se falhar, o status vira `desconectado`.
 - **Cobrança.** Cada compra cria uma preferência do Checkout Pro com o token do vendedor e a comissão da plataforma em `marketplace_fee`. A tarifa do Mercado Pago sai da parte do vendedor. A compra guarda `gatewayPreferenciaId` e `checkoutUrl`.
-- **Webhook.** `POST /api/pagamento/webhook` confere a assinatura do cabeçalho `x-signature`, busca o pagamento no Mercado Pago e responde `200`. O Mercado Pago espera a resposta por 22 segundos e reenvia a cada 15 minutos se ela não vier. A rota é idempotente por `Pagamento.gatewayCobrancaId`, que é único.
+  - `marketplace_fee` é um **valor em reais**, não um percentual (confirmado no sandbox em 31/10/2026: `marketplace_fee: 15` numa venda de R$ 100 virou `application_fee` de R$ 15,00, e o vendedor recebeu R$ 80,01 depois da tarifa do Mercado Pago de R$ 4,99). A API calcula `taxaPlataforma = round(preco × MARKETPLACE_TAXA_PERCENTUAL / 100, 2)`.
+  - O boleto fica fora da preferência: leva dias para compensar e seguraria a compra `pendente`.
+  - O `notification_url` precisa ser um endereço HTTPS público. Com um endereço que o Mercado Pago não alcança, ele cria a preferência mesmo assim, mas o checkout recusa o pagamento sem dizer o motivo. Por isso `API_URL_PUBLICA` é validado na subida da API.
+- **Webhook.** `POST /api/mercado-pago/webhook` confere a assinatura do cabeçalho `x-signature`, busca o pagamento no Mercado Pago e responde `200`. O Mercado Pago espera a resposta por 22 segundos e reenvia a cada 15 minutos se ela não vier. A rota é idempotente por `Pagamento.gatewayCobrancaId`, que é único.
 - **Registro do pagamento.** A linha de `Pagamento` nasce no webhook, e não na criação da compra, porque no Checkout Pro o ID do pagamento só existe depois que o comprador paga.
 
 ## 5. Vitrine de produtos
@@ -203,7 +206,7 @@ Substitui o limite único de 10 requisições por minuto por IP.
 | Leitura (`GET`) | 120 por minuto |
 | Escrita (`POST`, `PATCH`, `DELETE`) | 30 por minuto |
 | Login | 5 tentativas a cada 15 minutos, como hoje |
-| `POST /api/pagamento/webhook` | Sem limite por IP; a proteção é a assinatura do Mercado Pago |
+| `POST /api/mercado-pago/webhook` | Sem limite por IP; a proteção é a assinatura do Mercado Pago |
 
 ## 8. Modelo de dados (v5)
 
@@ -292,7 +295,7 @@ Todas com prefixo `/api`. Acesso: **Público**, **Login opcional**, **Login**, o
 | POST | `/receita/compra/:compraId/reembolso` | Login (comprador) | Pede o reembolso |
 | GET | `/receita/reembolsos` | admin | Fila de pedidos em análise |
 | PATCH | `/receita/compra/:compraId/reembolso` | admin | Aprova ou nega um pedido |
-| POST | `/pagamento/webhook` | Público | Recebe os avisos do Mercado Pago |
+| POST | `/mercado-pago/webhook` | Público | Recebe os avisos do Mercado Pago |
 
 **Vitrine de produtos (24)**
 
@@ -336,6 +339,8 @@ Os nomes são uma proposta.
 | `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_REDIRECT_URI` | Aplicação da plataforma no Mercado Pago e o endereço do callback do OAuth |
 | `MP_WEBHOOK_SECRET` | Conferir a assinatura das notificações |
 | `RECEBEDOR_TOKEN_KEY` | Chave que cifra os tokens dos vendedores no banco |
+| `API_URL_PUBLICA` | Domínio HTTPS público da API, base do `notification_url` da preferência |
+| `FRONT_URL` | Endereço do front, base das `back_urls` para onde o comprador volta depois de pagar |
 | `MARKETPLACE_TAXA_PERCENTUAL`, `MARKETPLACE_PRECO_MINIMO` | Comissão da plataforma e menor preço aceito em uma oferta |
 | `MARKETPLACE_REEMBOLSO_DIAS` | Prazo do pedido de reembolso (7) |
 | `MARKETPLACE_TERMOS_VERSAO` | Versão atual dos termos |
@@ -351,7 +356,8 @@ Os nomes são uma proposta.
 **Pendências de implementação**
 
 - Escolher os valores de `MARKETPLACE_TAXA_PERCENTUAL` e `MARKETPLACE_PRECO_MINIMO`.
-- Conferir na referência da API do Mercado Pago: a unidade do `marketplace_fee`, os meios de pagamento aceitos no split e o prazo de liberação do dinheiro. A documentação consultada não deixa isso claro.
+- ~~Unidade do `marketplace_fee`~~: resolvido, é valor em reais (ver 4.8).
+- Conferir no sandbox o Pix e o cartão no split, e o prazo de liberação do dinheiro no cartão. Com saldo em conta, o split funcionou e o dinheiro foi liberado na hora.
 - Rodar `npx prisma validate` no schema v5. A validação oficial não pôde ser executada no ambiente em que o schema foi escrito; a estrutura foi conferida só por um verificador próprio.
 
 Como o projeto é de estudo, a integração pode ser desenvolvida com as credenciais e as contas de teste do Mercado Pago, sem dinheiro real.

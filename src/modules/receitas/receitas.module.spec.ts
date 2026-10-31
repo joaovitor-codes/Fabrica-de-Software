@@ -19,6 +19,15 @@ import { ConfigService } from '@nestjs/config';
 import { UsuarioService } from '../identidade/usuario/usuario.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { OptionalAuthGuard } from '../../auth/optional-auth.guard';
+import { RecebedorService } from '../marketplace/recebedor/recebedor.service';
+import { MercadoPagoService } from '../marketplace/mercado-pago/mercado-pago.service';
+
+// A compra importa o RecebedorModule, que traz o job de renovação. O
+// @nestjs/schedule é ESM e o jest não o carrega; aqui o job não importa.
+jest.mock('@nestjs/schedule', () => ({
+  Cron: () => () => undefined,
+  CronExpression: {},
+}));
 
 /** Prisma e cache falsos no lugar dos módulos globais da aplicação. */
 @Global()
@@ -64,6 +73,10 @@ describe('ReceitasModule - ordem das rotas', () => {
       .useValue({})
       .overrideProvider(UsuarioService)
       .useValue({})
+      .overrideProvider(RecebedorService)
+      .useValue({})
+      .overrideProvider(MercadoPagoService)
+      .useValue({})
       .overrideGuard(AuthGuard)
       .useClass(ProfissionalLogado)
       .overrideGuard(OptionalAuthGuard)
@@ -104,6 +117,20 @@ describe('ReceitasModule - ordem das rotas', () => {
       .get('/api/receita/a-venda')
       .expect(404);
     expect(res.body.message).toBe('Nenhuma receita à venda encontrada');
+  });
+
+  it('GET compra/:compraId vai para o CompraController', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/receita/compra/nao-e-uuid')
+      .expect(400);
+    expect(res.body.message).toBe('ID da compra inválido');
+  });
+
+  it('POST :id/comprar vai para o CompraController', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/receita/nao-e-uuid/comprar')
+      .expect(400);
+    expect(res.body.message).toBe('ID da receita inválido');
   });
 
   it('as rotas do ReceitaController continuam respondendo', async () => {
