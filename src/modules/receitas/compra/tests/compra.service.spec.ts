@@ -51,8 +51,26 @@ class FakePrismaService {
     id: RECEITA,
     nome: 'Bolo sem lactose',
     criadoPor: VENDEDOR,
+    descricao: 'Fofinho',
+    modoPreparo: 'Misture e asse.',
+    tempoPreparoMin: 40,
+    porcoes: 8,
+    nivelDificuldade: 'facil',
+    avisoContaminacaoCruzada: false,
+    ingredientesNaoListados: [],
     versaoAtual: 3,
     oferta: { id: OFERTA, preco: new Prisma.Decimal('29.90') },
+    ingredientes: [
+      {
+        ingredienteId: 'farinha',
+        quantidade: new Prisma.Decimal('200.50'),
+        unidadeMedidaId: 'g',
+      },
+    ],
+    midias: [
+      { url: 'https://cdn/2.jpg', tipo: 'passo_a_passo', ordem: 1 },
+      { url: 'https://cdn/1.jpg', tipo: 'capa', ordem: 0 },
+    ],
   };
   compras: any[] = [];
   erroAoCriar: Error | null = null;
@@ -196,6 +214,34 @@ describe('CompraService', () => {
           expiraEm: new Date(AGORA.getTime() + VALIDADE_PREFERENCIA_MS),
         },
       );
+    });
+
+    it('guarda o conteúdo da versão comprada, que não muda com edições da original', async () => {
+      await comprar();
+      prisma.receitaAVenda.nome = 'Bolo editado';
+      prisma.receitaAVenda.ingredientes = [];
+
+      expect(prisma.compras[0].conteudoComprado).toEqual({
+        nome: 'Bolo sem lactose',
+        descricao: 'Fofinho',
+        modoPreparo: 'Misture e asse.',
+        tempoPreparoMin: 40,
+        porcoes: 8,
+        nivelDificuldade: 'facil',
+        avisoContaminacaoCruzada: false,
+        ingredientesNaoListados: [],
+        ingredientes: [
+          {
+            ingredienteId: 'farinha',
+            quantidade: '200.5',
+            unidadeMedidaId: 'g',
+          },
+        ],
+        midias: [
+          { url: 'https://cdn/1.jpg', tipo: 'capa', ordem: 0 },
+          { url: 'https://cdn/2.jpg', tipo: 'passo_a_passo', ordem: 1 },
+        ],
+      });
     });
 
     it('mudar o preço da oferta depois não altera a compra existente', async () => {

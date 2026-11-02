@@ -16,6 +16,7 @@ import {
   restricoesVioladas,
 } from '../visibilidade/restricoes-receita';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
+import { conteudoDaReceita } from './compra.types';
 
 // A preferência do Checkout Pro nasce com esta validade. Sem webhook para
 // cancelar, uma pendente mais velha que isso dá lugar a uma compra nova.
@@ -48,7 +49,8 @@ export class CompraService {
 
   /**
    * Cria a compra de uma receita à venda e devolve o link do Checkout Pro.
-   * Preço e taxa ficam congelados na compra; a cópia só nasce no webhook.
+   * Preço, taxa e conteúdo da versão comprada ficam congelados na compra;
+   * a cópia só nasce no webhook, a partir desse conteúdo.
    */
   async comprar(
     receitaId: string,
@@ -59,7 +61,7 @@ export class CompraService {
 
     const receita = await this.prismaService.receita.findFirst({
       where: { id: receitaId, ...this.visibilidade.filtroAVenda() },
-      include: { oferta: true },
+      include: { oferta: true, ingredientes: true, midias: true },
     });
     if (!receita?.oferta) {
       throw new NotFoundException(
@@ -118,6 +120,9 @@ export class CompraService {
       precoPago: preco,
       taxaPlataforma: taxa,
       versaoComprada: receita.versaoAtual,
+      conteudoComprado: conteudoDaReceita(
+        receita,
+      ) as unknown as Prisma.InputJsonObject,
     });
 
     try {
