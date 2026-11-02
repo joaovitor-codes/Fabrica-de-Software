@@ -40,7 +40,7 @@ export class WebhookController {
   @ApiOperation({ summary: 'Recebe os avisos de pagamento do Mercado Pago' })
   @ApiOkResponse({ description: 'Aviso recebido (processado ou ignorado).' })
   @ApiUnauthorizedResponse({ description: 'Assinatura inválida.' })
-  @SkipThrottle()
+  @SkipThrottle({ leitura: true, escrita: true })
   @HttpCode(HttpStatus.OK)
   @Post('webhook')
   async receber(

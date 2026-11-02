@@ -59,6 +59,18 @@ describe('WebhookController', () => {
     );
   });
 
+  it('fica fora dos dois limites de requisições (leitura e escrita)', () => {
+    const metodo = Object.getOwnPropertyDescriptor(
+      WebhookController.prototype,
+      'receber',
+    )!.value as object;
+    for (const limite of ['leitura', 'escrita']) {
+      expect(
+        Reflect.getMetadata(`THROTTLER:SKIP${limite}`, metodo) as boolean,
+      ).toBe(true);
+    }
+  });
+
   it.each([
     ['outro tipo de aviso', { type: 'merchant_order', user_id: 1 }],
     ['aviso sem user_id', { type: 'payment' }],
