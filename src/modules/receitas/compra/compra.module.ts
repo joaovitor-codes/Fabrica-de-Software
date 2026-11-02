@@ -2,9 +2,12 @@ import { Module } from '@nestjs/common';
 import { MercadoPagoModule } from '../../marketplace/mercado-pago/mercado-pago.module';
 import { RecebedorModule } from '../../marketplace/recebedor/recebedor.module';
 import { TermosModule } from '../../marketplace/termos/termos.module';
+import { NotificacaoModule } from '../../notificacao/notificacao.module';
 import { VisibilidadeModule } from '../visibilidade/visibilidade.module';
 import { CompraController } from './compra.controller';
 import { CompraService } from './compra.service';
+import { WebhookCompraService } from './webhook-compra.service';
+import { WebhookController } from './webhook.controller';
 
 @Module({
   imports: [
@@ -12,8 +15,9 @@ import { CompraService } from './compra.service';
     RecebedorModule,
     MercadoPagoModule,
     VisibilidadeModule,
+    NotificacaoModule,
   ],
-  controllers: [CompraController],
-  providers: [CompraService],
+  controllers: [CompraController, WebhookController],
+  providers: [CompraService, WebhookCompraService],
 })
 export class CompraModule {}

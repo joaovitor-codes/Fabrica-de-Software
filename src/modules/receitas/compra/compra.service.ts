@@ -23,7 +23,7 @@ import { conteudoDaReceita } from './compra.types';
 export const VALIDADE_PREFERENCIA_MS = 24 * 60 * 60 * 1000;
 
 // Compra "viva": a que o índice uq_receita_compra_viva deixa existir uma só.
-const STATUS_VIVOS = [
+export const STATUS_VIVOS = [
   StatusCompraReceita.pendente,
   StatusCompraReceita.paga,
   StatusCompraReceita.reembolso_em_analise,
