@@ -18,9 +18,14 @@ import {
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { conteudoDaReceita } from './compra.types';
 
-// A preferência do Checkout Pro nasce com esta validade. Sem webhook para
-// cancelar, uma pendente mais velha que isso dá lugar a uma compra nova.
+// A preferência do Checkout Pro nasce com esta validade. Uma pendente mais
+// velha que isso dá lugar a uma compra nova em comprar().
 export const VALIDADE_PREFERENCIA_MS = 24 * 60 * 60 * 1000;
+
+// O job só cancela uma pendente depois da validade mais esta folga: um
+// pagamento feito no último minuto pode ter o aviso atrasado. Mesmo assim, o
+// aviso que chega depois do cancelamento ainda libera a cópia (webhook).
+export const FOLGA_AVISO_MS = 60 * 60 * 1000;
 
 // Compra "viva": a que o índice uq_receita_compra_viva deixa existir uma só.
 export const STATUS_VIVOS = [
@@ -180,6 +185,24 @@ export class CompraService {
       receitaCopiaId: compra.receitaCopiaId,
       createdAt: compra.createdAt,
     };
+  }
+
+  /**
+   * Cancela as pendentes cuja preferência venceu (com a folga), liberando o
+   * índice de compra viva. Recusa de cartão não cancela: só o vencimento.
+   */
+  async cancelarVencidas(agora = new Date()): Promise<number> {
+    const limite = new Date(
+      agora.getTime() - VALIDADE_PREFERENCIA_MS - FOLGA_AVISO_MS,
+    );
+    const { count } = await this.prismaService.receitaCompra.updateMany({
+      where: {
+        status: StatusCompraReceita.pendente,
+        createdAt: { lte: limite },
+      },
+      data: { status: StatusCompraReceita.cancelada },
+    });
+    return count;
   }
 
   private async criarCompra(data: Prisma.ReceitaCompraUncheckedCreateInput) {
