@@ -124,19 +124,20 @@ Uma receita com oferta nunca entrega o conteúdo completo nas rotas públicas, m
 - Receita que fere uma restrição **estrita** do comprador não pode ser comprada (`422`, com `restricoesVioladas`). Com restrição flexível, a compra segue e a prévia já mostra o aviso.
 - Usuário sem restrições cadastradas (o `comum`, por exemplo) compra sem essa checagem.
 - `precoPago` e `taxaPlataforma` ficam gravados na compra. Mudar o preço da oferta ou o percentual depois não altera compras antigas.
-- A cópia só é criada quando o Mercado Pago confirma o pagamento pelo webhook.
+- O conteúdo da receita (texto, ingredientes e mídias) fica guardado na compra, em `conteudoComprado`. A cópia só é criada quando o Mercado Pago confirma o pagamento pelo webhook, a partir desse conteúdo.
+- Cartão recusado não cancela a compra: no Checkout Pro o comprador pode tentar outro cartão no mesmo link. Quem cancela é o vencimento da preferência (24 horas): um job, de hora em hora, cancela a `pendente` vencida há mais de 1 hora.
 
 | Status da compra | Significado | Cópia |
 |---|---|---|
 | `pendente` | Link de pagamento criado, aguardando pagamento | Não existe |
 | `paga` | O Mercado Pago confirmou | Liberada |
-| `cancelada` | O pagamento falhou ou expirou; o usuário pode tentar de novo | Nunca existiu |
+| `cancelada` | O link de pagamento venceu sem pagamento aprovado; o usuário pode tentar de novo | Nunca existiu, a menos que um pagamento aprovado chegue depois (seção 4.8) |
 | `reembolso_em_analise` | O comprador pediu reembolso e o admin ainda não decidiu | Continua liberada |
 | `reembolsada` | O valor foi devolvido | Sai do ar |
 
 ### 4.6 A cópia
 
-- É uma `Receita` nova, com status `aprovada`, com os ingredientes e as mídias que a original tinha no momento da compra (`versaoComprada`). `ReceitaVersao` não guarda ingredientes, por isso a cópia não é um ponteiro para a versão.
+- É uma `Receita` nova, com status `aprovada`, com os ingredientes e as mídias que a original tinha no momento da compra. Eles são guardados na compra (`conteudoComprado`) quando ela é criada, porque o vendedor pode editar a original enquanto o pagamento está pendente, e `ReceitaVersao` não guarda ingredientes nem mídias.
 - **Não muda.** Edição posterior da original não chega à cópia. Ela continua existindo se o vendedor pausar a oferta ou excluir a original.
 - **Não circula.** Não aparece em listagens públicas nem na fila de curadoria, e não pode ser vendida.
 - **Adaptação.** O comprador usa a rota de hoje, `POST /api/receita/:id/adaptar`, sobre a cópia. O resultado é visível só para ele. Para restrição estrita, a adaptação continua precisando da verificação de um profissional.
@@ -164,7 +165,13 @@ O comprador pede em `POST /api/receita/compra/:compraId/reembolso`, em até 7 di
   - `marketplace_fee` é um **valor em reais**, não um percentual (confirmado no sandbox em 31/10/2026: `marketplace_fee: 15` numa venda de R$ 100 virou `application_fee` de R$ 15,00, e o vendedor recebeu R$ 80,01 depois da tarifa do Mercado Pago de R$ 4,99). A API calcula `taxaPlataforma = round(preco × MARKETPLACE_TAXA_PERCENTUAL / 100, 2)`.
   - O boleto fica fora da preferência: leva dias para compensar e seguraria a compra `pendente`.
   - O `notification_url` precisa ser um endereço HTTPS público. Com um endereço que o Mercado Pago não alcança, ele cria a preferência mesmo assim, mas o checkout recusa o pagamento sem dizer o motivo. Por isso `API_URL_PUBLICA` é validado na subida da API.
-- **Webhook.** `POST /api/mercado-pago/webhook` confere a assinatura do cabeçalho `x-signature`, busca o pagamento no Mercado Pago e responde `200`. O Mercado Pago espera a resposta por 22 segundos e reenvia a cada 15 minutos se ela não vier. A rota é idempotente por `Pagamento.gatewayCobrancaId`, que é único.
+- **Webhook.** `POST /api/mercado-pago/webhook` confere a assinatura do cabeçalho `x-signature`, busca o pagamento no Mercado Pago e responde `200`. O Mercado Pago espera a resposta por 22 segundos e reenvia a cada 15 minutos se ela não vier. A rota é idempotente por `Pagamento.gatewayCobrancaId`, que é único, e trava a linha da compra durante o processamento, então avisos simultâneos não liberam duas cópias.
+  - **Assinatura.** HMAC-SHA256 de `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` com a assinatura secreta do painel de Webhooks (`MP_WEBHOOK_SECRET`). Sem o segredo configurado, todo aviso é recusado (`401`). O `notification_url` leva `?source_news=webhooks` para chegar só o formato assinado, e não o IPN antigo.
+  - **Aprovado:** registra o `Pagamento`, cria a cópia, marca a compra como `paga` e notifica `receita_vendida` e `compra_liberada`, tudo numa transação.
+  - **Recusado, pendente ou estornado:** não muda a compra. O estorno é tratado no reembolso.
+  - **Aprovado para compra `cancelada`** (o aviso chegou depois do vencimento): libera a cópia se o comprador não tiver outra compra paga desta receita; uma `pendente` mais nova é cancelada. Se ele já tiver uma paga, o pagamento é registrado sem cópia e vai para o log, para estorno.
+  - **Ignorados com `200`** (um reenvio não resolveria): aviso que não é de pagamento, conta do Mercado Pago desconectada, compra de outro vendedor e valor pago diferente de `precoPago`. Os três últimos vão para o log.
+  - Falha ao consultar o Mercado Pago responde erro, e o aviso é reenviado.
 - **Registro do pagamento.** A linha de `Pagamento` nasce no webhook, e não na criação da compra, porque no Checkout Pro o ID do pagamento só existe depois que o comprador paga.
 
 ## 5. Vitrine de produtos
@@ -206,7 +213,7 @@ Substitui o limite único de 10 requisições por minuto por IP.
 | Leitura (`GET`) | 120 por minuto |
 | Escrita (`POST`, `PATCH`, `DELETE`) | 30 por minuto |
 | Login | 5 tentativas a cada 15 minutos, como hoje |
-| `POST /api/mercado-pago/webhook` | Sem limite por IP; a proteção é a assinatura do Mercado Pago |
+| `POST /api/mercado-pago/webhook` | Sem limite por IP; a proteção é a assinatura do Mercado Pago. Os limites têm nome (`leitura` e `escrita`), então a rota usa `@SkipThrottle({ leitura: true, escrita: true })`: o `@SkipThrottle()` sem argumento não pula nenhum dos dois |
 
 ## 8. Modelo de dados (v5)
 
@@ -217,7 +224,7 @@ Substitui o limite único de 10 requisições por minuto por IP.
 | `ContaRecebedor` | Conexão do vendedor com o Mercado Pago: ID da conta, tokens cifrados, validade e status. Um por usuário. |
 | `ReceitaOferta` | Preço e situação (`ativa`) da venda de uma receita. Um por receita. |
 | `ReceitaOfertaPublicoAlvo` | N:N entre oferta e `RestricaoAlimentar`. |
-| `ReceitaCompra` | A compra: preço e taxa congelados, status, preferência do gateway, cópia entregue e dados do reembolso. |
+| `ReceitaCompra` | A compra: preço, taxa e conteúdo da versão comprada congelados, status, preferência do gateway, cópia entregue e dados do reembolso. |
 | `Produto` | O anúncio da vitrine. |
 | `ProdutoMidia` | Fotos do produto. |
 | `ProdutoPublicoAlvo` | N:N entre produto e `RestricaoAlimentar`. |

@@ -1553,10 +1553,14 @@ model ReceitaOfertaPublicoAlvo {
 // mudar o preço da oferta ou a comissão depois não reescreve o passado.
 //
 // receitaCopiaId fica null até o pagamento ser confirmado. A cópia é
-// uma Receita nova, com os ingredientes e mídias da original naquele
-// momento (versaoComprada), status `aprovada` e o mesmo criadoPor do
-// vendedor (a autoria não muda). ReceitaVersao não guarda ingredientes,
-// então apontar para "a versão comprada" da original não bastaria.
+// uma Receita nova, status `aprovada` e o mesmo criadoPor do vendedor
+// (a autoria não muda), montada a partir de conteudoComprado.
+//
+// conteudoComprado guarda, na criação da compra, o conteúdo, os
+// ingredientes e as mídias da versão comprada (formato ConteudoComprado,
+// em compra.types.ts). O vendedor pode editar a original enquanto a
+// compra está pendente, e ReceitaVersao não guarda ingredientes nem
+// mídias, então a versão comprada não daria para reconstruir depois.
 //
 // Unicidade "uma compra viva por comprador e oferta" é o índice parcial
 // uq_receita_compra_viva do cabeçalho — um @@unique comum impediria
@@ -1574,6 +1578,7 @@ model ReceitaCompra {
   precoPago             Decimal             @map("preco_pago") @db.Decimal(10, 2)
   taxaPlataforma        Decimal             @map("taxa_plataforma") @db.Decimal(10, 2)
   versaoComprada        Int                 @map("versao_comprada")
+  conteudoComprado      Json                @map("conteudo_comprado")
   status                StatusCompraReceita @default(pendente)
   // Preferência do Checkout Pro e o link de pagamento dela. Uma compra
   // pendente devolve o mesmo link em vez de criar outra preferência.

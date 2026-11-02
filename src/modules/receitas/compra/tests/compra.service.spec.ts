@@ -19,7 +19,11 @@ import {
   restricoesVioladas,
 } from '../../visibilidade/restricoes-receita';
 import { VisibilidadeReceitaService } from '../../visibilidade/visibilidade-receita.service';
-import { CompraService, VALIDADE_PREFERENCIA_MS } from '../compra.service';
+import {
+  CompraService,
+  FOLGA_AVISO_MS,
+  VALIDADE_PREFERENCIA_MS,
+} from '../compra.service';
 
 // As regras de restrição têm testes próprios; aqui só importa o resultado.
 jest.mock('../../visibilidade/restricoes-receita', () => ({
@@ -51,8 +55,26 @@ class FakePrismaService {
     id: RECEITA,
     nome: 'Bolo sem lactose',
     criadoPor: VENDEDOR,
+    descricao: 'Fofinho',
+    modoPreparo: 'Misture e asse.',
+    tempoPreparoMin: 40,
+    porcoes: 8,
+    nivelDificuldade: 'facil',
+    avisoContaminacaoCruzada: false,
+    ingredientesNaoListados: [],
     versaoAtual: 3,
     oferta: { id: OFERTA, preco: new Prisma.Decimal('29.90') },
+    ingredientes: [
+      {
+        ingredienteId: 'farinha',
+        quantidade: new Prisma.Decimal('200.50'),
+        unidadeMedidaId: 'g',
+      },
+    ],
+    midias: [
+      { url: 'https://cdn/2.jpg', tipo: 'passo_a_passo', ordem: 1 },
+      { url: 'https://cdn/1.jpg', tipo: 'capa', ordem: 0 },
+    ],
   };
   compras: any[] = [];
   erroAoCriar: Error | null = null;
@@ -102,6 +124,15 @@ class FakePrismaService {
         data,
       ),
     ),
+    updateMany: jest.fn(async ({ where, data }: any) => {
+      const alvo = this.compras.filter(
+        (c) =>
+          c.status === where.status &&
+          c.createdAt.getTime() <= where.createdAt.lte.getTime(),
+      );
+      alvo.forEach((c) => Object.assign(c, data));
+      return { count: alvo.length };
+    }),
   };
 }
 
@@ -196,6 +227,34 @@ describe('CompraService', () => {
           expiraEm: new Date(AGORA.getTime() + VALIDADE_PREFERENCIA_MS),
         },
       );
+    });
+
+    it('guarda o conteúdo da versão comprada, que não muda com edições da original', async () => {
+      await comprar();
+      prisma.receitaAVenda.nome = 'Bolo editado';
+      prisma.receitaAVenda.ingredientes = [];
+
+      expect(prisma.compras[0].conteudoComprado).toEqual({
+        nome: 'Bolo sem lactose',
+        descricao: 'Fofinho',
+        modoPreparo: 'Misture e asse.',
+        tempoPreparoMin: 40,
+        porcoes: 8,
+        nivelDificuldade: 'facil',
+        avisoContaminacaoCruzada: false,
+        ingredientesNaoListados: [],
+        ingredientes: [
+          {
+            ingredienteId: 'farinha',
+            quantidade: '200.5',
+            unidadeMedidaId: 'g',
+          },
+        ],
+        midias: [
+          { url: 'https://cdn/1.jpg', tipo: 'capa', ordem: 0 },
+          { url: 'https://cdn/2.jpg', tipo: 'passo_a_passo', ordem: 1 },
+        ],
+      });
     });
 
     it('mudar o preço da oferta depois não altera a compra existente', async () => {
@@ -324,6 +383,62 @@ describe('CompraService', () => {
       await expect(comprar()).rejects.toThrow(UnprocessableEntityException);
       expect(prisma.compras[0].status).toBe(StatusCompraReceita.cancelada);
       expect(mercadoPago.criarPreferencia).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelarVencidas', () => {
+    const LIMITE = VALIDADE_PREFERENCIA_MS + FOLGA_AVISO_MS;
+    const criadaHa = (
+      ms: number,
+      status: StatusCompraReceita = StatusCompraReceita.pendente,
+    ) => ({
+      id: `compra-${ms}-${status}`,
+      status,
+      createdAt: new Date(AGORA.getTime() - ms),
+    });
+
+    it('cancela só as pendentes vencidas há mais que a folga', async () => {
+      prisma.compras = [
+        criadaHa(LIMITE + 1),
+        criadaHa(LIMITE),
+        criadaHa(LIMITE - 1),
+        criadaHa(VALIDADE_PREFERENCIA_MS + 1),
+        criadaHa(60_000),
+      ];
+
+      await expect(service.cancelarVencidas(AGORA)).resolves.toBe(2);
+
+      expect(prisma.compras.map((c) => c.status)).toEqual([
+        StatusCompraReceita.cancelada,
+        StatusCompraReceita.cancelada,
+        StatusCompraReceita.pendente,
+        StatusCompraReceita.pendente,
+        StatusCompraReceita.pendente,
+      ]);
+    });
+
+    it('não mexe em compra paga, por mais antiga que seja', async () => {
+      prisma.compras = [criadaHa(LIMITE * 10, StatusCompraReceita.paga)];
+
+      await expect(service.cancelarVencidas(AGORA)).resolves.toBe(0);
+      expect(prisma.compras[0].status).toBe(StatusCompraReceita.paga);
+    });
+
+    it('depois do cancelamento, o comprador pode comprar de novo', async () => {
+      prisma.compras = [
+        {
+          ...criadaHa(LIMITE + 1),
+          ofertaId: OFERTA,
+          compradorId: comprador.id,
+          checkoutUrl: 'https://mp/checkout/antigo',
+        },
+      ];
+      await service.cancelarVencidas(AGORA);
+
+      const resultado = await comprar();
+
+      expect(resultado.reaproveitada).toBe(false);
+      expect(resultado.checkoutUrl).toBe('https://mp/checkout/1');
     });
   });
 

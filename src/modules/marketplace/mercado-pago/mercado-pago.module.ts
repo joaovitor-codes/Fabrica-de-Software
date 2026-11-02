@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { MercadoPagoController } from './mercado-pago.controller';
 import { MercadoPagoService } from './mercado-pago.service';
 
+// A rota do webhook fica no CompraModule (WebhookController): este módulo
+// só traduz a API do Mercado Pago e não conhece receita nem compra.
 @Module({
-  controllers: [MercadoPagoController],
   providers: [MercadoPagoService],
   exports: [MercadoPagoService],
 })
