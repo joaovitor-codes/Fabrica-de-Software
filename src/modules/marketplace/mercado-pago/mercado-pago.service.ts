@@ -41,7 +41,8 @@ export class MercadoPagoService {
       ],
       marketplace_fee: dados.taxaPlataforma,
       external_reference: dados.referencia,
-      notification_url: `${apiUrl}/api/mercado-pago/webhook`,
+      // Só o formato Webhooks, que é assinado; o IPN antigo viria sem x-signature.
+      notification_url: `${apiUrl}/api/mercado-pago/webhook?source_news=webhooks`,
       back_urls: { success: retorno, failure: retorno, pending: retorno },
       auto_return: 'approved',
       payment_methods: { excluded_payment_types: [{ id: 'ticket' }] },

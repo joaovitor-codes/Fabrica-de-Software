@@ -125,7 +125,8 @@ describe('MercadoPagoService', () => {
         ],
         marketplace_fee: 4.49,
         external_reference: COMPRA_ID,
-        notification_url: 'https://api.exemplo.com/api/mercado-pago/webhook',
+        notification_url:
+          'https://api.exemplo.com/api/mercado-pago/webhook?source_news=webhooks',
         back_urls: {
           success: 'https://app.exemplo.com/compra/compra-1',
           failure: 'https://app.exemplo.com/compra/compra-1',
