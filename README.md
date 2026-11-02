@@ -143,7 +143,7 @@ O `.env` é validado na inicialização (`src/common/config/env.validation.ts`).
 
 O marketplace usa o **Split de Pagamentos 1:1** do Mercado Pago: cada vendedor conecta a própria conta pelo OAuth, e a cobrança da receita é feita com o token dele, com a comissão da plataforma em `marketplace_fee`. As decisões estão em [`docs/decisoes_marketplace.md`](docs/decisoes_marketplace.md).
 
-**Implementado:** a conexão do vendedor (`src/modules/marketplace/recebedor`) e o cliente do Mercado Pago (`src/modules/marketplace/mercado-pago`), que cria a preferência do Checkout Pro e consulta pagamentos. A compra e o webhook ainda não existem.
+**Implementado:** a conexão do vendedor (`src/modules/marketplace/recebedor`), o cliente do Mercado Pago (`src/modules/marketplace/mercado-pago`), que cria a preferência do Checkout Pro e consulta pagamentos, e a compra com o webhook (`src/modules/receitas/compra`), que libera a cópia quando o pagamento é aprovado.
 
 | Rota | Acesso | O que faz |
 |---|---|---|
@@ -151,6 +151,9 @@ O marketplace usa o **Split de Pagamentos 1:1** do Mercado Pago: cada vendedor c
 | `GET /api/recebedor/callback` | Público | Destino do redirecionamento; troca o código pelos tokens e cria ou reativa a `ContaRecebedor` |
 | `GET /api/recebedor/me` | Login | Situação da conexão (nunca devolve tokens) |
 | `DELETE /api/recebedor` | Login | Desconecta e apaga os tokens |
+| `POST /api/receita/:id/comprar` | Login | Cria a compra `pendente` e devolve o `checkoutUrl` |
+| `GET /api/receita/compra/:compraId` | Login | Situação da compra (só o comprador) |
+| `POST /api/mercado-pago/webhook` | Público (assinatura) | Aviso de pagamento: aprovado libera a cópia |
 
 - O `state` do OAuth é aleatório, fica 10 minutos no Redis e só pode ser usado uma vez.
 - Os tokens são cifrados com AES-256-GCM (`RECEBEDOR_TOKEN_KEY`) e nunca saem em resposta nem em log.
@@ -205,7 +208,24 @@ Depois, uma única vez:
 | `409` | Essa conta do Mercado Pago já está conectada a outro usuário do Nutrify. |
 | `503` | `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_REDIRECT_URI` ou `RECEBEDOR_TOKEN_KEY` faltando no `.env`. |
 
-### Testar um pagamento no sandbox
+### Webhook
+
+Uma vez, no painel logado como **Integrador**: aplicação → **Webhooks** → **Configurar notificações**, aba **Modo produção** (as credenciais do `.env` são as de produção da conta de teste):
+
+- URL: `https://<seu-dominio>.ngrok-free.dev/api/mercado-pago/webhook`
+- Evento: **Pagamentos**
+- Copie a **assinatura secreta** para `MP_WEBHOOK_SECRET` no `.env` e reinicie a API. Sem ela, todo aviso é recusado com `401`.
+
+A preferência manda o próprio `notification_url` (`API_URL_PUBLICA/api/mercado-pago/webhook?source_news=webhooks`), mas a assinatura usa a chave desse painel. Cada aviso que chega aparece no inspetor do ngrok (`http://127.0.0.1:4040`), com a resposta da API.
+
+### Testar uma compra de ponta a ponta
+
+1. Com a API e o túnel ligados, faça login no Swagger com um usuário que aceitou os termos e não é o vendedor, e chame `POST /api/receita/:id/comprar` com uma receita à venda.
+2. Abra o `checkoutUrl` numa aba anônima nova, entre com o **Comprador de teste** e pague (titular `APRO`, CPF `12345678909`).
+3. O aviso chega em segundos: a compra fica `paga`, com `receitaCopiaId`, e vendedor e comprador recebem a notificação.
+4. Com titular `OTHE` o pagamento é recusado e a compra continua `pendente`; dá para pagar de novo no mesmo link. O cartão novo fica salvo com o titular digitado, então use outro cartão ou o saldo para a nova tentativa.
+
+### Testar um pagamento no sandbox (sem a API)
 
 Com um vendedor conectado, `scripts/sandbox-mercado-pago.ts` chama o cliente do Mercado Pago direto, sem a API rodando nem o túnel ligado. Precisa do banco, de `RECEBEDOR_TOKEN_KEY`, `API_URL_PUBLICA` e `FRONT_URL` no `.env`. Nenhum modo imprime tokens.
 
@@ -227,6 +247,9 @@ npx ts-node scripts/sandbox-mercado-pago.ts recentes <user_id>                # 
 |---|---|
 | Checkout mostra "Não foi possível processar seu pagamento" e nada aparece em `recentes` | O `notification_url` da preferência é inválido: confira `API_URL_PUBLICA`. O Mercado Pago cria a preferência mesmo assim e só recusa no pagamento. Outra causa possível é o comprador logado ser o próprio vendedor ou o Integrador. |
 | Aparece em `recentes` com `rejected` | O `status_detail` diz o motivo (saldo insuficiente, titular do cartão diferente de `APRO`, etc.). |
+| "A transação não aceita este meio de pagamento" ao digitar o cartão | O checkout recusou esse cartão de teste antes de tentar o pagamento. Use o Visa `4235 6477 2802 5682`. |
+| Aviso chega no ngrok com `401` | `MP_WEBHOOK_SECRET` diferente da assinatura secreta do painel de Webhooks, ou API não reiniciada depois de trocar. |
+| Aviso com `200`, mas a compra não muda | Veja o log da API: conta do vendedor desconectada, valor diferente do preço ou pagamento ainda não aprovado. |
 | `404` em `pagamento` | ID errado (atenção a pontuação copiada junto). |
 
 ## Estrutura do projeto

@@ -33,9 +33,9 @@ Os módulos novos seguem a organização atual de `src/modules`, por domínio:
 | `src/modules/marketplace/categoria` | CRUD de `CategoriaProduto` (padrão de `nutricao/unidade-medida`) |
 | `src/modules/marketplace/produtos` | Agregador da vitrine, com os submódulos `produto`, `produto-midia` e `produto-denuncia` |
 | `src/modules/marketplace/recebedor` | OAuth do Mercado Pago, `ContaRecebedor` e renovação de token |
-| `src/modules/marketplace/mercado-pago` | Cliente do Mercado Pago (preferência do Checkout Pro, consulta de pagamento) e webhook |
+| `src/modules/marketplace/mercado-pago` | Cliente do Mercado Pago (preferência do Checkout Pro, consulta de pagamento) e validação da assinatura do webhook |
 | `src/modules/receitas/oferta` | `ReceitaOferta` e público-alvo |
-| `src/modules/receitas/compra` | `ReceitaCompra`, cópia, compradas, vendas e reembolso |
+| `src/modules/receitas/compra` | `ReceitaCompra`, webhook do Mercado Pago, cópia, job de vencimento, compradas, vendas e reembolso |
 | `src/common/notificacao` | Serviço que cria `Notificacao`, usado pelos dois lados |
 
 Pontos do código atual que vão ser alterados:
@@ -155,10 +155,11 @@ Esta etapa entra junto com 5.3. Sem ela, criar uma oferta não fecha nada e o co
 
 ### 6.2 Webhook e cópia
 
-- `POST /api/mercado-pago/webhook` com `@SkipThrottle()`, conferindo `x-signature` com `MP_WEBHOOK_SECRET`, buscando o pagamento na API do Mercado Pago e respondendo `200` rápido.
+- `POST /api/mercado-pago/webhook` fora dos limites de requisições, conferindo `x-signature` com `MP_WEBHOOK_SECRET`, buscando o pagamento na API do Mercado Pago e respondendo `200` rápido.
 - Idempotente por `Pagamento.gatewayCobrancaId`.
-- Aprovado: em uma transação, cria `Pagamento`, cria a cópia (`Receita` aprovada, com ingredientes e mídias da versão comprada), marca a compra como `paga` e notifica `receita_vendida` e `compra_liberada`.
-- Recusado ou expirado: compra `cancelada`.
+- Aprovado: em uma transação, cria `Pagamento`, cria a cópia (`Receita` aprovada, a partir do `conteudoComprado` guardado na compra), marca a compra como `paga` e notifica `receita_vendida` e `compra_liberada`.
+- Recusado: a compra continua `pendente` (o comprador pode tentar outro cartão no mesmo link).
+- Vencido: um job de hora em hora cancela a `pendente` com a preferência vencida há mais de 1 hora. Aprovado que chega depois disso ainda libera a cópia, se o comprador não tiver outra compra paga (seção 4.8 das decisões).
 
 ### 6.3 Acesso à cópia
 
