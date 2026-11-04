@@ -21,6 +21,14 @@ import {
 } from './restricoes-receita';
 
 /**
+ * A cópia de uma compra é aprovada e não tem oferta, mas é conteúdo pago.
+ * O `criadoPor` dela é o vendedor, então ser o autor não libera a cópia.
+ */
+const semCopiasDeCompra = {
+  copiaDeCompra: { is: null },
+} satisfies Prisma.ReceitaWhereInput;
+
+/**
  * Quem vê quais receitas, considerando as restrições alimentares do
  * paciente. Usado pelas listagens, pela receita aberta pelo id, pelos
  * favoritos e pela adaptação. Regras em regra_negocio_receitas_seguras.md.
@@ -40,15 +48,24 @@ export class VisibilidadeReceitaService {
    * Quem vê quais receitas, sem olhar restrição: visitante só as aprovadas;
    * usuário logado as aprovadas e as próprias; admin e profissional
    * (curadoria) todas. Adaptação feita para um paciente só aparece para ele.
+   * A cópia de uma compra só o admin abre.
    */
   filtroBase(usuario?: UsuarioAutenticado): Prisma.ReceitaWhereInput {
     if (!usuario) {
-      return { status: StatusReceita.aprovada, AND: [semAdaptacoesDeOutros()] };
+      return {
+        ...semCopiasDeCompra,
+        status: StatusReceita.aprovada,
+        AND: [semAdaptacoesDeOutros()],
+      };
     }
-    if (this.ehEquipe(usuario)) {
+    if (usuario.tipoUsuario === TipoUsuario.admin) {
       return {};
     }
+    if (this.ehEquipe(usuario)) {
+      return semCopiasDeCompra;
+    }
     return {
+      ...semCopiasDeCompra,
       OR: [
         {
           status: StatusReceita.aprovada,
@@ -61,11 +78,12 @@ export class VisibilidadeReceitaService {
 
   /**
    * Para as listagens gratuitas (/all, /nome, /sugestoes, /validadas): receita
-   * com oferta, ativa ou pausada, é paga e só aparece em /a-venda (D13). Vale
-   * para todos, inclusive autor e equipe. O detalhe não usa este filtro.
+   * com oferta, ativa ou pausada, é paga e só aparece em /a-venda (D13), e a
+   * cópia de uma compra não aparece em nenhuma. Vale para todos, inclusive
+   * autor e equipe. O detalhe não usa este filtro.
    */
   semReceitasPagas(): Prisma.ReceitaWhereInput {
-    return { oferta: { is: null } };
+    return { ...semCopiasDeCompra, oferta: { is: null } };
   }
 
   /**
@@ -78,7 +96,7 @@ export class VisibilidadeReceitaService {
       status: StatusReceita.aprovada,
       deletedAt: null,
       adaptacaoDe: { is: null },
-      copiaDeCompra: { is: null },
+      ...semCopiasDeCompra,
       oferta: { is: { ativa: true } },
       criador: {
         contaRecebedor: { is: { status: StatusRecebedor.ativo } },
@@ -111,6 +129,7 @@ export class VisibilidadeReceitaService {
     const flexiveis = restricoes.filter((r) => !r.estrita);
     const segura = clausulaSegura(estritas);
     return {
+      ...semCopiasDeCompra,
       OR: [
         {
           status: StatusReceita.aprovada,
