@@ -3,9 +3,9 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import {
+  Prisma,
   StatusAprovacao,
   StatusReceita,
   TipoTransacaoPontos,
@@ -46,21 +46,7 @@ export class CuradoriaReceitaService {
   }
 
   async aprovarReceita(id: string, usuarioId: string) {
-    const profissional = await this.prismaService.profissional.findUnique({
-      where: { usuarioId },
-    });
-
-    if (!profissional) {
-      throw new NotFoundException(
-        'Você ainda não possui cadastro profissional',
-      );
-    }
-
-    if (profissional.statusAprovacao !== StatusAprovacao.aprovado) {
-      throw new UnauthorizedException(
-        'Apenas profissionais aprovados podem realizar esta ação',
-      );
-    }
+    const profissional = await this.exigirProfissionalAprovado(usuarioId);
 
     const resultado = await this.prismaService.$transaction(async (tx) => {
       const receita = await tx.receita.findUnique({ where: { id } });
@@ -75,17 +61,10 @@ export class CuradoriaReceitaService {
         );
       }
 
-      if (receita.status === 'aprovada') {
-        throw new ConflictException('A receita já foi aprovada');
-      }
-
-      const receitaAprovada = await tx.receita.update({
-        where: { id },
-        data: {
-          status: 'aprovada',
-          profissionalAprovadorId: profissional.id,
-          dataAprovacao: new Date(),
-        },
+      const receitaAprovada = await this.sairDaFila(tx, id, {
+        status: StatusReceita.aprovada,
+        profissionalAprovadorId: profissional.id,
+        dataAprovacao: new Date(),
       });
 
       await this.pontosTransacaoService.createPontoTransacao(
@@ -135,15 +114,7 @@ export class CuradoriaReceitaService {
   }
 
   async rejeitarReceita(id: string, usuarioId: string) {
-    const profissional = await this.prismaService.profissional.findUnique({
-      where: { usuarioId },
-    });
-
-    if (!profissional) {
-      throw new NotFoundException(
-        'Você ainda não possui cadastro profissional',
-      );
-    }
+    const profissional = await this.exigirProfissionalAprovado(usuarioId);
 
     const resultado = await this.prismaService.$transaction(async (tx) => {
       const receita = await tx.receita.findUnique({ where: { id } });
@@ -158,15 +129,8 @@ export class CuradoriaReceitaService {
         );
       }
 
-      if (receita.status === 'rejeitada') {
-        throw new ConflictException('A receita já foi rejeitada');
-      }
-
-      const receitaRejeitada = await tx.receita.update({
-        where: { id },
-        data: {
-          status: 'rejeitada',
-        },
+      const receitaRejeitada = await this.sairDaFila(tx, id, {
+        status: StatusReceita.rejeitada,
       });
 
       await this.pontosTransacaoService.createPontoTransacao(
@@ -186,5 +150,47 @@ export class CuradoriaReceitaService {
     // O status mudou: a lista pública em cache ficou desatualizada.
     await this.cacheService.del('receitas:all');
     return resultado;
+  }
+
+  private async exigirProfissionalAprovado(usuarioId: string) {
+    const profissional = await this.prismaService.profissional.findUnique({
+      where: { usuarioId },
+    });
+
+    if (!profissional) {
+      throw new NotFoundException(
+        'Você ainda não possui cadastro profissional',
+      );
+    }
+
+    if (profissional.statusAprovacao !== StatusAprovacao.aprovado) {
+      throw new ForbiddenException(
+        'Apenas profissionais aprovados podem realizar esta ação',
+      );
+    }
+
+    return profissional;
+  }
+
+  /**
+   * Só uma decisão vale por revisão: a mudança parte de `pendente` no próprio
+   * UPDATE, então dois curadores juntos não ganham os dois pontos e aprovada
+   * ou rejeitada não troca de lado. Para voltar à fila, a receita é editada.
+   */
+  private async sairDaFila(
+    tx: Prisma.TransactionClient,
+    id: string,
+    data: Prisma.ReceitaUncheckedUpdateManyInput,
+  ) {
+    const { count } = await tx.receita.updateMany({
+      where: { id, status: StatusReceita.pendente, deletedAt: null },
+      data,
+    });
+
+    if (count === 0) {
+      throw new ConflictException('A receita não está pendente de curadoria');
+    }
+
+    return tx.receita.findUniqueOrThrow({ where: { id } });
   }
 }

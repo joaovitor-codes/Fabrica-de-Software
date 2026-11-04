@@ -158,6 +158,18 @@ describe('ReceitaService - autor ou admin e alertas', () => {
       ]);
     });
 
+    it('receita rejeitada editada volta para a fila, sem nova versão', async () => {
+      prisma.receitas.set(receitaId, {
+        ...prisma.receitas.get(receitaId),
+        status: 'rejeitada',
+      });
+
+      await service.update(receitaId, { nome: 'Corrigida' }, autor);
+
+      expect(prisma.receitas.get(receitaId).status).toBe('pendente');
+      expect(prisma.versoes).toHaveLength(0);
+    });
+
     it('receita pendente editada continua pendente, sem nova versão', async () => {
       await service.update(receitaId, { nome: 'Ajuste' }, autor);
 

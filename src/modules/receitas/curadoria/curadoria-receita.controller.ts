@@ -40,7 +40,8 @@ export class CuradoriaReceitaController {
   @ApiOperation({ summary: 'Aprova uma receita pelo ID' })
   @ApiOkResponse({ description: 'Receita aprovada com sucesso.' })
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.profissional)
   @Patch(':id/aprovar')
   async aprovarReceita(
     @Param('id', uuidPipe('ID inválido')) id: string,
@@ -52,7 +53,8 @@ export class CuradoriaReceitaController {
   @ApiOperation({ summary: 'Rejeita uma receita pelo ID' })
   @ApiOkResponse({ description: 'Receita rejeitada com sucesso.' })
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.profissional)
   @Patch(':id/rejeitar')
   async rejeitarReceita(
     @Param('id', uuidPipe('ID inválido')) id: string,

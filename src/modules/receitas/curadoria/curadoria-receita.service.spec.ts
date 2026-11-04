@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'crypto';
 import { StatusAprovacao, TipoTransacaoPontos } from '@prisma/client';
@@ -50,10 +51,12 @@ class FakePrismaService {
 
   receita = {
     findUnique: async ({ where }: any) => this.receitas.get(where.id) ?? null,
-    update: async ({ where, data }: any) => {
-      const receita = { ...this.receitas.get(where.id), ...data };
-      this.receitas.set(where.id, receita);
-      return receita;
+    findUniqueOrThrow: async ({ where }: any) => this.receitas.get(where.id),
+    updateMany: async ({ where, data }: any) => {
+      const receita = this.receitas.get(where.id);
+      if (receita?.status !== where.status) return { count: 0 };
+      this.receitas.set(where.id, { ...receita, ...data });
+      return { count: 1 };
     },
   };
 
@@ -173,6 +176,43 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
     ]);
     expect(prisma.transactionCalls).toBe(1);
     expect(cache.del).toHaveBeenCalledWith('receitas:all');
+  });
+
+  describe.each([
+    ['aprovar', 'aprovarReceita'],
+    ['rejeitar', 'rejeitarReceita'],
+  ] as const)('%s', (_acao, metodo) => {
+    it.each([StatusAprovacao.pendente, StatusAprovacao.rejeitado])(
+      'recusa o profissional com cadastro %s, sem mexer na receita',
+      async (statusAprovacao) => {
+        prisma.profissionais.get(profissional.id).statusAprovacao =
+          statusAprovacao;
+
+        await expect(
+          service[metodo](receitaId, profissional.usuarioId),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+
+        expect(prisma.receitas.get(receitaId).status).toBe('pendente');
+        expect(prisma.transacoes.size).toBe(0);
+      },
+    );
+
+    it.each(['aprovada', 'rejeitada'])(
+      'recusa a receita %s, sem dar pontos',
+      async (status) => {
+        prisma.receitas.get(receitaId).status = status;
+
+        await expect(
+          service[metodo](receitaId, profissional.usuarioId),
+        ).rejects.toBeInstanceOf(ConflictException);
+
+        expect(prisma.receitas.get(receitaId).status).toBe(status);
+        expect(prisma.profissionais.get(profissional.id).pontosIncentivo).toBe(
+          0,
+        );
+        expect(prisma.transacoes.size).toBe(0);
+      },
+    );
   });
 
   it('desfaz a aprovação da receita se a criação dos pontos falhar', async () => {

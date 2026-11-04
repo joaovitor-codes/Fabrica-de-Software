@@ -366,6 +366,9 @@ export class AuthService {
       },
       include: {
         conta: true,
+        // null para quem nunca solicitou: é assim que o front distingue a
+        // conta comum do cadastro pendente ou rejeitado.
+        profissional: { select: { statusAprovacao: true } },
       },
     });
 
