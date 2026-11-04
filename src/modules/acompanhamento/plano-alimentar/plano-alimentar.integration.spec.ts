@@ -3,7 +3,9 @@
 import {
   CanActivate,
   ExecutionContext,
+  Global,
   INestApplication,
+  Module,
   ValidationPipe,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -11,6 +13,7 @@ import request from 'supertest';
 import { randomUUID } from 'crypto';
 import { DiaSemana, TipoRefeicao, TipoUsuario } from '@prisma/client';
 import { PlanoAlimentarModule } from './plano-alimentar.module';
+import { CacheService } from '../../../common/cache/cache.service';
 import { PrismaModule } from '../../../common/prisma/prisma.module';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { AuthGuard } from '../../../auth/auth.guard';
@@ -20,6 +23,14 @@ import { AuthGuard } from '../../../auth/auth.guard';
  * uma leitura direta de headers, mantendo o RolesGuard real no pipeline —
  * assim o teste continua exercitando a checagem de papel de verdade.
  */
+/** O CacheModule é global no AppModule; o ProfissionalService depende dele. */
+@Global()
+@Module({
+  providers: [{ provide: CacheService, useValue: { del: jest.fn() } }],
+  exports: [CacheService],
+})
+class FakeCacheModule {}
+
 class FakeAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
@@ -249,7 +260,7 @@ describe('PlanoAlimentar (integration)', () => {
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      imports: [PrismaModule, PlanoAlimentarModule],
+      imports: [PrismaModule, FakeCacheModule, PlanoAlimentarModule],
     })
       .overrideProvider(PrismaService)
       .useClass(FakePrismaService)

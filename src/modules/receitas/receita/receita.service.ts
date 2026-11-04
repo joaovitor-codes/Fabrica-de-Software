@@ -918,6 +918,10 @@ export class ReceitaService {
                 dataAprovacao: null,
               }
             : {}),
+          // Editar é o único caminho de volta da rejeitada para a fila.
+          ...(receitaAtual.status === 'rejeitada'
+            ? { status: StatusReceita.pendente }
+            : {}),
         },
       });
 

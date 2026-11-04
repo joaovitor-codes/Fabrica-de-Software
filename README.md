@@ -43,7 +43,7 @@ Backend do **Nutrify**, uma plataforma que conecta nutricionistas e pacientes. P
 - **Ingredientes (TACO)**: base nutricional importada da TACO, 4ª edição (NEPA/UNICAMP, 2011), com unidades de medida.
 - **Restrições alimentares**: vínculo entre ingrediente e restrição (feito por curadoria manual ou por regra nutricional, como sódio para hipertensão) e restrições do paciente.
 - **Ingredientes substitutos**: sugestões de substituição para ingredientes restritos, com apoio de IA.
-- **Receitas**: cadastro com ingredientes, imagem e vídeo; curadoria por profissional (edição de receita aprovada volta para `pendente`); favoritos; alertas de restrição alimentar por receita. Visitante vê só receitas aprovadas.
+- **Receitas**: cadastro com ingredientes, imagem e vídeo; curadoria por profissional aprovado (edição de receita aprovada ou rejeitada volta para `pendente`); favoritos; alertas de restrição alimentar por receita. Visitante vê só receitas aprovadas.
 - **Pontos de incentivo**: o profissional ganha pontos ao aprovar/rejeitar receitas; saldo, histórico e ajuste manual pelo admin.
 - **Plano alimentar**: criação, consulta e edição do plano e dos itens, checklist de refeições e comentários por refeição.
 - **Diário de sintomas**: registros do paciente com tags de sintomas.

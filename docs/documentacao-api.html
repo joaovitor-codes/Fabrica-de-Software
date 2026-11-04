@@ -476,7 +476,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <div class="nota dica"><strong>Aprendizado</strong>Cada substituição verificada (aprovada por um profissional ou escolhida por ele) vira um substituto curado, que a IA passa a preferir nas próximas adaptações.</div>
 </section>
 <section id="curadoria-conceito" class="guia"><h2>Curadoria e verificação</h2>
-<p>Receitas novas e adaptações nascem <code>pendente</code> e entram na fila <code>GET /api/receita/pendentes</code>. Um profissional aprovado as aprova (<code>PATCH …/aprovar</code>) ou rejeita (<code>PATCH …/rejeitar</code>), e ganha pontos por isso.</p>
+<p>Receitas novas e adaptações nascem <code>pendente</code> e entram na fila <code>GET /api/receita/pendentes</code>. Um profissional aprovado as aprova (<code>PATCH …/aprovar</code>) ou rejeita (<code>PATCH …/rejeitar</code>), e ganha pontos por isso. Só receita <code>pendente</code> recebe decisão (senão <code>409</code>). A rejeitada volta para a fila quando o autor a edita.</p>
 <ul>
 <li>Ninguém aprova a própria receita.</li>
 <li>Editar uma receita aprovada a devolve para <code>pendente</code>; a versão anterior fica no histórico.</li>
@@ -670,7 +670,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <header><span class="metodo m-get">GET</span><code class="rota">/auth/me</code><a class="link" href="#op-get-auth-me" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Endpoint para obter informações do usuário autenticado</p>
 <div class="selos"><span class="selo login">Login</span></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span></li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Dados do usuário. <code>profissional.statusAprovacao</code> traz <code>pendente</code>, <code>aprovado</code> ou <code>rejeitado</code>; <code>profissional</code> é <code>null</code> para quem nunca solicitou o cadastro. Enquanto não é aprovada, a conta segue <code>comum</code>.</li></ul>
 </article>
 <article class="endpoint" id="op-post-auth-reenviar-verificacao" data-busca="post /auth/reenviar-verificacao reenvia o código de verificação de e-mail">
 <header><span class="metodo m-post">POST</span><code class="rota">/auth/reenviar-verificacao</code><a class="link" href="#op-post-auth-reenviar-verificacao" aria-label="Link para esta rota">#</a></header>
@@ -973,7 +973,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <h5>Corpo <span class="mime">application/json</span></h5>
 <p class="dto">DTO: <a class="ref" href="#dto-createProfissionalDto">createProfissionalDto</a></p>
 <div class="tabela"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>registroProfissional</code> <span class="obrig">obrigatório</span></td><td><span class="tipo">string</span></td><td>Registro do profissional<div class="exemplo">Exemplo: <code>CRN-6 12345</code></div></td></tr><tr><td><code>especialidade</code></td><td><span class="tipo">string</span></td><td>Especialidade do profissional<div class="exemplo">Exemplo: <code>Nutricionista</code></div></td></tr><tr><td><code>bio</code></td><td><span class="tipo">string</span></td><td>Biografia do profissional<div class="exemplo">Exemplo: <code>Sou um nutricionista apaixonado por ajudar as pessoas a alcançarem seus objetivos de saúde e bem-estar.</code></div></td></tr><tr><td><code>clinicaId</code></td><td><span class="tipo">string</span></td><td>ID da clínica associada ao profissional<div class="exemplo">Exemplo: <code>123e4567-e89b-12d3-a456-426614174000</code></div></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">201</span>Solicitação de cadastro profissional criada com sucesso, aguardando aprovação.</li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">201</span>Solicitação criada, aguardando aprovação. A conta segue <code>comum</code> e só vira <code>profissional</code> quando o admin aprova.</li></ul>
 </article>
 <article class="endpoint" id="op-get-api-profissionais-id" data-busca="get /api/profissionais/{id} obter os dados de um profissional específico">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/profissionais/<span class="param">:id</span></code><a class="link" href="#op-get-api-profissionais-id" aria-label="Link para esta rota">#</a></header>
@@ -1614,14 +1614,14 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <article class="endpoint" id="op-patch-api-receita-id-aprovar" data-busca="patch /api/receita/{id}/aprovar aprova uma receita pelo id">
 <header><span class="metodo m-patch">PATCH</span><code class="rota">/api/receita/<span class="param">:id</span>/aprovar</code><a class="link" href="#op-patch-api-receita-id-aprovar" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Aprova uma receita pelo ID</p>
-<div class="selos"><span class="selo login">Login</span></div>
+<div class="selos"><span class="selo login">Login</span><span class="selo papel">profissional</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
 <h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Receita aprovada com sucesso.</li></ul>
 </article>
 <article class="endpoint" id="op-patch-api-receita-id-rejeitar" data-busca="patch /api/receita/{id}/rejeitar rejeita uma receita pelo id">
 <header><span class="metodo m-patch">PATCH</span><code class="rota">/api/receita/<span class="param">:id</span>/rejeitar</code><a class="link" href="#op-patch-api-receita-id-rejeitar" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Rejeita uma receita pelo ID</p>
-<div class="selos"><span class="selo login">Login</span></div>
+<div class="selos"><span class="selo login">Login</span><span class="selo papel">profissional</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
 <h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Receita rejeitada com sucesso.</li></ul>
 </article>

@@ -43,6 +43,8 @@ class FakeAuthGuard implements CanActivate {
   }
 }
 
+const cache = { del: jest.fn() };
+
 /**
  * Providers globais que o AppModule registra (JwtModule global e CacheModule)
  * e que o UsuarioService do módulo de profissional exige para ser instanciado.
@@ -51,7 +53,7 @@ class FakeAuthGuard implements CanActivate {
 @Module({
   providers: [
     { provide: JwtService, useValue: {} },
-    { provide: CacheService, useValue: {} },
+    { provide: CacheService, useValue: cache },
   ],
   exports: [JwtService, CacheService],
 })
@@ -409,7 +411,7 @@ describe('Profissional (integration)', () => {
         .expect(404);
     });
 
-    it('cria a solicitação pendente e transforma o usuário em profissional', async () => {
+    it('cria a solicitação pendente sem dar acesso de profissional', async () => {
       const usuario = criarUsuario(TipoUsuario.comum);
 
       const response = await request(app.getHttpServer())
@@ -425,8 +427,9 @@ describe('Profissional (integration)', () => {
         clinicaId: clinica.id,
       });
       expect(prisma.usuarios.get(usuario.id).tipoUsuario).toBe(
-        TipoUsuario.profissional,
+        TipoUsuario.comum,
       );
+      expect(cache.del).toHaveBeenCalledWith(`auth:me:${usuario.id}`);
     });
 
     it('cria a solicitação sem clínica quando clinicaId não é informado', async () => {
@@ -477,6 +480,7 @@ describe('Profissional (integration)', () => {
         aprovadoEm: null,
       });
       expect(prisma.profissionais.size).toBe(1);
+      expect(cache.del).toHaveBeenCalledWith(`auth:me:${usuario.id}`);
     });
   });
 
@@ -551,10 +555,11 @@ describe('Profissional (integration)', () => {
         .expect(404);
     });
 
-    it('aprova a solicitação registrando o admin', async () => {
-      const { profissional } = criarProfissional({
+    it('aprova a solicitação registrando o admin e promove a conta', async () => {
+      const { usuario, profissional } = criarProfissional({
         statusAprovacao: StatusAprovacao.pendente,
       });
+      prisma.usuarios.get(usuario.id).tipoUsuario = TipoUsuario.comum;
 
       const response = await request(app.getHttpServer())
         .post(`/api/profissionais/${profissional.id}/aprovar`)
@@ -566,6 +571,10 @@ describe('Profissional (integration)', () => {
         aprovadoPor: adminId,
       });
       expect(response.body.aprovadoEm).toBeDefined();
+      expect(prisma.usuarios.get(usuario.id).tipoUsuario).toBe(
+        TipoUsuario.profissional,
+      );
+      expect(cache.del).toHaveBeenCalledWith(`auth:me:${usuario.id}`);
     });
 
     it('rejeita solicitação que já foi avaliada', async () => {
@@ -581,10 +590,11 @@ describe('Profissional (integration)', () => {
   });
 
   describe('POST /api/profissionais/:id/rejeitar', () => {
-    it('rejeita a solicitação e volta o usuário para comum', async () => {
+    it('rejeita a solicitação e a conta segue comum', async () => {
       const { usuario, profissional } = criarProfissional({
         statusAprovacao: StatusAprovacao.pendente,
       });
+      prisma.usuarios.get(usuario.id).tipoUsuario = TipoUsuario.comum;
 
       const response = await request(app.getHttpServer())
         .post(`/api/profissionais/${profissional.id}/rejeitar`)
@@ -598,6 +608,7 @@ describe('Profissional (integration)', () => {
       expect(prisma.usuarios.get(usuario.id).tipoUsuario).toBe(
         TipoUsuario.comum,
       );
+      expect(cache.del).toHaveBeenCalledWith(`auth:me:${usuario.id}`);
     });
 
     it('rejeita solicitação que já foi avaliada', async () => {

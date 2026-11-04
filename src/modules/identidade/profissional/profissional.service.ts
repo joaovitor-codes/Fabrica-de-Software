@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { CacheService } from '../../../common/cache/cache.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   createProfissionalDto,
@@ -20,6 +21,7 @@ export class ProfissionalService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly clinicaService: ClinicasService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async profissionalExists(id: string): Promise<boolean> {
@@ -58,7 +60,7 @@ export class ProfissionalService {
         );
       }
 
-      return this.prismaService.profissional.update({
+      const reaberta = await this.prismaService.profissional.update({
         where: { id: usuario.profissional.id },
         data: {
           registroProfissional: dto.registroProfissional,
@@ -70,25 +72,24 @@ export class ProfissionalService {
           aprovadoEm: null,
         },
       });
+      await this.limparCacheDoMe(userId);
+      return reaberta;
     }
 
-    return this.prismaService.$transaction(async (tx) => {
-      await tx.usuario.update({
-        where: { id: userId },
-        data: { tipoUsuario: TipoUsuario.profissional },
-      });
-
-      return tx.profissional.create({
-        data: {
-          usuarioId: userId,
-          registroProfissional: dto.registroProfissional,
-          especialidade: dto.especialidade,
-          bio: dto.bio,
-          clinicaId: dto.clinicaId,
-          statusAprovacao: StatusAprovacao.pendente,
-        },
-      });
+    // A conta só vira profissional na aprovação do admin: o tipo é o que
+    // libera as rotas e a visão de equipe.
+    const solicitacao = await this.prismaService.profissional.create({
+      data: {
+        usuarioId: userId,
+        registroProfissional: dto.registroProfissional,
+        especialidade: dto.especialidade,
+        bio: dto.bio,
+        clinicaId: dto.clinicaId,
+        statusAprovacao: StatusAprovacao.pendente,
+      },
     });
+    await this.limparCacheDoMe(userId);
+    return solicitacao;
   }
 
   async aprovarCadastroProfissional(adminId: string, profissionalId: string) {
@@ -104,14 +105,23 @@ export class ProfissionalService {
       throw new ConflictException('Esta solicitação já foi avaliada');
     }
 
-    return this.prismaService.profissional.update({
-      where: { id: profissionalId },
-      data: {
-        statusAprovacao: StatusAprovacao.aprovado,
-        aprovadoPor: adminId,
-        aprovadoEm: new Date(),
-      },
+    const aprovado = await this.prismaService.$transaction(async (tx) => {
+      await tx.usuario.update({
+        where: { id: profissional.usuarioId },
+        data: { tipoUsuario: TipoUsuario.profissional },
+      });
+
+      return tx.profissional.update({
+        where: { id: profissionalId },
+        data: {
+          statusAprovacao: StatusAprovacao.aprovado,
+          aprovadoPor: adminId,
+          aprovadoEm: new Date(),
+        },
+      });
     });
+    await this.limparCacheDoMe(profissional.usuarioId);
+    return aprovado;
   }
 
   async rejeitarCadastroProfissional(adminId: string, profissionalId: string) {
@@ -127,21 +137,21 @@ export class ProfissionalService {
       throw new ConflictException('Esta solicitação já foi avaliada');
     }
 
-    return this.prismaService.$transaction(async (tx) => {
-      await tx.usuario.update({
-        where: { id: profissional.usuarioId },
-        data: { tipoUsuario: TipoUsuario.comum },
-      });
-
-      return tx.profissional.update({
-        where: { id: profissionalId },
-        data: {
-          statusAprovacao: StatusAprovacao.rejeitado,
-          aprovadoPor: adminId,
-          aprovadoEm: new Date(),
-        },
-      });
+    const rejeitado = await this.prismaService.profissional.update({
+      where: { id: profissionalId },
+      data: {
+        statusAprovacao: StatusAprovacao.rejeitado,
+        aprovadoPor: adminId,
+        aprovadoEm: new Date(),
+      },
     });
+    await this.limparCacheDoMe(profissional.usuarioId);
+    return rejeitado;
+  }
+
+  /** O /auth/me mostra o tipo da conta e o status do cadastro. */
+  private limparCacheDoMe(usuarioId: string) {
+    return this.cacheService.del(`auth:me:${usuarioId}`);
   }
 
   async listarProfissionaisPendentes(page: number = 1, limit: number = 10) {

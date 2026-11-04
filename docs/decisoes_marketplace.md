@@ -373,7 +373,7 @@ Como o projeto é de estudo, a integração pode ser desenvolvida com as credenc
 
 - **Restrição estrita e flexível.** Estrita: tipo `alergia`, ou gravidade `grave`. A receita insegura some das listas e, aberta pelo link, responde `403`. Flexível: a receita aparece com o aviso `restricoesVioladas`.
 - **Ingrediente seguro.** Para restrição estrita, falta de vínculo não basta: o ingrediente precisa ter sido revisado por um curador depois da criação da restrição e ter o dado que a regra de nutriente usa.
-- **Curadoria.** Receita nova nasce `pendente` e precisa ser aprovada por um profissional. Editar uma receita aprovada a devolve para `pendente`.
+- **Curadoria.** Receita nova nasce `pendente` e precisa ser aprovada por um profissional. Editar uma receita aprovada ou rejeitada a devolve para `pendente`.
 - **Adaptação.** A receita adaptada é uma `Receita` comum, ligada à origem por `ReceitaAdaptacao`. A cópia de compra segue o mesmo padrão.
 - **Papéis.** `admin`, `profissional`, `paciente` e `comum`. Só o paciente tem restrições cadastradas.
 - **Convenções da API.** Rotas sob `/api`; IDs em UUID; `422` para regra de negócio que impede a operação; `409` para conflito; listas simples em `/all` e paginadas em `/page/:page/limit/:limit`.
