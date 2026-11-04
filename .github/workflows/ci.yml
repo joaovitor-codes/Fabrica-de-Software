@@ -28,6 +28,15 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       NODE_ENV: test
@@ -56,6 +65,17 @@ jobs:
 
       - name: Testes
         run: npm test
+
+      # Sobe o AppModule inteiro: a validação do ambiente pede estes valores,
+      # que aqui não falam com nenhum serviço real.
+      - name: Testes e2e
+        run: npm run test:e2e
+        env:
+          SMTP_HOST: localhost
+          SMTP_USER: ci
+          SMTP_PASS: ci
+          SMTP_FROM: ci@teste.local
+          OPENAI_API_KEY: ci-sem-chave-real
 
       - name: Lint (sem --fix)
         run: npx eslint "{src,test}/**/*.ts"
