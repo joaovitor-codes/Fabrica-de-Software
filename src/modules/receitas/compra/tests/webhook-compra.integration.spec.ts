@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import 'dotenv/config';
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
   Prisma,
@@ -14,6 +14,8 @@ import { MercadoPagoService } from '../../../marketplace/mercado-pago/mercado-pa
 import { PagamentoMercadoPago } from '../../../marketplace/mercado-pago/mercado-pago.types';
 import { RecebedorService } from '../../../marketplace/recebedor/recebedor.service';
 import { NotificacaoService } from '../../../notificacao/notificacao.service';
+import { UsuarioAutenticado } from '../../../../auth/auth.types';
+import { VisibilidadeReceitaService } from '../../visibilidade/visibilidade-receita.service';
 import { ConteudoComprado } from '../compra.types';
 import { WebhookCompraService } from '../webhook-compra.service';
 
@@ -40,6 +42,7 @@ describe('Webhook da compra (integração com Postgres)', () => {
   let ingredienteId: string;
   let unidadeId: string;
   let conteudo: ConteudoComprado;
+  let seq = 0;
 
   async function criarUsuario(nome: string, tipoUsuario: TipoUsuario) {
     const conta = await prisma.conta.create({
@@ -217,6 +220,61 @@ describe('Webhook da compra (integração com Postgres)', () => {
     expect(depois.status).toBe(StatusCompraReceita.paga);
     expect(depois.receitaCopiaId).toBe(copias[0].id);
     expect(notificacoes).toBe(2);
+  });
+
+  describe('quem vê a cópia', () => {
+    const visibilidade = () => new VisibilidadeReceitaService(prisma);
+    let copiaId: string;
+
+    const comoUsuario = async (id: string) => {
+      const usuario = await prisma.usuario.findUniqueOrThrow({ where: { id } });
+      return { ...usuario, sub: id } as UsuarioAutenticado;
+    };
+
+    beforeEach(async () => {
+      const compra = await criarCompra();
+      pagamentoMp = aprovado(compra.id);
+      await avisar(`pag-${randomUUID()}`);
+      const { receitaCopiaId } = await prisma.receitaCompra.findUniqueOrThrow({
+        where: { id: compra.id },
+      });
+      copiaId = receitaCopiaId!;
+    });
+
+    it('fica fora do detalhe para visitante, comprador, autor e curador', async () => {
+      const usuarios: (UsuarioAutenticado | undefined)[] = [
+        undefined,
+        await comoUsuario(compradorId),
+        await comoUsuario(vendedorId),
+        await comoUsuario(
+          await criarUsuario(`curador-${seq++}`, TipoUsuario.profissional),
+        ),
+        await comoUsuario(
+          await criarUsuario(`outro-${seq++}`, TipoUsuario.comum),
+        ),
+      ];
+
+      for (const usuario of usuarios) {
+        await expect(
+          visibilidade().garantirVisivel(copiaId, usuario),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      }
+    });
+
+    it('o admin abre pelo id, mas ela fica fora das listagens', async () => {
+      const admin = await comoUsuario(
+        await criarUsuario(`admin-${seq++}`, TipoUsuario.admin),
+      );
+
+      await expect(
+        visibilidade().garantirVisivel(copiaId, admin),
+      ).resolves.toBeUndefined();
+      expect(
+        await prisma.receita.findFirst({
+          where: { id: copiaId, ...visibilidade().semReceitasPagas() },
+        }),
+      ).toBeNull();
+    });
   });
 
   it('a cópia tem os ingredientes e as mídias guardados na compra', async () => {
