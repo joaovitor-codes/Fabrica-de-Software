@@ -1,13 +1,13 @@
 # Decisões: módulo anamnese
 
-Consolidado de uma discussão de arquitetura sobre o módulo `anamnese` (perguntas, opções, anamnese e respostas) e sobre `paciente-restricao`. Este arquivo resume o que foi decidido e o que falta implementar. **Nenhuma mudança de schema é necessária** — as decisões abaixo cabem no modelo já existente em `schema.prisma`.
+Consolidado de uma discussão de arquitetura sobre o módulo `anamnese` (perguntas, opções, anamnese e respostas) e sobre `paciente-restricao`. Este arquivo resume o que foi decidido. **Nenhuma mudança de schema foi necessária** — as decisões cabem no modelo já existente em `schema.prisma`. Tudo está implementado (ver "Como ficou").
 
 ## Contexto
 
 - `AnamnesePergunta`/`AnamneseOpcao` já são tabelas globais/compartilhadas (não pertencem a um paciente específico) — já funcionam como um banco de perguntas reutilizável, com `categoria`, `ordem` e `ativa` para organizar exibição. Não existe hoje o conceito de múltiplos templates por especialidade; é um único conjunto global de perguntas ativas.
 - `Anamnese` é o container por paciente (`pacienteId`, `profissionalId`, `dataPreenchimento`, `observacoesGerais`); `AnamneseResposta` liga `anamneseId` + `perguntaId` (+ opcionalmente `opcaoId`).
-- Hoje só existe `AnamneseService.createAnamnese` (parcial, sem validação de papel) e `AnamneseController` está vazio. `AnamneseModule` já está registrado em `app.module.ts`.
-- `PacienteRestricao` (`src/modules/nutricao/paciente-restricao/`) já tem CRUD completo, mas restrito a `admin`/`profissional`; o service (`verificarProfissional`) já recebe `userId`/`tipoUsuario` e valida que o profissional só mexe em pacientes seus.
+- Quando a discussão aconteceu, só existia `AnamneseService.createAnamnese` (parcial, sem validação de papel) e o `AnamneseController` estava vazio.
+- `PacienteRestricao` (`src/modules/nutricao/paciente-restricao/`) tinha CRUD completo, mas restrito a `admin`/`profissional`; o service (`verificarProfissional`) já recebe `userId`/`tipoUsuario` e valida que o profissional só mexe em pacientes seus.
 
 ## Decisões de arquitetura (papéis e permissões)
 
@@ -22,43 +22,42 @@ Consolidado de uma discussão de arquitetura sobre o módulo `anamnese` (pergunt
 - Sem migration: `profissionalId` continua obrigatório em `Anamnese`.
 - Sem campo de origem/confiabilidade em `PacienteRestricao`.
 - Sem múltiplos templates de anamnese por especialidade — um único conjunto global de perguntas ativas, filtrado por `ativa: true` e ordenado por `categoria`/`ordem`.
-- Sem módulo de `Notificacao` (envio/leitura) implementado — o schema já existe, mas não há service/controller ainda; não faz parte desta frente.
+- Sem uso de notificação na anamnese. Hoje existe o `NotificacaoService`, criado depois para o marketplace, mas sem rotas de leitura.
 
-## Próximos passos (implementação)
+## Como ficou (implementado)
 
-1. **DTOs de anamnese** (`src/modules/acompanhamento/anamnese/dtos/anamnese.ts`) — hoje só têm `@ApiProperty`, sem decorators de validação de `class-validator`. Adicionar `@IsUUID()`, `@IsString()`, `@IsNotEmpty()` etc. Em `createAnamneseRespostaDto`, `respostaTexto`/`respostaNumero`/`opcaoId` devem ficar `@IsOptional()` — são mutuamente exclusivos dependendo do `tipoResposta` da pergunta, e isso **não é validado no banco** (não há `CHECK` de exclusive-arc em `anamnese_respostas`, diferente de `notificacoes`). Essa validação de "qual campo é obrigatório para qual `tipoResposta`" precisa ficar na service.
+Tudo o que estava nos próximos passos foi implementado. Os contratos completos estão no `documentacao-api.html` (seção "Anamnese").
 
-2. **Service + controller de `AnamnesePergunta`** (CRUD, pode ficar dentro do módulo `anamnese` ou em `anamnese-pergunta` separado, seguindo o padrão de módulos existente):
-   - `POST /api/anamnese/perguntas` — `@Roles(admin)`
-   - `PATCH /api/anamnese/perguntas/:id` — `@Roles(admin)`
-   - `DELETE /api/anamnese/perguntas/:id` — `@Roles(admin)`. Atenção: a FK `anamnese_opcoes_pergunta_id_fkey` e `anamnese_respostas_pergunta_id_fkey` são `ON DELETE RESTRICT` — apagar uma pergunta já respondida vai falhar no banco. Na prática, "remover" uma pergunta em uso deve ser um `PATCH` setando `ativa: false`, não um `DELETE` físico. Vale decidir se o endpoint de `DELETE` só é permitido quando não há respostas vinculadas (ou nem expor `DELETE`, só `ativa`).
-   - `GET /api/anamnese/perguntas` — sem `@Roles`, só `AuthGuard`. Lista perguntas (por padrão só `ativa: true`), ordenadas por `categoria`/`ordem`.
-   - `GET /api/anamnese/perguntas/:id` — idem.
+**Perguntas e opções (o template).** Escrita só `admin`; leitura para qualquer usuário logado.
 
-3. **Service + controller de `AnamneseOpcao`**, aninhado em pergunta, mesmas regras de papel:
-   - `POST /api/anamnese/perguntas/:perguntaId/opcoes` — `@Roles(admin)`
-   - `PATCH /api/anamnese/opcoes/:id` — `@Roles(admin)`
-   - `DELETE /api/anamnese/opcoes/:id` — `@Roles(admin)` (mesma ressalva de `RESTRICT` por `anamnese_respostas_opcao_id_fkey`, embora esse aqui seja `ON DELETE SET NULL`, então apagar é seguro, mas invalida respostas antigas — considerar também)
-   - `GET /api/anamnese/perguntas/:perguntaId/opcoes` — sem `@Roles`.
+| Rota | Acesso |
+|---|---|
+| `POST /api/anamnese/perguntas` | admin |
+| `GET /api/anamnese/perguntas/page/:page/limit/:limit` | Login (só as ativas) |
+| `GET /api/anamnese/perguntas/:id` | Login |
+| `PATCH /api/anamnese/perguntas/:id` | admin |
+| `PATCH /api/anamnese/perguntas/:id/ativar` e `/desativar` | admin |
+| `DELETE /api/anamnese/perguntas/:id` | admin; falha se já houver opções ou respostas vinculadas (para tirar de uso, desative) |
+| `GET /api/anamnese/perguntas/:perguntaId/opcoes` | Login |
+| `POST /api/anamnese/perguntas/:perguntaId/opcoes` | admin |
+| `PATCH` e `DELETE /api/anamnese/opcoes/:id` | admin |
 
-4. **`AnamneseService.createAnamnese`** — ajustar:
-   - Controller com `@Roles(profissional)`.
-   - Não confiar em `profissionaId` do body: resolver o profissional a partir de `request.user.sub` (via `ProfissionalService.findByUsuarioId`, que já existe), igual ao espírito de `verificarProfissional` em `paciente-restricao.service.ts`. Isso evita um profissional criar uma anamnese em nome de outro.
-   - Validar que `pacienteId` existe antes de criar.
+**Anamnese e respostas (o preenchimento).** Só o `profissional` cria e preenche; o profissional vem do token, nunca do body.
 
-5. **Service + controller de `AnamneseResposta`**:
-   - `POST /api/anamnese/:anamneseId/respostas` — `@Roles(profissional)`, validando que a `Anamnese` pertence ao profissional autenticado (mesmo padrão de dono usado em `paciente-restricao.service.ts`).
-   - Validar a exclusividade de campo por `tipoResposta` da pergunta (ver item 1).
-   - `GET /api/anamnese/:anamneseId` — retorna anamnese + respostas. Ainda em aberto: o paciente pode ler a própria anamnese (histórico), ou só o profissional dono? Não foi decidido na conversa — precisa de uma resposta antes de implementar essa rota.
+| Rota | Acesso |
+|---|---|
+| `POST /api/anamnese` | profissional |
+| `POST /api/anamnese/:anamneseId/respostas` | profissional dono da anamnese |
+| `PATCH` e `DELETE /api/anamnese/respostas/:id` | profissional |
+| `GET /api/anamnese/:id` | profissional dono, paciente dono ou admin |
+| `GET /api/anamnese/paciente/:pacienteId` | profissional dono, paciente dono ou admin |
 
-6. **`AnamneseController`** (`src/modules/acompanhamento/anamnese/anamnese.controller.ts`, hoje vazio) — registrar todas as rotas acima, com `@UseGuards(AuthGuard, RolesGuard)` no nível do controller, igual ao padrão de `pacientes.controller.ts`/`usuario.controller.ts`.
+A dúvida do antigo item 5 foi resolvida assim: o paciente pode ler a própria anamnese.
 
-7. **`PacienteRestricaoController`/`Service`** — adicionar rota self-service, espelhando o padrão `me/*` de `usuario.controller.ts`:
-   - `POST /api/pacientes/me/restricoes` — `@Roles(paciente)`, resolve `pacienteId` via `PacientesService.getPacienteByUserId(request.user.sub)` (nunca aceitar `pacienteId` do body/paciente autenticado), e reaproveita a lógica de `vincularRestricaoAoPaciente` pulando a checagem `verificarProfissional` (o paciente sempre pode mexer no que é seu).
-   - Opcional, mesmo padrão: `GET /api/pacientes/me/restricoes` e `DELETE /api/pacientes/me/restricoes/:restricaoId`.
+**Restrições do próprio paciente.** `GET`, `POST /api/pacientes/me/restricoes` e `PATCH`, `DELETE /api/pacientes/me/restricoes/:restricaoId`, só `paciente`, com o `pacienteId` resolvido pelo token.
 
-8. **Notificação `anamnese_pendente`** — decidir explicitamente: remove esse código do catálogo de `tipos_notificacao` (já que não há mais gatilho de paciente preenchendo) ou mantém para um uso futuro diferente (ex.: avisar o paciente que o profissional criou uma anamnese nova, sem que ele precise preenchê-la)? Não implementar módulo de `Notificacao` nesta frente independente da resposta.
+**Notificação `anamnese_pendente`.** Continua sem gatilho. O `NotificacaoService` (`src/modules/notificacao/`) já existe, criado para o marketplace, mas não há rota de leitura de notificações nem uso na anamnese.
 
 ## Fora de escopo desta frente (sem mudança)
 
-Módulo de `Notificacao` (service/controller), múltiplos templates de anamnese por especialidade, campo de origem em `PacienteRestricao`, `profissionalId` nullable em `Anamnese`, testes automatizados.
+Rotas de leitura de notificações, múltiplos templates de anamnese por especialidade, campo de origem em `PacienteRestricao`, `profissionalId` nullable em `Anamnese`, testes automatizados.

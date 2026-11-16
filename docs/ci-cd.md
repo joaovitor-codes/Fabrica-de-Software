@@ -15,15 +15,17 @@ O workflow fica em [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). El
 
 | Etapa | Comando | Por quê |
 |---|---|---|
-| Postgres de teste | serviço `postgres:15-alpine` | banco vazio onde as migrations são aplicadas (os testes atuais usam um Prisma falso e não acessam o banco) |
+| Postgres de teste | serviço `postgres:15-alpine` | banco vazio onde as migrations são aplicadas |
+| Redis de teste | serviço `redis:7-alpine` | o e2e sobe o `AppModule` inteiro, que usa o cache |
 | Instalar | `npm ci` | instala exatamente o que está no `package-lock.json` |
 | Prisma Client | `npx prisma generate` | gera os tipos usados pelo código |
 | Migrations | `npx prisma migrate deploy` | cria as tabelas no banco de teste; também valida que as migrations do PR aplicam sem erro |
 | Build | `npm run build` | garante que o TypeScript compila |
 | Testes | `npm test` | roda os `*.spec.ts` de `src/` |
+| Testes e2e | `npm run test:e2e` | sobe a API inteira contra o Postgres e o Redis do job |
 | Lint | `npx eslint "{src,test}/**/*.ts"` | roda **sem** `--fix` (o script `npm run lint` altera arquivos, o que não faz sentido na CI) |
 
-As variáveis do CI (`DATABASE_URL`, `JWT_SECRET`) são valores fictícios, só para o banco temporário. **Nenhum segredo real vai no arquivo.**
+As variáveis do CI (`DATABASE_URL`, `JWT_SECRET` e, no passo do e2e, `SMTP_*` e `OPENAI_API_KEY`) são valores fictícios, só para o banco temporário. **Nenhum segredo real vai no arquivo.**
 
 ### Passo 2: subir o workflow
 
@@ -52,13 +54,9 @@ A partir daqui, PR com build ou teste quebrado não pode ser mergeado.
 
 O lint foi zerado e o `continue-on-error` saiu do `ci.yml`: PR com erro de lint ou de formatação não passa. Antes de subir, rode `npm run lint` (corrige o que for automático) e confira com `npx eslint "{src,test}/**/*.ts"`.
 
-### Passo 5 (opcional): incluir o teste e2e
+### Passo 5: teste e2e na CI (feito)
 
-`test/app.e2e-spec.ts` sobe o `AppModule` inteiro, que exige Redis e variáveis SMTP. Para rodá-lo na CI:
-
-1. Adicione um serviço `redis:7-alpine` no job (porta 6379).
-2. Adicione em `env`: `REDIS_URL`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` com valores fictícios.
-3. Adicione o passo `npm run test:e2e`.
+O e2e sobe o `AppModule` inteiro, que exige Redis e variáveis SMTP. O job já tem o serviço `redis:7-alpine`, as variáveis fictícias no `env` e o passo `npm run test:e2e`.
 
 ---
 
@@ -150,7 +148,8 @@ O deploy só roda se o CI de `main` passar. O `environment: production` permite 
 
 ## Checklist
 
-- [ ] `ci.yml` mergeado em `desenvolvimento`
+- [x] `ci.yml` mergeado em `desenvolvimento`
+- [x] Teste e2e rodando na CI
 - [ ] Branch protection exigindo `build-and-test`
 - [x] PR de formatação/lint e remoção do `continue-on-error`
 - [ ] Hospedagem escolhida

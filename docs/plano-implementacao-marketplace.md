@@ -3,18 +3,19 @@
 Ordem de implementação das duas features do schema v5: **vitrine de produtos** e **venda de receitas**. As regras de negócio estão em [`decisoes_marketplace.md`](decisoes_marketplace.md), e os contratos das rotas e dos DTOs no `documentacao-api.html` (seção "Marketplace"). Este documento não repete as regras: diz em que ordem construir, onde fica cada coisa e quando cada etapa está pronta.
 
 - **Data:** 11/10/2026
+- **Andamento (16/11/2026):** M1, M2 e M3 prontas. Da M4 estão prontos 6.1 e 6.2: a compra é paga e a cópia é criada. Faltam 6.3 (o comprador abrir a cópia, `/compradas`, `/minhas-vendas` e `primeiroAcessoEm`), 6.4 (adaptação e plano alimentar sobre a cópia) e 6.5 (reembolso). Hoje só o admin abre a cópia.
 - **Base já pronta:** schema v5, migrations `20261011151855_novo_escopo` e `20261011160000_restricoes_marketplace` (CHECKs e índice parcial) e limite de requisições por tipo de rota (D9).
 
 ## 1. Visão geral
 
 São quatro milestones. Cada uma só depende das anteriores.
 
-| # | Milestone | Entrega | Depende de |
-|---|---|---|---|
-| M1 | Marketplace: Fundação | Variáveis de ambiente, termos do marketplace, serviço de notificação | Base |
-| M2 | Vitrine de Produtos | Categorias, produtos, fotos, listagem e moderação | M1 |
-| M3 | Venda de Receitas: Vendedor | Conexão com o Mercado Pago, ofertas, prévia e conteúdo fechado | M1 |
-| M4 | Venda de Receitas: Compra | Checkout, webhook, cópia, uso da cópia e reembolso | M3 |
+| # | Milestone | Entrega | Depende de | Situação |
+|---|---|---|---|---|
+| M1 | Marketplace: Fundação | Variáveis de ambiente, termos do marketplace, serviço de notificação | Base | ✅ |
+| M2 | Vitrine de Produtos | Categorias, produtos, fotos, listagem e moderação | M1 | ✅ |
+| M3 | Venda de Receitas: Vendedor | Conexão com o Mercado Pago, ofertas, prévia e conteúdo fechado | M1 | ✅ |
+| M4 | Venda de Receitas: Compra | Checkout, webhook, cópia, uso da cópia e reembolso | M3 | Parcial: faltam 6.3, 6.4 e 6.5 |
 
 M2 e M3 não dependem uma da outra e podem andar em paralelo. A vitrine não usa o Mercado Pago, então é o melhor ponto de partida.
 
@@ -34,9 +35,9 @@ Os módulos novos seguem a organização atual de `src/modules`, por domínio:
 | `src/modules/marketplace/produtos` | Agregador da vitrine, com os submódulos `produto`, `produto-midia` e `produto-denuncia` |
 | `src/modules/marketplace/recebedor` | OAuth do Mercado Pago, `ContaRecebedor` e renovação de token |
 | `src/modules/marketplace/mercado-pago` | Cliente do Mercado Pago (preferência do Checkout Pro, consulta de pagamento) e validação da assinatura do webhook |
-| `src/modules/receitas/oferta` | `ReceitaOferta` e público-alvo |
+| `src/modules/receitas/receita` (DTOs) e `visibilidade/conteudo-pago.ts` | `ReceitaOferta`, público-alvo e conteúdo fechado (ficou no módulo de receita, sem módulo `oferta` próprio) |
 | `src/modules/receitas/compra` | `ReceitaCompra`, webhook do Mercado Pago, cópia, job de vencimento, compradas, vendas e reembolso |
-| `src/common/notificacao` | Serviço que cria `Notificacao`, usado pelos dois lados |
+| `src/modules/notificacao` | Serviço que cria `Notificacao`, usado pelos dois lados |
 
 Pontos do código atual que vão ser alterados:
 
@@ -193,5 +194,5 @@ Esta etapa entra junto com 5.3. Sem ela, criar uma oferta não fecha nada e o co
 | Pendência | Trava | Até quando |
 |---|---|---|
 | Valores de comissão e preço mínimo (D7) | Nada; valor provisório no `.env` | Antes de considerar a M3 fechada |
-| Conta e aplicação de teste no Mercado Pago | M3 e M4 | Início da M3 |
+| ~~Conta e aplicação de teste no Mercado Pago~~ (resolvido) | M3 e M4 | Início da M3 |
 | ~~Unidade do `marketplace_fee`~~ (resolvido: valor em reais) · prazo de liberação no cartão | 6.5 | Antes do reembolso |
