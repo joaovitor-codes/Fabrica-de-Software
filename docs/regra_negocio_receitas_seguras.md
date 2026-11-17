@@ -1,6 +1,6 @@
 # Decisões: receitas seguras por restrição
 
-Plano para que o usuário só veja receitas que pode comer. Para cada restrição dele, aparece a receita original (se já for segura) ou a versão adaptada. Este arquivo resume o que foi decidido e divide a implementação em fases. Nada daqui está no `schema.prisma` ainda.
+Plano para que o usuário só veja receitas que pode comer. Para cada restrição dele, aparece a receita original (se já for segura) ou a versão adaptada. Este arquivo resume o que foi decidido e divide a implementação em fases. As Fases 0 a 3 e a adaptação pelo profissional estão implementadas; o andamento de cada uma está na própria seção.
 
 ## Contexto
 
@@ -264,6 +264,7 @@ Entrega: para qualquer paciente com restrição, com ou sem profissional, a rece
 - A adaptada que já aparecia sozinha fica só no lugar da original.
 - `validadas` e `sugestoes` só usam adaptações aprovadas.
 - **Listagem não chama a IA**: só troca pelo que já existe.
+- **Receita paga fica de fora**: a adaptação automática não roda sobre receita com oferta, porque uma adaptação pública entregaria de graça o conteúdo pago (P6 de `decisoes_marketplace.md`). A receita paga também não aparece nessas listagens, só em `/a-venda`.
 - Com `?seguraPara=`, a lista não é trocada.
 
 ### Abrir a receita (`GET /:id`)

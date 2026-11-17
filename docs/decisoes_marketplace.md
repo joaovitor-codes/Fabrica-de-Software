@@ -3,8 +3,8 @@
 Registro das decisões tomadas sobre as duas features novas do Nutrify: **venda de receitas** e **vitrine de produtos**. Serve de contexto para quem for implementar, pessoa ou IA, sem precisar da conversa em que elas foram tomadas.
 
 - **Data:** 10/10/2026
-- **Situação:** decidido e modelado; nada disso está implementado ainda.
-- **Arquivos que acompanham este documento:** `schema.prisma` (v5) e `documentacao-api.html` (seção "Marketplace" no guia; as rotas novas levam o selo "Planejado").
+- **Situação:** quase todo implementado. Termos, vitrine, conexão com o Mercado Pago, receita paga, compra e webhook estão no ar, e o pagamento aprovado cria a cópia. Faltam o comprador abrir a cópia (`GET /receita/:id` com `compradaDe`, hoje só o admin a abre), adaptação e plano alimentar sobre ela, `GET /receita/compradas`, `GET /receita/minhas-vendas` e o reembolso (seção 4.7). O andamento por etapa está em [`plano-implementacao-marketplace.md`](plano-implementacao-marketplace.md).
+- **Arquivos que acompanham este documento:** `schema.prisma` (v5) e `documentacao-api.html` (seção "Marketplace" no guia; as rotas que faltam levam o selo "Planejado").
 - **Natureza do projeto:** fábrica de software com foco em estudo. As pendências jurídicas e fiscais ficam fora do escopo (seção 11).
 
 ## 1. Escopo
@@ -339,7 +339,7 @@ Filtros da listagem de produtos: `categoria`, `estado`, `cidade`, `publicoAlvo` 
 
 ## 10. Variáveis de ambiente novas
 
-Os nomes são uma proposta.
+Todas já estão em `env.validation.ts`. As de Mercado Pago são opcionais na subida; sem elas, as rotas da integração respondem `503`.
 
 | Variável | Para quê |
 |---|---|
@@ -365,7 +365,7 @@ Os nomes são uma proposta.
 - Escolher os valores de `MARKETPLACE_TAXA_PERCENTUAL` e `MARKETPLACE_PRECO_MINIMO`.
 - ~~Unidade do `marketplace_fee`~~: resolvido, é valor em reais (ver 4.8).
 - Conferir no sandbox o Pix e o cartão no split, e o prazo de liberação do dinheiro no cartão. Com saldo em conta, o split funcionou e o dinheiro foi liberado na hora.
-- Rodar `npx prisma validate` no schema v5. A validação oficial não pôde ser executada no ambiente em que o schema foi escrito; a estrutura foi conferida só por um verificador próprio.
+- ~~Rodar `npx prisma validate` no schema v5~~: resolvido, as migrations do v5 aplicam no CI.
 
 Como o projeto é de estudo, a integração pode ser desenvolvida com as credenciais e as contas de teste do Mercado Pago, sem dinheiro real.
 

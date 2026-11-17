@@ -1,6 +1,6 @@
 # Decisões: módulo ingrediente-restricao
 
-Consolidado de uma discussão de arquitetura sobre como vincular `Ingrediente` a `RestricaoAlimentar`. Este arquivo resume o que foi decidido e o que falta implementar. `schema.prisma` já foi atualizado com as mudanças de modelagem descritas aqui.
+Consolidado de uma discussão de arquitetura sobre como vincular `Ingrediente` a `RestricaoAlimentar`. Este arquivo resume o que foi decidido e o que ainda falta. `schema.prisma` já foi atualizado com as mudanças de modelagem descritas aqui.
 
 ## Contexto
 
@@ -26,8 +26,8 @@ Motivo: sem isso, recomputar uma regra nutricional (ex: ajustar o limiar de sód
 model RestricaoRegraNutricional {
   id               String   @id
   restricaoId      String   // FK -> RestricaoAlimentar
-  campoNutricional String   // ex: "sodioMg", "carboidratoLiquido"
-  operador         String   // ex: ">"
+  campoNutricional CampoNutricionalRegra   // ex: sodio_mg
+  operador         OperadorRegraNutricional // ex: maior_que
   valorLimite      Decimal? // nullable até validação clínica
 }
 ```
