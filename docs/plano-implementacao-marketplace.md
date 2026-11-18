@@ -3,7 +3,7 @@
 Ordem de implementação das duas features do schema v5: **vitrine de produtos** e **venda de receitas**. As regras de negócio estão em [`decisoes_marketplace.md`](decisoes_marketplace.md), e os contratos das rotas e dos DTOs no `documentacao-api.html` (seção "Marketplace"). Este documento não repete as regras: diz em que ordem construir, onde fica cada coisa e quando cada etapa está pronta.
 
 - **Data:** 11/10/2026
-- **Andamento (16/11/2026):** M1, M2 e M3 prontas. Da M4 estão prontos 6.1 e 6.2: a compra é paga e a cópia é criada. Faltam 6.3 (o comprador abrir a cópia, `/compradas`, `/minhas-vendas` e `primeiroAcessoEm`), 6.4 (adaptação e plano alimentar sobre a cópia) e 6.5 (reembolso). Hoje só o admin abre a cópia.
+- **Andamento (18/11/2026):** M1, M2 e M3 prontas. Da M4 estão prontos 6.1, 6.2 e 6.3: a compra é paga, a cópia é criada e o comprador a abre (`compradaDe`, `primeiroAcessoEm`, `/compradas` e `/minhas-vendas`). Faltam 6.4 (adaptação e plano alimentar sobre a cópia; hoje a adaptação recusa a cópia) e 6.5 (reembolso).
 - **Base já pronta:** schema v5, migrations `20261011151855_novo_escopo` e `20261011160000_restricoes_marketplace` (CHECKs e índice parcial) e limite de requisições por tipo de rota (D9).
 
 ## 1. Visão geral
@@ -15,7 +15,7 @@ São quatro milestones. Cada uma só depende das anteriores.
 | M1 | Marketplace: Fundação | Variáveis de ambiente, termos do marketplace, serviço de notificação | Base | ✅ |
 | M2 | Vitrine de Produtos | Categorias, produtos, fotos, listagem e moderação | M1 | ✅ |
 | M3 | Venda de Receitas: Vendedor | Conexão com o Mercado Pago, ofertas, prévia e conteúdo fechado | M1 | ✅ |
-| M4 | Venda de Receitas: Compra | Checkout, webhook, cópia, uso da cópia e reembolso | M3 | Parcial: faltam 6.3, 6.4 e 6.5 |
+| M4 | Venda de Receitas: Compra | Checkout, webhook, cópia, uso da cópia e reembolso | M3 | Parcial: faltam 6.4 e 6.5 |
 
 M2 e M3 não dependem uma da outra e podem andar em paralelo. A vitrine não usa o Mercado Pago, então é o melhor ponto de partida.
 

@@ -52,9 +52,16 @@ export class AdaptacaoPacienteService {
         (r) => r.restricaoId === restricaoId,
       )?.estrita ?? false;
 
+    // A cópia de uma compra ainda não é adaptada pelo comprador: fica para
+    // a seção 6.4 do plano do marketplace (#127).
     const origem = await this.base.carregarOrigem(
       receitaId,
-      this.visibilidade.filtroBase(usuario),
+      {
+        AND: [
+          this.visibilidade.filtroBase(usuario),
+          this.visibilidade.semCopiasDeCompra(),
+        ],
+      },
       usuario,
     );
 

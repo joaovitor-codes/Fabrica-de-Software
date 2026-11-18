@@ -5,7 +5,12 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, ReceitaCompra, StatusCompraReceita } from '@prisma/client';
+import {
+  Prisma,
+  ReceitaCompra,
+  StatusCompraReceita,
+  TipoMidia,
+} from '@prisma/client';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { MercadoPagoService } from '../../marketplace/mercado-pago/mercado-pago.service';
@@ -15,7 +20,10 @@ import {
   restricoesDoUsuario,
   restricoesVioladas,
 } from '../visibilidade/restricoes-receita';
-import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
+import {
+  STATUS_COM_COPIA,
+  VisibilidadeReceitaService,
+} from '../visibilidade/visibilidade-receita.service';
 import { conteudoDaReceita } from './compra.types';
 
 // A preferência do Checkout Pro nasce com esta validade. Uma pendente mais
@@ -33,6 +41,10 @@ export const STATUS_VIVOS = [
   StatusCompraReceita.paga,
   StatusCompraReceita.reembolso_em_analise,
 ];
+
+// Venda que conta para o vendedor: o pagamento foi aprovado, mesmo que
+// depois tenha vindo um pedido de reembolso.
+const STATUS_VENDIDA = [...STATUS_COM_COPIA, StatusCompraReceita.reembolsada];
 
 export interface ResultadoCompra {
   compraId: string;
@@ -185,6 +197,91 @@ export class CompraService {
       receitaCopiaId: compra.receitaCopiaId,
       createdAt: compra.createdAt,
     };
+  }
+
+  /**
+   * Resumo das cópias do usuário, mais novas primeiro. Não conta como abrir
+   * a cópia: `primeiroAcessoEm` só muda no detalhe e nos ingredientes.
+   */
+  async compradas(usuario: UsuarioAutenticado) {
+    const compras = await this.prismaService.receitaCompra.findMany({
+      where: {
+        compradorId: usuario.id,
+        status: { in: STATUS_COM_COPIA },
+        receitaCopiaId: { not: null },
+      },
+      select: {
+        id: true,
+        status: true,
+        precoPago: true,
+        pagaEm: true,
+        primeiroAcessoEm: true,
+        receitaCopia: {
+          select: {
+            id: true,
+            nome: true,
+            descricao: true,
+            tempoPreparoMin: true,
+            porcoes: true,
+            nivelDificuldade: true,
+            midias: {
+              where: { tipo: TipoMidia.capa },
+              select: { url: true, tipo: true, ordem: true },
+            },
+          },
+        },
+        oferta: { select: { receita: { select: { id: true, nome: true } } } },
+      },
+      orderBy: { pagaEm: 'desc' },
+    });
+
+    return compras.map(({ receitaCopia, oferta, ...compra }) => ({
+      ...receitaCopia!,
+      compradaDe: oferta.receita,
+      compra: {
+        id: compra.id,
+        status: compra.status,
+        // Decimal do Prisma sairia como texto no JSON.
+        precoPago: Number(compra.precoPago),
+        pagaEm: compra.pagaEm,
+        primeiroAcessoEm: compra.primeiroAcessoEm,
+      },
+    }));
+  }
+
+  /**
+   * Vendas das receitas do usuário, mais novas primeiro. Não identifica o
+   * comprador. `valorVendedor` é o preço menos a taxa da plataforma, antes da
+   * tarifa do Mercado Pago, que a API não conhece.
+   */
+  async minhasVendas(usuario: UsuarioAutenticado) {
+    const vendas = await this.prismaService.receitaCompra.findMany({
+      where: {
+        status: { in: STATUS_VENDIDA },
+        oferta: { receita: { criadoPor: usuario.id } },
+      },
+      select: {
+        id: true,
+        status: true,
+        precoPago: true,
+        taxaPlataforma: true,
+        versaoComprada: true,
+        pagaEm: true,
+        oferta: { select: { receita: { select: { id: true, nome: true } } } },
+      },
+      orderBy: { pagaEm: 'desc' },
+    });
+
+    return vendas.map((venda) => ({
+      id: venda.id,
+      receita: venda.oferta.receita,
+      status: venda.status,
+      versaoComprada: venda.versaoComprada,
+      pagaEm: venda.pagaEm,
+      precoPago: Number(venda.precoPago),
+      taxaPlataforma: Number(venda.taxaPlataforma),
+      valorVendedor: venda.precoPago.minus(venda.taxaPlataforma).toNumber(),
+    }));
   }
 
   /**

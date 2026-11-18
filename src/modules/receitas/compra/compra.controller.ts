@@ -77,6 +77,40 @@ export class CompraController {
     return compra;
   }
 
+  @ApiOperation({
+    summary: 'Retorna as receitas compradas pelo usuário',
+    description:
+      'Resumo das cópias (sem modo de preparo nem ingredientes), com `compradaDe` e a compra. ' +
+      'Não conta como abrir a cópia: só o detalhe e os ingredientes gravam o primeiro acesso.',
+  })
+  @ApiOkResponse({
+    description:
+      'Lista das cópias com compra paga ou em análise de reembolso, mais novas primeiro. Vazia se não houver.',
+  })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard)
+  // Rota fixa: precisa vir antes de GET :id (ordem em ReceitasModule).
+  @Get('compradas')
+  async compradas(@Request() req: RequestAutenticado) {
+    return await this.compraService.compradas(req.user);
+  }
+
+  @ApiOperation({
+    summary: 'Retorna as vendas das receitas do usuário',
+    description:
+      'Não identifica o comprador. `valorVendedor` é o preço pago menos a taxa da plataforma, antes da tarifa do Mercado Pago.',
+  })
+  @ApiOkResponse({
+    description:
+      'Lista das vendas pagas (inclusive as com reembolso pedido ou feito, pelo `status`), mais novas primeiro. Vazia se não houver.',
+  })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard)
+  @Get('minhas-vendas')
+  async minhasVendas(@Request() req: RequestAutenticado) {
+    return await this.compraService.minhasVendas(req.user);
+  }
+
   @ApiOperation({ summary: 'Situação de uma compra do usuário' })
   @ApiOkResponse({
     description:

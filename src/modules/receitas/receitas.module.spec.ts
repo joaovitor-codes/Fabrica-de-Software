@@ -38,6 +38,7 @@ jest.mock('@nestjs/schedule', () => ({
       useValue: {
         favorito: { findMany: async () => [] },
         receita: { findMany: async () => [] },
+        receitaCompra: { findMany: async () => [] },
       },
     },
     { provide: CacheService, useValue: { get: async () => null } },
@@ -124,6 +125,20 @@ describe('ReceitasModule - ordem das rotas', () => {
       .get('/api/receita/compra/nao-e-uuid')
       .expect(400);
     expect(res.body.message).toBe('ID da compra inválido');
+  });
+
+  it('GET compradas vai para o CompraController, não para GET :id', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/receita/compradas')
+      .expect(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('GET minhas-vendas vai para o CompraController, não para GET :id', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/receita/minhas-vendas')
+      .expect(200);
+    expect(res.body).toEqual([]);
   });
 
   it('POST :id/comprar vai para o CompraController', async () => {

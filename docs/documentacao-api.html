@@ -489,7 +489,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <p>Fora da API, o script <code>scripts/curadoria-alergenos.ts</code> cruza palavras-chave com a IA e gera um CSV de candidatos para revisão humana; o CSV revisado é aplicado em qualquer banco (identifica os ingredientes pelo código da TACO). Dentro da API, admin e profissional mantêm os vínculos um a um e marcam o ingrediente como revisado.</p>
 </section>
 <section id="marketplace" class="guia"><h2>Marketplace</h2>
-<div class="nota aviso"><strong>Em grande parte implementado</strong>Termos, vitrine de produtos, conexão com o Mercado Pago, receita paga, compra e webhook já estão no ar, e o pagamento aprovado cria a cópia. Ainda faltam o comprador abrir a cópia (hoje só o admin abre), adaptação e plano alimentar sobre ela, as listagens de compradas e de vendas e o reembolso. Na referência, as rotas que faltam levam o selo <span class="selo planejado">Planejado</span>.</div>
+<div class="nota aviso"><strong>Em grande parte implementado</strong>Termos, vitrine de produtos, conexão com o Mercado Pago, receita paga, compra e webhook já estão no ar, o pagamento aprovado cria a cópia, e o comprador a abre e a encontra nas compradas. Ainda faltam adaptação e plano alimentar sobre a cópia e o reembolso. Na referência, as rotas que faltam levam o selo <span class="selo planejado">Planejado</span>.</div>
 <p>São duas features com pesos diferentes. Na <strong>venda de receitas</strong>, o conteúdo é digital e o pagamento passa pela plataforma: quem compra recebe uma cópia da receita. Na <strong>vitrine de produtos</strong>, a plataforma só mostra o anúncio e o contato: vendedor e interessado se resolvem fora dela.</p>
 <h3>Decisões</h3>
 <div class="tabela"><table><thead><tr><th>Ponto</th><th>Decidido</th></tr></thead><tbody>
@@ -1675,7 +1675,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 </article>
 </section>
 <section id="venda-receitas" class="dominio"><h2><span class="grupo">Marketplace</span>Venda de receitas</h2>
-<div class="nota aviso"><strong>Parcialmente implementado</strong>Já estão no ar a conexão com o Mercado Pago (<code>/api/recebedor</code>), a receita paga (<code>POST /api/receita/paga</code>, <code>PATCH /api/receita/:id/oferta</code> e <code>GET /api/receita/a-venda</code>) e o conteúdo fechado. As demais rotas desta seção, as da compra, com o selo <span class="selo planejado">Planejado</span>, ainda não foram implementadas. As regras estão em <a href="#marketplace">Marketplace</a>.</div>
+<div class="nota aviso"><strong>Parcialmente implementado</strong>Já estão no ar a conexão com o Mercado Pago (<code>/api/recebedor</code>), a receita paga (<code>POST /api/receita/paga</code>, <code>PATCH /api/receita/:id/oferta</code> e <code>GET /api/receita/a-venda</code>), o conteúdo fechado, a compra, as compradas e as vendas. As rotas do reembolso, com o selo <span class="selo planejado">Planejado</span>, ainda não foram implementadas. As regras estão em <a href="#marketplace">Marketplace</a>.</div>
 <article class="endpoint" id="op-get-api-recebedor-conectar" data-busca="get /api/recebedor/conectar inicia a conexão da conta mercado pago do vendedor">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/recebedor/conectar</code><a class="link" href="#op-get-api-recebedor-conectar" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Inicia a conexão da conta Mercado Pago do vendedor</p>
@@ -1724,8 +1724,8 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <article class="endpoint" id="op-get-api-receita-minhas-vendas" data-busca="get /api/receita/minhas-vendas retorna as vendas das receitas do usuário autenticado">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/receita/minhas-vendas</code><a class="link" href="#op-get-api-receita-minhas-vendas" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Retorna as vendas das receitas do usuário autenticado</p>
-<div class="selos"><span class="selo planejado">Planejado</span><span class="selo login">Login</span></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Lista de vendas pagas: receita, data, <code>precoPago</code>, <code>taxaPlataforma</code> e o valor do vendedor antes da tarifa do Mercado Pago. Não identifica o comprador.</span></li></ul>
+<div class="selos"><span class="selo login">Login</span></div>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Lista de vendas pagas, mais novas primeiro (vazia se não houver): <code>receita</code> (<code>id</code>, <code>nome</code>), <code>status</code> (<code>paga</code>, <code>reembolso_em_analise</code> ou <code>reembolsada</code>), <code>versaoComprada</code>, <code>pagaEm</code>, <code>precoPago</code>, <code>taxaPlataforma</code> e <code>valorVendedor</code>, o valor antes da tarifa do Mercado Pago. Não identifica o comprador.</span></li></ul>
 </article>
 <article class="endpoint" id="op-post-api-receita-id-comprar" data-busca="post /api/receita/{id}/comprar inicia a compra de uma receita à venda">
 <header><span class="metodo m-post">POST</span><code class="rota">/api/receita/<span class="param">:id</span>/comprar</code><a class="link" href="#op-post-api-receita-id-comprar" aria-label="Link para esta rota">#</a></header>
@@ -1738,9 +1738,9 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <article class="endpoint" id="op-get-api-receita-compradas" data-busca="get /api/receita/compradas retorna as receitas compradas pelo usuário autenticado">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/receita/compradas</code><a class="link" href="#op-get-api-receita-compradas" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Retorna as receitas compradas pelo usuário autenticado</p>
-<div class="selos"><span class="selo planejado">Planejado</span><span class="selo login">Login</span></div>
+<div class="selos"><span class="selo login">Login</span></div>
 <p class="descricao">Traz só o resumo. Abrir o detalhe ou os ingredientes da cópia é o que conta como primeiro acesso, para a regra de reembolso.</p>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Lista resumida das cópias do usuário, cada uma com <code>compradaDe</code> (a receita original).</span></li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Lista resumida das cópias com compra <code>paga</code> ou <code>reembolso_em_analise</code>, mais novas primeiro (vazia se não houver). Cada uma traz nome, descrição, tempo, porções, dificuldade e capa da cópia, <code>compradaDe</code> (a receita original) e <code>compra</code> (<code>id</code>, <code>status</code>, <code>precoPago</code>, <code>pagaEm</code>, <code>primeiroAcessoEm</code>).</span></li></ul>
 </article>
 <article class="endpoint" id="op-get-api-receita-compra-compraid" data-busca="get /api/receita/compra/{compraid} retorna a situação de uma compra (comprador)">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/receita/compra/<span class="param">:compraId</span></code><a class="link" href="#op-get-api-receita-compra-compraid" aria-label="Link para esta rota">#</a></header>

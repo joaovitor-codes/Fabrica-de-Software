@@ -8,8 +8,9 @@ import { CompraModule } from './compra/compra.module';
 /**
  * Junta os módulos de receita. A ORDEM IMPORTA: todos usam o prefixo
  * `api/receita`, e o Nest registra as rotas na ordem dos módulos. As rotas
- * fixas `GET favoritos` e `GET pendentes` precisam vir antes de
- * `GET :id` (ReceitaModule), senão "favoritos" cai no :id e responde 400.
+ * fixas `GET favoritos`, `GET pendentes`, `GET compradas` e
+ * `GET minhas-vendas` precisam vir antes de `GET :id` (ReceitaModule),
+ * senão "favoritos" cai no :id e responde 400.
  * Por isso ReceitaModule vem por último, e nenhum outro módulo de receita o
  * importa (ele é que importa o de adaptação). Coberto por
  * receitas.module.spec.ts.
@@ -19,8 +20,8 @@ import { CompraModule } from './compra/compra.module';
     FavoritoModule,
     CuradoriaReceitaModule,
     AdaptacaoModule,
-    ReceitaModule,
     CompraModule,
+    ReceitaModule,
   ],
 })
 export class ReceitasModule {}

@@ -71,6 +71,7 @@ describe('FavoritoService.findFavorites', () => {
           useValue: {
             comRestricoesVioladas: async (rs: unknown[]) => rs,
             filtroBase: () => filtroDoUsuario,
+            receitasCompradas: async () => new Set(),
           },
         },
       ],

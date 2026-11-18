@@ -295,7 +295,13 @@ export class ReceitaService {
       receitas,
       restricoes,
     );
-    return anotadas.map((receita) => previaDaReceita(receita));
+    const compradas = await this.visibilidade.receitasCompradas(
+      anotadas.map((r) => r.id),
+      usuario,
+    );
+    return anotadas.map((receita) =>
+      previaDaReceita(receita, compradas.has(receita.id)),
+    );
   }
 
   /**
@@ -475,6 +481,12 @@ export class ReceitaService {
 
   async findOne(id: string, usuario?: UsuarioAutenticado) {
     const restricoes = await restricoesDoUsuario(this.prismaService, usuario);
+
+    const compra = await this.compraParaAbrir(id, usuario);
+    if (compra) {
+      return this.abrirCopia(compra, restricoes);
+    }
+
     const receita = await this.prismaService.receita.findFirst({
       where: {
         id,
@@ -544,6 +556,54 @@ export class ReceitaService {
     return this.visibilidade.naoEncontrada(id, usuario, restricoes);
   }
 
+  /**
+   * A compra cuja cópia o usuário abre por este id: o da cópia ou o da
+   * original. Quem já vê a original inteira (o admin que comprou, por
+   * exemplo) continua recebendo a original pelo id dela.
+   */
+  private async compraParaAbrir(id: string, usuario?: UsuarioAutenticado) {
+    const compra = await this.visibilidade.compraComCopia(id, usuario);
+    if (!compra) return null;
+    const original = compra.oferta.receita;
+    if (compra.receitaCopiaId !== id && veConteudoPago(original, usuario)) {
+      return null;
+    }
+    return compra;
+  }
+
+  /**
+   * A cópia do comprador, marcada com `compradaDe`, e a primeira abertura
+   * gravada. Não passa pela adaptação automática do catálogo: adaptar a
+   * cópia é a seção 6.4 do plano do marketplace (#127).
+   */
+  private async abrirCopia(
+    compra: NonNullable<
+      Awaited<ReturnType<VisibilidadeReceitaService['compraComCopia']>>
+    >,
+    restricoes: RestricaoDoPaciente[],
+  ) {
+    const copia = await this.prismaService.receita.findUniqueOrThrow({
+      where: { id: compra.receitaCopiaId! },
+      include: {
+        ingredientes: {
+          include: {
+            ingrediente: true,
+            unidadeMedida: true,
+          },
+        },
+        midias: true,
+      },
+    });
+    await this.visibilidade.registrarAbertura(compra.id);
+
+    const [anotada] = await this.visibilidade.comRestricoesVioladas(
+      [copia],
+      restricoes,
+    );
+    const { id, nome } = compra.oferta.receita;
+    return { ...anotada, compradaDe: { id, nome } };
+  }
+
   /** A adaptada com ingredientes e mídias, dizendo de qual receita veio. */
   private async receitaAdaptadaCompleta(
     adaptada: Adaptada,
@@ -596,6 +656,8 @@ export class ReceitaService {
         AND: [
           criterio,
           this.visibilidade.filtroBase(usuario),
+          // Como na lista: receita paga e cópia de compra não entram.
+          this.visibilidade.semReceitasPagas(),
           { id: { notIn: receitas.map((r) => r.id) } },
         ],
       },
@@ -667,6 +729,16 @@ export class ReceitaService {
   }
 
   async findIngredients(id: string, usuario?: UsuarioAutenticado) {
+    // Quem comprou recebe os ingredientes da cópia, e isso conta como abrir.
+    const compra = await this.compraParaAbrir(id, usuario);
+    if (compra) {
+      const ingredientes = await this.prismaService.receitaIngrediente.findMany(
+        { where: { receitaId: compra.receitaCopiaId! } },
+      );
+      await this.visibilidade.registrarAbertura(compra.id);
+      return ingredientes;
+    }
+
     await this.visibilidade.garantirVisivel(id, usuario);
 
     const receita = await this.prismaService.receita.findUnique({
@@ -861,13 +933,17 @@ export class ReceitaService {
     }
 
     return this.prismaService.$transaction(async (tx) => {
-      const receitaAtual = await tx.receita.findUnique({ where: { id } });
+      const receitaAtual = await tx.receita.findUnique({
+        where: { id },
+        include: { copiaDeCompra: { select: { id: true } } },
+      });
 
       if (!receitaAtual || receitaAtual.deletedAt) {
         throw new NotFoundException('Receita não encontrada');
       }
 
       this.verificarAutorOuAdmin(receitaAtual.criadoPor, usuario);
+      this.garantirNaoCopia(receitaAtual);
 
       await this.cacheService.del(cacheKey);
 
@@ -984,14 +1060,32 @@ export class ReceitaService {
     }
   }
 
+  /**
+   * Autor ou admin, e a receita não pode ser a cópia de uma compra: a cópia
+   * não muda depois de entregue (P8), nem pelo vendedor, que é o
+   * `criadoPor` dela, nem pelo admin.
+   */
   private async garantirAutorOuAdmin(id: string, usuario: UsuarioAutenticado) {
     const receita = await this.prismaService.receita.findUnique({
       where: { id },
-      select: { criadoPor: true, deletedAt: true },
+      select: {
+        criadoPor: true,
+        deletedAt: true,
+        copiaDeCompra: { select: { id: true } },
+      },
     });
     if (!receita || receita.deletedAt) {
       throw new NotFoundException('Receita não encontrada');
     }
     this.verificarAutorOuAdmin(receita.criadoPor, usuario);
+    this.garantirNaoCopia(receita);
+  }
+
+  private garantirNaoCopia(receita: { copiaDeCompra?: { id: string } | null }) {
+    if (receita.copiaDeCompra) {
+      throw new ForbiddenException(
+        'A cópia de uma receita comprada não pode ser editada nem excluída.',
+      );
+    }
   }
 }
