@@ -87,6 +87,13 @@ const atende = (r: any, where: any = {}): boolean =>
 
 class FakePrismaService {
   receitas: any[] = [];
+
+  // Sem compras: o acesso do comprador à cópia é testado em Postgres real
+  // (acesso-receita-comprada.integration.spec.ts).
+  receitaCompra = {
+    findFirst: async () => null,
+    findMany: async () => [],
+  };
   pacienteRestricoes: any[] = [];
 
   receita = {

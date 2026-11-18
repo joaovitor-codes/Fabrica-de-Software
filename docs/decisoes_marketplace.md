@@ -3,7 +3,7 @@
 Registro das decisões tomadas sobre as duas features novas do Nutrify: **venda de receitas** e **vitrine de produtos**. Serve de contexto para quem for implementar, pessoa ou IA, sem precisar da conversa em que elas foram tomadas.
 
 - **Data:** 10/10/2026
-- **Situação:** quase todo implementado. Termos, vitrine, conexão com o Mercado Pago, receita paga, compra e webhook estão no ar, e o pagamento aprovado cria a cópia. Faltam o comprador abrir a cópia (`GET /receita/:id` com `compradaDe`, hoje só o admin a abre), adaptação e plano alimentar sobre ela, `GET /receita/compradas`, `GET /receita/minhas-vendas` e o reembolso (seção 4.7). O andamento por etapa está em [`plano-implementacao-marketplace.md`](plano-implementacao-marketplace.md).
+- **Situação:** quase todo implementado. Termos, vitrine, conexão com o Mercado Pago, receita paga, compra e webhook estão no ar, e o pagamento aprovado cria a cópia. O comprador abre a cópia (`GET /receita/:id` com `compradaDe`) e a encontra em `GET /receita/compradas`; o vendedor vê as vendas em `GET /receita/minhas-vendas`. Faltam adaptação e plano alimentar sobre a cópia e o reembolso (seção 4.7). O andamento por etapa está em [`plano-implementacao-marketplace.md`](plano-implementacao-marketplace.md).
 - **Arquivos que acompanham este documento:** `schema.prisma` (v5) e `documentacao-api.html` (seção "Marketplace" no guia; as rotas que faltam levam o selo "Planejado").
 - **Natureza do projeto:** fábrica de software com foco em estudo. As pendências jurídicas e fiscais ficam fora do escopo (seção 11).
 

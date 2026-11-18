@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import {
   Prisma,
+  StatusCompraReceita,
   StatusReceita,
   StatusRecebedor,
   TipoUsuario,
@@ -29,6 +30,23 @@ const semCopiasDeCompra = {
 } satisfies Prisma.ReceitaWhereInput;
 
 /**
+ * Status da compra em que o comprador tem a cópia (seção 4.5 das decisões
+ * do marketplace). Reembolsada, a cópia sai do ar.
+ */
+export const STATUS_COM_COPIA = [
+  StatusCompraReceita.paga,
+  StatusCompraReceita.reembolso_em_analise,
+];
+
+/** A cópia que o próprio usuário comprou (P8: o acesso vem da compra). */
+const copiaDoComprador = (usuarioId: string) =>
+  ({
+    copiaDeCompra: {
+      is: { compradorId: usuarioId, status: { in: STATUS_COM_COPIA } },
+    },
+  }) satisfies Prisma.ReceitaWhereInput;
+
+/**
  * Quem vê quais receitas, considerando as restrições alimentares do
  * paciente. Usado pelas listagens, pela receita aberta pelo id, pelos
  * favoritos e pela adaptação. Regras em regra_negocio_receitas_seguras.md.
@@ -48,7 +66,8 @@ export class VisibilidadeReceitaService {
    * Quem vê quais receitas, sem olhar restrição: visitante só as aprovadas;
    * usuário logado as aprovadas e as próprias; admin e profissional
    * (curadoria) todas. Adaptação feita para um paciente só aparece para ele.
-   * A cópia de uma compra só o admin abre.
+   * A cópia de uma compra só o comprador e o admin abrem; o vendedor, que é
+   * o `criadoPor` dela, não.
    */
   filtroBase(usuario?: UsuarioAutenticado): Prisma.ReceitaWhereInput {
     if (!usuario) {
@@ -62,18 +81,83 @@ export class VisibilidadeReceitaService {
       return {};
     }
     if (this.ehEquipe(usuario)) {
-      return semCopiasDeCompra;
+      return { OR: [semCopiasDeCompra, copiaDoComprador(usuario.id)] };
     }
     return {
-      ...semCopiasDeCompra,
       OR: [
         {
+          ...semCopiasDeCompra,
           status: StatusReceita.aprovada,
           AND: [semAdaptacoesDeOutros(usuario.id)],
         },
-        { criadoPor: usuario.id },
+        { ...semCopiasDeCompra, criadoPor: usuario.id },
+        copiaDoComprador(usuario.id),
       ],
     };
+  }
+
+  /** Tira as cópias de compra; para quem ainda não abre a cópia por esta rota. */
+  semCopiasDeCompra(): Prisma.ReceitaWhereInput {
+    return semCopiasDeCompra;
+  }
+
+  /**
+   * A compra que dá ao usuário acesso à cópia, achada pelo id da cópia ou da
+   * receita original (o comprador que abre a original recebe a cópia dele).
+   * Sem compra paga ou em análise de reembolso, null.
+   */
+  async compraComCopia(receitaId: string, usuario?: UsuarioAutenticado) {
+    if (!usuario) return null;
+    return this.prismaService.receitaCompra.findFirst({
+      where: {
+        compradorId: usuario.id,
+        status: { in: STATUS_COM_COPIA },
+        receitaCopiaId: { not: null },
+        OR: [{ receitaCopiaId: receitaId }, { oferta: { receitaId } }],
+      },
+      select: {
+        id: true,
+        receitaCopiaId: true,
+        primeiroAcessoEm: true,
+        oferta: {
+          select: {
+            receita: {
+              select: { id: true, nome: true, criadoPor: true, status: true },
+            },
+          },
+        },
+      },
+      orderBy: { pagaEm: 'desc' },
+    });
+  }
+
+  /**
+   * Abrir a cópia (detalhe ou ingredientes) grava `primeiroAcessoEm`, que
+   * decide se o reembolso é automático (seção 4.7). Só a primeira abertura
+   * conta: as seguintes não mexem na data.
+   */
+  async registrarAbertura(compraId: string, agora = new Date()) {
+    await this.prismaService.receitaCompra.updateMany({
+      where: { id: compraId, primeiroAcessoEm: null },
+      data: { primeiroAcessoEm: agora },
+    });
+  }
+
+  /** Das receitas dadas, as que o usuário comprou e cuja cópia ele tem. */
+  async receitasCompradas(
+    receitaIds: string[],
+    usuario?: UsuarioAutenticado,
+  ): Promise<Set<string>> {
+    if (!usuario || receitaIds.length === 0) return new Set();
+    const compras = await this.prismaService.receitaCompra.findMany({
+      where: {
+        compradorId: usuario.id,
+        status: { in: STATUS_COM_COPIA },
+        oferta: { receitaId: { in: receitaIds } },
+      },
+      select: { oferta: { select: { receitaId: true } } },
+    });
+    return new Set(compras.map((c) => c.oferta.receitaId));
   }
 
   /**
@@ -116,6 +200,8 @@ export class VisibilidadeReceitaService {
    * - a adaptação ainda não verificada aparece para quem tem a restrição
    *   dela como leve/moderada, e para quem pediu, exceto se a restrição for
    *   estrita para ele: aí só depois da verificação.
+   * - a cópia que ele comprou aparece mesmo que fira uma restrição (a
+   *   curadoria de ingredientes pode mudar depois da compra), só com o aviso.
    */
   filtroVisibilidade(
     usuario: UsuarioAutenticado | undefined,
@@ -129,15 +215,20 @@ export class VisibilidadeReceitaService {
     const flexiveis = restricoes.filter((r) => !r.estrita);
     const segura = clausulaSegura(estritas);
     return {
-      ...semCopiasDeCompra,
       OR: [
         {
+          ...semCopiasDeCompra,
           status: StatusReceita.aprovada,
           AND: [semAdaptacoesDeOutros(usuario.id)],
           ...segura,
         },
-        { criadoPor: usuario.id, adaptacaoDe: { is: null } },
         {
+          ...semCopiasDeCompra,
+          criadoPor: usuario.id,
+          adaptacaoDe: { is: null },
+        },
+        {
+          ...semCopiasDeCompra,
           criadoPor: usuario.id,
           adaptacaoDe: {
             is: {
@@ -149,6 +240,7 @@ export class VisibilidadeReceitaService {
         ...(flexiveis.length > 0
           ? [
               {
+                ...semCopiasDeCompra,
                 status: StatusReceita.pendente,
                 adaptacaoDe: {
                   is: {
@@ -159,6 +251,7 @@ export class VisibilidadeReceitaService {
               },
             ]
           : []),
+        copiaDoComprador(usuario.id),
       ],
     };
   }

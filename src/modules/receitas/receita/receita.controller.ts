@@ -237,9 +237,14 @@ export class ReceitaController {
     summary: 'Retorna uma receita pelo ID',
     description:
       'Receita paga devolve só a prévia (sem modo de preparo, ingredientes nem mídias de passo a passo) ' +
-      'para quem não é o autor, o admin ou o curador com a receita pendente.',
+      'para quem não é o autor, o admin ou o curador com a receita pendente. ' +
+      'Quem comprou recebe a cópia dele, pelo id da cópia ou da original, marcada com `compradaDe`; ' +
+      'a primeira abertura grava o primeiro acesso, que decide o reembolso automático.',
   })
-  @ApiOkResponse({ description: 'Objeto da receita, ou a prévia se for paga.' })
+  @ApiOkResponse({
+    description:
+      'Objeto da receita, a prévia se for paga, ou a cópia do comprador com `compradaDe`.',
+  })
   @ApiBearerAuth()
   @UseGuards(OptionalAuthGuard)
   @Get(':id')
@@ -250,11 +255,15 @@ export class ReceitaController {
     return await this.receitaService.findOne(id, req.user);
   }
 
-  @ApiOperation({ summary: 'Retorna os ingredientes de uma receita pelo ID' })
+  @ApiOperation({
+    summary: 'Retorna os ingredientes de uma receita pelo ID',
+    description:
+      'Quem comprou recebe os ingredientes da cópia, pelo id da cópia ou da original; conta como abrir a cópia.',
+  })
   @ApiOkResponse({ description: 'Array de ingredientes da receita.' })
   @ApiForbiddenResponse({
     description:
-      'Receita paga: só o autor, o admin e o curador (receita pendente) veem os ingredientes.',
+      'Receita paga: só o autor, o admin, o curador (receita pendente) e quem comprou veem os ingredientes.',
   })
   @ApiBearerAuth()
   @UseGuards(OptionalAuthGuard)
@@ -316,6 +325,10 @@ export class ReceitaController {
 
   @ApiOperation({ summary: 'Atualiza uma receita pelo ID (autor ou admin)' })
   @ApiOkResponse({ description: 'Receita atualizada com sucesso.' })
+  @ApiForbiddenResponse({
+    description:
+      'Não é o autor nem admin, ou a receita é a cópia de uma compra, que ninguém edita.',
+  })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Patch(':id')
@@ -329,6 +342,10 @@ export class ReceitaController {
 
   @ApiOperation({ summary: 'Remove uma receita pelo ID (autor ou admin)' })
   @ApiOkResponse({ description: 'Receita removida com sucesso.' })
+  @ApiForbiddenResponse({
+    description:
+      'Não é o autor nem admin, ou a receita é a cópia de uma compra, que ninguém exclui.',
+  })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Delete(':id')

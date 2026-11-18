@@ -53,9 +53,13 @@ export class FavoritoService {
       await restricoesDoPaciente(this.prismaService, { usuarioId }),
     );
     // Receita paga favoritada continua na lista, mas como prévia.
+    const compradas = await this.visibilidade.receitasCompradas(
+      anotadas.map((r) => r.id),
+      usuario,
+    );
     return anotadas.map((receita) =>
       receita.oferta && !veConteudoPago(receita, usuario)
-        ? previaDaReceita(receita)
+        ? previaDaReceita(receita, compradas.has(receita.id))
         : receita,
     );
   }

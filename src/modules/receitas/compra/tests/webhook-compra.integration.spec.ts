@@ -241,10 +241,9 @@ describe('Webhook da compra (integração com Postgres)', () => {
       copiaId = receitaCopiaId!;
     });
 
-    it('fica fora do detalhe para visitante, comprador, autor e curador', async () => {
+    it('fica fora do detalhe para visitante, autor, curador e outro usuário', async () => {
       const usuarios: (UsuarioAutenticado | undefined)[] = [
         undefined,
-        await comoUsuario(compradorId),
         await comoUsuario(vendedorId),
         await comoUsuario(
           await criarUsuario(`curador-${seq++}`, TipoUsuario.profissional),
@@ -259,6 +258,12 @@ describe('Webhook da compra (integração com Postgres)', () => {
           visibilidade().garantirVisivel(copiaId, usuario),
         ).rejects.toBeInstanceOf(NotFoundException);
       }
+    });
+
+    it('o comprador abre pelo id', async () => {
+      await expect(
+        visibilidade().garantirVisivel(copiaId, await comoUsuario(compradorId)),
+      ).resolves.toBeUndefined();
     });
 
     it('o admin abre pelo id, mas ela fica fora das listagens', async () => {

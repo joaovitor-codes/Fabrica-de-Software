@@ -21,7 +21,8 @@ type ReceitaParaAcesso = { criadoPor: string; status: StatusReceita };
 
 /**
  * Quem vê o conteúdo inteiro de uma receita paga: o autor, o admin e o
- * profissional enquanto ela está na curadoria.
+ * profissional enquanto ela está na curadoria. O comprador não vê a
+ * original: recebe a cópia dele (VisibilidadeReceitaService.compraComCopia).
  */
 export function veConteudoPago(
   receita: ReceitaParaAcesso,
@@ -70,7 +71,7 @@ type ReceitaComOferta = {
  * o modo de preparo, os ingredientes com quantidades e as mídias de passo a
  * passo e vídeo; só a capa vai junto.
  */
-export function previaDaReceita(receita: ReceitaComOferta) {
+export function previaDaReceita(receita: ReceitaComOferta, comprada = false) {
   return {
     id: receita.id,
     nome: receita.nome,
@@ -85,8 +86,8 @@ export function previaDaReceita(receita: ReceitaComOferta) {
       // Decimal do Prisma sairia como texto no JSON.
       preco: Number(receita.oferta!.preco),
       publicoAlvo: receita.oferta!.publicoAlvo.map((p) => p.restricao),
-      // Até a compra existir (M4), ninguém comprou.
-      comprada: false,
+      // O comprador abre a cópia pelo id desta receita (GET :id).
+      comprada,
     },
     ...(receita.restricoesVioladas
       ? { restricoesVioladas: receita.restricoesVioladas }
