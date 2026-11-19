@@ -37,11 +37,15 @@ export class AdaptacaoProfissionalService {
     pacienteId: string,
     usuario: UsuarioAutenticado,
   ) {
-    await this.garantirPacienteDoProfissional(pacienteId, usuario);
+    const { paciente } = await this.garantirPacienteDoProfissional(
+      pacienteId,
+      usuario,
+    );
     const restricoes = await restricoesDoPaciente(this.prismaService, {
       id: pacienteId,
     });
     const origem = await this.base.carregarOrigem(receitaId, {}, usuario);
+    this.base.garantirCopiaDe(origem, paciente.usuarioId);
     const resumoRestricoes = restricoes.map((r) => ({
       id: r.restricaoId,
       nome: r.nome,
@@ -148,14 +152,13 @@ export class AdaptacaoProfissionalService {
     dto: AdaptacaoProfissionalDto,
     usuario: UsuarioAutenticado,
   ) {
-    const profissional = await this.garantirPacienteDoProfissional(
-      dto.pacienteId,
-      usuario,
-    );
+    const { profissional, paciente } =
+      await this.garantirPacienteDoProfissional(dto.pacienteId, usuario);
     const restricoes = await restricoesDoPaciente(this.prismaService, {
       id: dto.pacienteId,
     });
     const origem = await this.base.carregarOrigem(receitaId, {}, usuario);
+    this.base.garantirCopiaDe(origem, paciente.usuarioId);
     await this.ingredientesReceita.validarIngredientes(dto.ingredientes);
 
     const idsNovos = dto.ingredientes.map((i) => i.ingredienteId);
@@ -286,6 +289,6 @@ export class AdaptacaoProfissionalService {
         'É preciso ter cadastro de profissional para verificar a adaptação',
       );
     }
-    return profissional;
+    return { profissional, paciente };
   }
 }

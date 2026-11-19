@@ -22,28 +22,66 @@ import {
 } from './restricoes-receita';
 
 /**
+ * Adaptação feita a partir da cópia de uma compra. Ela carrega o conteúdo
+ * pago, então segue a cópia: só o comprador e o admin a veem (#127).
+ */
+const adaptacaoDeCopia = {
+  adaptacaoDe: {
+    is: { receitaOrigem: { is: { copiaDeCompra: { isNot: null } } } },
+  },
+} satisfies Prisma.ReceitaWhereInput;
+
+/**
  * A cópia de uma compra é aprovada e não tem oferta, mas é conteúdo pago.
- * O `criadoPor` dela é o vendedor, então ser o autor não libera a cópia.
+ * O `criadoPor` dela é o vendedor, então ser o autor não libera a cópia. As
+ * adaptações feitas a partir dela também saem.
  */
 const semCopiasDeCompra = {
   copiaDeCompra: { is: null },
+  NOT: adaptacaoDeCopia,
 } satisfies Prisma.ReceitaWhereInput;
 
 /**
  * Status da compra em que o comprador tem a cópia (seção 4.5 das decisões
  * do marketplace). Reembolsada, a cópia sai do ar.
  */
-export const STATUS_COM_COPIA = [
+export const STATUS_COM_COPIA: StatusCompraReceita[] = [
   StatusCompraReceita.paga,
   StatusCompraReceita.reembolso_em_analise,
 ];
 
-/** A cópia que o próprio usuário comprou (P8: o acesso vem da compra). */
-const copiaDoComprador = (usuarioId: string) =>
+/** A compra viva do usuário, que dá acesso à cópia (P8). */
+const compraViva = (usuarioId: string) =>
   ({
-    copiaDeCompra: {
-      is: { compradorId: usuarioId, status: { in: STATUS_COM_COPIA } },
-    },
+    is: { compradorId: usuarioId, status: { in: STATUS_COM_COPIA } },
+  }) satisfies Prisma.ReceitaCompraNullableScalarRelationFilter;
+
+/**
+ * A cópia que o próprio usuário comprou e as adaptações feitas a partir
+ * dela. `estritas`: restrições estritas dele; a adaptação ainda não
+ * verificada para uma delas só aparece depois da verificação, como as
+ * adaptações do catálogo.
+ */
+const copiaDoComprador = (usuarioId: string, estritas: string[] = []) =>
+  ({
+    OR: [
+      { copiaDeCompra: compraViva(usuarioId) },
+      {
+        adaptacaoDe: {
+          is: {
+            receitaOrigem: { is: { copiaDeCompra: compraViva(usuarioId) } },
+          },
+        },
+        ...(estritas.length > 0
+          ? {
+              OR: [
+                { status: StatusReceita.aprovada },
+                { adaptacaoDe: { is: { restricaoId: { notIn: estritas } } } },
+              ],
+            }
+          : {}),
+      },
+    ],
   }) satisfies Prisma.ReceitaWhereInput;
 
 /**
@@ -66,8 +104,10 @@ export class VisibilidadeReceitaService {
    * Quem vê quais receitas, sem olhar restrição: visitante só as aprovadas;
    * usuário logado as aprovadas e as próprias; admin e profissional
    * (curadoria) todas. Adaptação feita para um paciente só aparece para ele.
-   * A cópia de uma compra só o comprador e o admin abrem; o vendedor, que é
-   * o `criadoPor` dela, não.
+   * A cópia de uma compra e as adaptações dela só o comprador e o admin
+   * abrem; o vendedor, que é o `criadoPor` da cópia, não. O profissional vê
+   * a adaptação da cópia enquanto ela espera verificação (curadoria) e a
+   * que ele mesmo fez para o paciente.
    */
   filtroBase(usuario?: UsuarioAutenticado): Prisma.ReceitaWhereInput {
     if (!usuario) {
@@ -81,7 +121,16 @@ export class VisibilidadeReceitaService {
       return {};
     }
     if (this.ehEquipe(usuario)) {
-      return { OR: [semCopiasDeCompra, copiaDoComprador(usuario.id)] };
+      return {
+        OR: [
+          semCopiasDeCompra,
+          copiaDoComprador(usuario.id),
+          {
+            ...adaptacaoDeCopia,
+            OR: [{ status: StatusReceita.pendente }, { criadoPor: usuario.id }],
+          },
+        ],
+      };
     }
     return {
       OR: [
@@ -94,11 +143,6 @@ export class VisibilidadeReceitaService {
         copiaDoComprador(usuario.id),
       ],
     };
-  }
-
-  /** Tira as cópias de compra; para quem ainda não abre a cópia por esta rota. */
-  semCopiasDeCompra(): Prisma.ReceitaWhereInput {
-    return semCopiasDeCompra;
   }
 
   /**
@@ -201,7 +245,8 @@ export class VisibilidadeReceitaService {
    *   dela como leve/moderada, e para quem pediu, exceto se a restrição for
    *   estrita para ele: aí só depois da verificação.
    * - a cópia que ele comprou aparece mesmo que fira uma restrição (a
-   *   curadoria de ingredientes pode mudar depois da compra), só com o aviso.
+   *   curadoria de ingredientes pode mudar depois da compra), só com o aviso;
+   *   a adaptação dela segue a regra de verificação acima.
    */
   filtroVisibilidade(
     usuario: UsuarioAutenticado | undefined,
@@ -251,7 +296,10 @@ export class VisibilidadeReceitaService {
               },
             ]
           : []),
-        copiaDoComprador(usuario.id),
+        copiaDoComprador(
+          usuario.id,
+          estritas.map((r) => r.restricaoId),
+        ),
       ],
     };
   }
