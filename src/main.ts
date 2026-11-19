@@ -6,10 +6,14 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { configurarTrustProxy } from './common/config/trust-proxy';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
+
+  configurarTrustProxy(app, configService.get<number>('TRUST_PROXY') ?? 0);
 
   app.use(cookieParser());
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));

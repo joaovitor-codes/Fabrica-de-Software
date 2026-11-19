@@ -22,6 +22,8 @@ export const envValidationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
   PORT: Joi.number().default(3000),
+  // Proxies à frente da API (ver common/config/trust-proxy.ts).
+  TRUST_PROXY: Joi.number().integer().min(0).default(0),
   REDIS_URL: Joi.string()
     .uri({ scheme: ['redis', 'rediss'] })
     .default('redis://localhost:6379'),
