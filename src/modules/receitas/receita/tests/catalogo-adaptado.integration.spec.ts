@@ -45,8 +45,14 @@ const atende = (r: any, where: any = {}): boolean =>
   Object.entries(where).every(([campo, cond]: [string, any]) => {
     if (campo === 'OR') return cond.some((w: any) => atende(r, w));
     if (campo === 'AND') return cond.every((w: any) => atende(r, w));
+    if (campo === 'NOT') return !atende(r, cond);
     const valor = r[campo];
     if (cond && typeof cond === 'object') {
+      if ('isNot' in cond) {
+        return cond.isNot === null
+          ? (valor ?? null) !== null
+          : (valor ?? null) === null || !atende(valor, cond.isNot);
+      }
       if ('every' in cond)
         return valor.every((i: any) => atende(i, cond.every));
       if ('none' in cond) return !valor.some((i: any) => atende(i, cond.none));

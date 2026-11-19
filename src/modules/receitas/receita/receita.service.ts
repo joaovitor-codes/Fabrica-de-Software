@@ -573,8 +573,8 @@ export class ReceitaService {
 
   /**
    * A cópia do comprador, marcada com `compradaDe`, e a primeira abertura
-   * gravada. Não passa pela adaptação automática do catálogo: adaptar a
-   * cópia é a seção 6.4 do plano do marketplace (#127).
+   * gravada. Não passa pela adaptação automática do catálogo: o comprador
+   * adapta a cópia pedindo, em `POST /:id/adaptar` (#127).
    */
   private async abrirCopia(
     compra: NonNullable<

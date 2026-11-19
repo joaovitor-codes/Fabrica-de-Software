@@ -5,19 +5,23 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { TipoUsuario } from '@prisma/client';
+import { Prisma, TipoUsuario } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   clausulaSegura,
   restricoesDoPaciente,
   restricoesVioladas,
 } from '../../receitas/visibilidade/restricoes-receita';
+import { STATUS_COM_COPIA } from '../../receitas/visibilidade/visibilidade-receita.service';
 import {
   PlanoAlimentarDto,
   PlanoAlimentarItemDto,
   UpdatePlanoAlimentarDto,
   UpdatePlanoAlimentarItemDto,
 } from './dtos/plano-alimentar';
+
+const ITEM_REPETIDO =
+  'Já existe um item cadastrado para esse dia e refeição neste plano alimentar';
 
 @Injectable()
 export class PlanoAlimentarService {
@@ -107,22 +111,20 @@ export class PlanoAlimentarService {
     );
 
     if (itemDuplicado) {
-      throw new ConflictException(
-        'Já existe um item cadastrado para esse dia e refeição neste plano alimentar',
-      );
+      throw new ConflictException(ITEM_REPETIDO);
     }
 
-    const novoItem = await this.prismaService.planoAlimentarItem.create({
-      data: {
-        planoAlimentarId: planoAlimentarId,
-        receitaId: item.receitaId,
-        diaSemana: item.diaSemana,
-        tipoRefeicao: item.tipoRefeicao,
-        horarioSugerido: this.horarioSugeridoParaDate(item.horarioSugerido),
-      },
-    });
-
-    return novoItem;
+    return this.semHorarioRepetido(() =>
+      this.prismaService.planoAlimentarItem.create({
+        data: {
+          planoAlimentarId: planoAlimentarId,
+          receitaId: item.receitaId,
+          diaSemana: item.diaSemana,
+          tipoRefeicao: item.tipoRefeicao,
+          horarioSugerido: this.horarioSugeridoParaDate(item.horarioSugerido),
+        },
+      }),
+    );
   }
 
   async deletePlanoAlimentar(
@@ -301,23 +303,23 @@ export class PlanoAlimentarService {
         });
 
       if (itemDuplicado) {
-        throw new ConflictException(
-          'Já existe um item cadastrado para esse dia e refeição neste plano alimentar',
-        );
+        throw new ConflictException(ITEM_REPETIDO);
       }
     }
 
-    return this.prismaService.planoAlimentarItem.update({
-      where: { id: itemId },
-      data: {
-        receitaId: dto.receitaId,
-        diaSemana: dto.diaSemana,
-        tipoRefeicao: dto.tipoRefeicao,
-        horarioSugerido: dto.horarioSugerido
-          ? this.horarioSugeridoParaDate(dto.horarioSugerido)
-          : undefined,
-      },
-    });
+    return this.semHorarioRepetido(() =>
+      this.prismaService.planoAlimentarItem.update({
+        where: { id: itemId },
+        data: {
+          receitaId: dto.receitaId,
+          diaSemana: dto.diaSemana,
+          tipoRefeicao: dto.tipoRefeicao,
+          horarioSugerido: dto.horarioSugerido
+            ? this.horarioSugeridoParaDate(dto.horarioSugerido)
+            : undefined,
+        },
+      }),
+    );
   }
 
   async deleteItemDoPlano(itemId: string, profissionalId: string) {
@@ -407,14 +409,45 @@ export class PlanoAlimentarService {
       );
     }
 
+    const compraViva = {
+      select: { compradorId: true, status: true },
+    } satisfies Prisma.ReceitaCompraDefaultArgs;
+    const [receita, adaptacao, paciente] = await Promise.all([
+      this.prismaService.receita.findUnique({
+        where: { id: receitaId },
+        select: { copiaDeCompra: compraViva },
+      }),
+      this.prismaService.receitaAdaptacao.findUnique({
+        where: { receitaAdaptadaId: receitaId },
+        select: {
+          pacienteId: true,
+          receitaOrigem: { select: { copiaDeCompra: compraViva } },
+        },
+      }),
+      this.prismaService.paciente.findUnique({
+        where: { id: pacienteId },
+        select: { usuarioId: true },
+      }),
+    ]);
+
     // Adaptação feita para outro paciente não entra neste plano.
-    const adaptacao = await this.prismaService.receitaAdaptacao.findUnique({
-      where: { receitaAdaptadaId: receitaId },
-      select: { pacienteId: true },
-    });
     if (adaptacao?.pacienteId && adaptacao.pacienteId !== pacienteId) {
       throw new UnprocessableEntityException(
         'Esta adaptação foi feita para outro paciente',
+      );
+    }
+
+    // Cópia de compra, ou adaptação dela, só entra no plano de quem comprou
+    // (P10); a do profissional ou de outro usuário, não. Reembolsada, sai.
+    const compra =
+      receita?.copiaDeCompra ?? adaptacao?.receitaOrigem?.copiaDeCompra;
+    if (
+      compra &&
+      (compra.compradorId !== paciente?.usuarioId ||
+        !STATUS_COM_COPIA.includes(compra.status))
+    ) {
+      throw new UnprocessableEntityException(
+        'Receita comprada: só entra no plano a cópia que o paciente comprou',
       );
     }
 
@@ -440,6 +473,25 @@ export class PlanoAlimentarService {
         message: 'A receita não é segura para as restrições do paciente',
         restricoesVioladas: violadas.get(receitaId) ?? [],
       });
+    }
+  }
+
+  /**
+   * A checagem com findFirst responde rápido no caso comum; o índice único
+   * de (plano, dia, refeição) pega os pedidos simultâneos que passaram por
+   * ela juntos.
+   */
+  private async semHorarioRepetido<T>(gravar: () => Promise<T>): Promise<T> {
+    try {
+      return await gravar();
+    } catch (erro) {
+      if (
+        erro instanceof Prisma.PrismaClientKnownRequestError &&
+        erro.code === 'P2002'
+      ) {
+        throw new ConflictException(ITEM_REPETIDO);
+      }
+      throw erro;
     }
   }
 

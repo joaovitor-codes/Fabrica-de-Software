@@ -63,8 +63,14 @@ const atende = (r: any, where: any = {}): boolean =>
   Object.entries(where).every(([campo, cond]: [string, any]) => {
     if (campo === 'OR') return cond.some((w: any) => atende(r, w));
     if (campo === 'AND') return cond.every((w: any) => atende(r, w));
+    if (campo === 'NOT') return !atende(r, cond);
     const valor = r[campo];
     if (cond && typeof cond === 'object') {
+      if ('isNot' in cond) {
+        return cond.isNot === null
+          ? (valor ?? null) !== null
+          : (valor ?? null) === null || !atende(valor, cond.isNot);
+      }
       if ('contains' in cond) {
         return valor.toLowerCase().includes(cond.contains.toLowerCase());
       }

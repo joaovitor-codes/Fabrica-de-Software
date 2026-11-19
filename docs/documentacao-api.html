@@ -489,7 +489,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <p>Fora da API, o script <code>scripts/curadoria-alergenos.ts</code> cruza palavras-chave com a IA e gera um CSV de candidatos para revisão humana; o CSV revisado é aplicado em qualquer banco (identifica os ingredientes pelo código da TACO). Dentro da API, admin e profissional mantêm os vínculos um a um e marcam o ingrediente como revisado.</p>
 </section>
 <section id="marketplace" class="guia"><h2>Marketplace</h2>
-<div class="nota aviso"><strong>Em grande parte implementado</strong>Termos, vitrine de produtos, conexão com o Mercado Pago, receita paga, compra e webhook já estão no ar, o pagamento aprovado cria a cópia, e o comprador a abre e a encontra nas compradas. Ainda faltam adaptação e plano alimentar sobre a cópia e o reembolso. Na referência, as rotas que faltam levam o selo <span class="selo planejado">Planejado</span>.</div>
+<div class="nota aviso"><strong>Em grande parte implementado</strong>Termos, vitrine de produtos, conexão com o Mercado Pago, receita paga, compra e webhook já estão no ar, o pagamento aprovado cria a cópia, e o comprador a abre, a encontra nas compradas, a adapta e a recebe no plano alimentar. Ainda falta o reembolso. Na referência, as rotas que faltam levam o selo <span class="selo planejado">Planejado</span>.</div>
 <p>São duas features com pesos diferentes. Na <strong>venda de receitas</strong>, o conteúdo é digital e o pagamento passa pela plataforma: quem compra recebe uma cópia da receita. Na <strong>vitrine de produtos</strong>, a plataforma só mostra o anúncio e o contato: vendedor e interessado se resolvem fora dela.</p>
 <h3>Decisões</h3>
 <div class="tabela"><table><thead><tr><th>Ponto</th><th>Decidido</th></tr></thead><tbody>
@@ -598,7 +598,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <ul>
 <li><strong>Não muda.</strong> Uma edição posterior da original não chega até a cópia, e ela continua existindo se o vendedor pausar a oferta ou excluir a original. O vendedor segue como autor (<code>criadoPor</code>) e o acesso do comprador vem da compra; nenhum dos dois edita ou exclui a cópia.</li>
 <li><strong>Não circula.</strong> Não aparece em listagens públicas nem na fila de curadoria, e não pode ser colocada à venda.</li>
-<li><strong>Adaptação.</strong> O comprador pede a adaptação da cópia pela rota de hoje (<code>POST /api/receita/:id/adaptar</code>). O resultado é visível só para ele. Para restrição estrita, a adaptação continua precisando da verificação de um profissional.</li>
+<li><strong>Adaptação.</strong> O comprador pede a adaptação da cópia pela rota de hoje (<code>POST /api/receita/:id/adaptar</code>). O resultado é visível só para ele, fica fora das listagens e não pode ser adaptado de novo (<code>422</code>): a adaptação da adaptação perderia o vínculo com a compra. Para restrição estrita, a adaptação continua precisando da verificação de um profissional, que a vê só enquanto ela espera na curadoria.</li>
 <li><strong>Plano alimentar.</strong> O profissional pode incluir no plano a cópia que o próprio paciente comprou, e adaptá-la para ele pelas rotas de sugestão. A checagem de segurança do item é a mesma de hoje (<code>422</code> se insegura). A cópia de outro usuário, inclusive a do profissional, não entra no plano do paciente.</li>
 </ul>
 <h3>Vitrine de produtos</h3>

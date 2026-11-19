@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusReceita } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
@@ -10,6 +11,7 @@ import { IngredientesReceitaService } from '../receita/ingredientes-receita.serv
 import { ItemReceita, PropostaAdaptacao } from './adaptacao';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { podeAdaptarPaga } from '../visibilidade/conteudo-pago';
+import { STATUS_COM_COPIA } from '../visibilidade/visibilidade-receita.service';
 import {
   RestricaoDoPaciente,
   RestricaoViolada,
@@ -25,6 +27,12 @@ const incluirIngredientes = {
     },
   },
   oferta: { select: { id: true } },
+  copiaDeCompra: { select: { compradorId: true, status: true } },
+  adaptacaoDe: {
+    select: {
+      receitaOrigem: { select: { copiaDeCompra: { select: { id: true } } } },
+    },
+  },
 } satisfies Prisma.ReceitaInclude;
 
 export type Origem = Prisma.ReceitaGetPayload<{
@@ -71,7 +79,31 @@ export class AdaptacaoBaseService {
         'Receita paga: só pode ser adaptada a cópia de quem comprou.',
       );
     }
+    // A adaptação da cópia é privada porque a origem dela é a cópia. Uma
+    // adaptação da adaptação perderia esse vínculo e ficaria pública.
+    if (origem.adaptacaoDe?.receitaOrigem.copiaDeCompra) {
+      throw new UnprocessableEntityException(
+        'Adapte a cópia comprada, não uma adaptação dela.',
+      );
+    }
     return origem;
+  }
+
+  /**
+   * Cópia de compra só é adaptada para quem a comprou (P10): o profissional
+   * adapta a cópia do próprio paciente, nunca a de outro usuário.
+   */
+  garantirCopiaDe(origem: Origem, compradorId: string) {
+    const compra = origem.copiaDeCompra;
+    if (
+      compra &&
+      (compra.compradorId !== compradorId ||
+        !STATUS_COM_COPIA.includes(compra.status))
+    ) {
+      throw new UnprocessableEntityException(
+        'Receita comprada: só a cópia que o próprio paciente comprou.',
+      );
+    }
   }
 
   /**

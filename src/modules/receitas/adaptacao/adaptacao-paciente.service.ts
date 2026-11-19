@@ -20,7 +20,8 @@ import { interpretarAdaptacao } from './adaptacao';
  * O paciente pede a adaptação de uma receita para uma restrição (Fase 2 de
  * regra_negocio_receitas_seguras.md). A IA decide as trocas; a adaptação é
  * pública, reaproveitada por quem tem a mesma restrição, e verificada depois
- * por um profissional (aprovação).
+ * por um profissional (aprovação). A da cópia de uma compra é a exceção: só
+ * o comprador a vê (#127).
  */
 @Injectable()
 export class AdaptacaoPacienteService {
@@ -52,16 +53,11 @@ export class AdaptacaoPacienteService {
         (r) => r.restricaoId === restricaoId,
       )?.estrita ?? false;
 
-    // A cópia de uma compra ainda não é adaptada pelo comprador: fica para
-    // a seção 6.4 do plano do marketplace (#127).
+    // O comprador adapta a própria cópia (#127). A adaptação fica privada
+    // pela visibilidade: a origem dela é uma cópia de compra.
     const origem = await this.base.carregarOrigem(
       receitaId,
-      {
-        AND: [
-          this.visibilidade.filtroBase(usuario),
-          this.visibilidade.semCopiasDeCompra(),
-        ],
-      },
+      this.visibilidade.filtroBase(usuario),
       usuario,
     );
 

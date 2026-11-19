@@ -1103,7 +1103,9 @@ model PlanoAlimentarItem {
   comentarios        ComentarioRefeicao[]
   notificacoes       Notificacao[]
 
-  @@index([planoAlimentarId, diaSemana, tipoRefeicao])
+  // Um item por dia e refeição no plano. Só o findFirst antes do create
+  // deixava pedidos simultâneos gravarem o mesmo horário mais de uma vez.
+  @@unique([planoAlimentarId, diaSemana, tipoRefeicao])
   @@map("plano_alimentar_itens")
 }
 
