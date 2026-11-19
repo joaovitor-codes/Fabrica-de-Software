@@ -1,8 +1,21 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { IaService } from '../../ia/ia.service';
 import { ReceitaIngredienteDTO } from './dtos/receita-ingrediente';
-import { interpretarIngredientesNaoListados } from './ingredientes-ocultos';
+import {
+  alimentosSensiveisCitados,
+  interpretarIngredientesNaoListados,
+  juntarApontados,
+} from './ingredientes-ocultos';
+
+const CONFERENCIA_INDISPONIVEL =
+  'Não foi possível conferir os ingredientes do modo de preparo agora. ' +
+  'Tente de novo em alguns minutos.';
 
 /**
  * A lista de ingredientes da receita: validação antes de gravar e a
@@ -65,9 +78,11 @@ export class IngredientesReceitaService {
   }
 
   /**
-   * Pergunta à IA quais ingredientes o modo de preparo cita e a lista não
-   * tem. Falha da IA não impede salvar a receita: volta lista vazia e fica
-   * no log.
+   * Ingredientes que o modo de preparo cita e a lista não tem: o que a IA
+   * aponta mais os alimentos sensíveis achados por palavra, sem IA (o texto
+   * do autor não consegue escondê-los). Se a IA falha ou responde fora do
+   * formato, a conferência não aconteceu: 503, e quem chama não grava nada.
+   * Lista vazia quer dizer só "conferido, nada a apontar".
    */
   async verificarIngredientesOcultos(
     modoPreparo: string | null | undefined,
@@ -76,18 +91,29 @@ export class IngredientesReceitaService {
     if (!modoPreparo?.trim()) {
       return [];
     }
+    let resposta: unknown;
     try {
-      const resposta = await this.iaService.ingredientesNaoListados(
+      resposta = await this.iaService.ingredientesNaoListados(
         modoPreparo,
         nomesIngredientes,
       );
-      return interpretarIngredientesNaoListados(resposta);
     } catch (erro) {
       this.logger.error(
         `Falha ao conferir ingredientes do modo de preparo: ${erro}`,
       );
-      return [];
+      throw new ServiceUnavailableException(CONFERENCIA_INDISPONIVEL);
     }
+    const daIa = interpretarIngredientesNaoListados(resposta);
+    if (!daIa) {
+      this.logger.error(
+        `Resposta da IA fora do formato ao conferir o modo de preparo: ${JSON.stringify(resposta)}`,
+      );
+      throw new ServiceUnavailableException(CONFERENCIA_INDISPONIVEL);
+    }
+    return juntarApontados(
+      daIa,
+      alimentosSensiveisCitados(modoPreparo, nomesIngredientes),
+    );
   }
 
   /** Aviso ao autor quando a IA apontou ingrediente fora da lista. */

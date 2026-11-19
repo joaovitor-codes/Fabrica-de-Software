@@ -34,6 +34,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
+  ApiServiceUnavailableResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { TipoMidia, TipoUsuario } from '@prisma/client';
@@ -83,12 +84,16 @@ const seguraParaQuery = ApiQuery({
     'ID de uma restrição alimentar: devolve só as receitas seguras para ela.',
 });
 
+const CONFERENCIA_503 =
+  'A IA que confere os ingredientes citados no modo de preparo está fora do ar ou respondeu fora do formato. Nada é gravado: tente de novo.';
+
 @Controller('api/receita')
 export class ReceitaController {
   constructor(private readonly receitaService: ReceitaService) {}
 
   @ApiOperation({ summary: 'Cria uma nova receita' })
   @ApiCreatedResponse({ description: 'Receita criada com sucesso.' })
+  @ApiServiceUnavailableResponse({ description: CONFERENCIA_503 })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Post()
@@ -111,6 +116,7 @@ export class ReceitaController {
     description:
       'Sem o aceite dos termos, sem conta Mercado Pago ativa, preço abaixo do mínimo ou público-alvo inseguro. Nada é gravado.',
   })
+  @ApiServiceUnavailableResponse({ description: CONFERENCIA_503 })
   @ApiBearerAuth()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(TipoUsuario.comum, TipoUsuario.paciente, TipoUsuario.admin)
@@ -325,6 +331,9 @@ export class ReceitaController {
 
   @ApiOperation({ summary: 'Atualiza uma receita pelo ID (autor ou admin)' })
   @ApiOkResponse({ description: 'Receita atualizada com sucesso.' })
+  @ApiServiceUnavailableResponse({
+    description: `${CONFERENCIA_503} Só quando muda o modo de preparo ou a lista de ingredientes.`,
+  })
   @ApiForbiddenResponse({
     description:
       'Não é o autor nem admin, ou a receita é a cópia de uma compra, que ninguém edita.',

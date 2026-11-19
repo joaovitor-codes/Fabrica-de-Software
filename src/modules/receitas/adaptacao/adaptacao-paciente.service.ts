@@ -66,28 +66,8 @@ export class AdaptacaoPacienteService {
     );
 
     // 1. Já existe adaptação desta receita, nesta versão, para a restrição.
-    const existente = await this.prismaService.receitaAdaptacao.findUnique({
-      where: {
-        receitaOrigemId_restricaoId: {
-          receitaOrigemId: receitaId,
-          restricaoId,
-        },
-      },
-      include: {
-        receitaAdaptada: {
-          include: {
-            ingredientes: {
-              include: { ingrediente: true, unidadeMedida: true },
-            },
-          },
-        },
-      },
-    });
-    if (
-      existente &&
-      existente.versaoOrigem === origem.versaoAtual &&
-      !existente.receitaAdaptada.deletedAt
-    ) {
+    const existente = await this.buscarAdaptacao(receitaId, restricaoId);
+    if (existente && this.vigente(existente, origem.versaoAtual)) {
       return this.resposta(
         existente.id,
         existente.receitaAdaptada,
@@ -135,8 +115,12 @@ export class AdaptacaoPacienteService {
 
     // 4. Grava a adaptada (pendente = não verificada) e a ligação. Uma
     // adaptação antiga, de outra versão da origem, sai de circulação.
-    const { adaptacaoId, adaptada } = await this.prismaService.$transaction(
-      async (tx) => {
+    let gravada: {
+      adaptacaoId: string;
+      adaptada: Awaited<ReturnType<AdaptacaoBaseService['criarAdaptada']>>;
+    };
+    try {
+      gravada = await this.prismaService.$transaction(async (tx) => {
         if (existente) {
           await tx.receitaAdaptacao.delete({ where: { id: existente.id } });
           await tx.receita.update({
@@ -162,17 +146,80 @@ export class AdaptacaoPacienteService {
           },
         });
         return { adaptacaoId: adaptacao.id, adaptada };
-      },
-    );
+      });
+    } catch (erro) {
+      // Outro pedido para a mesma receita e restrição gravou primeiro (duplo
+      // clique, ou vários pacientes abrindo a receita ao mesmo tempo): a
+      // transação desfaz esta e quem perdeu recebe a adaptação que venceu.
+      if (!this.perdeuCorrida(erro)) throw erro;
+      const vencedora = await this.buscarAdaptacao(receitaId, restricaoId);
+      if (!vencedora || !this.vigente(vencedora, origem.versaoAtual)) {
+        throw erro;
+      }
+      return this.resposta(
+        vencedora.id,
+        vencedora.receitaAdaptada,
+        vencedora.resumoIa,
+        restricao.nome,
+        estritaParaQuemPediu,
+        true,
+      );
+    }
 
     await this.cacheService.del('receitas:all');
     return this.resposta(
-      adaptacaoId,
-      adaptada,
+      gravada.adaptacaoId,
+      gravada.adaptada,
       proposta.resumo || null,
       restricao.nome,
       estritaParaQuemPediu,
       false,
+    );
+  }
+
+  private buscarAdaptacao(receitaId: string, restricaoId: string) {
+    return this.prismaService.receitaAdaptacao.findUnique({
+      where: {
+        receitaOrigemId_restricaoId: {
+          receitaOrigemId: receitaId,
+          restricaoId,
+        },
+      },
+      include: {
+        receitaAdaptada: {
+          include: {
+            ingredientes: {
+              include: { ingrediente: true, unidadeMedida: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /** A adaptação existe, é da versão atual da origem e não saiu de circulação. */
+  private vigente(
+    adaptacao: {
+      versaoOrigem: number;
+      receitaAdaptada: { deletedAt: Date | null };
+    },
+    versaoAtual: number,
+  ) {
+    return (
+      adaptacao.versaoOrigem === versaoAtual &&
+      !adaptacao.receitaAdaptada.deletedAt
+    );
+  }
+
+  /**
+   * Erros de quem perdeu a corrida para gravar: P2002, a ligação desta
+   * receita e restrição já existe; P2025, a adaptação antiga que ia ser
+   * trocada já foi trocada por outro pedido.
+   */
+  private perdeuCorrida(erro: unknown) {
+    return (
+      erro instanceof Prisma.PrismaClientKnownRequestError &&
+      (erro.code === 'P2002' || erro.code === 'P2025')
     );
   }
 

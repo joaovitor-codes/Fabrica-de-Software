@@ -3,6 +3,7 @@
 import {
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, TipoUsuario } from '@prisma/client';
@@ -208,6 +209,85 @@ describe('AdaptacaoPacienteService.adaptar', () => {
     });
   });
 
+  describe('pedidos simultâneos para a mesma receita e restrição', () => {
+    const p2002 = () =>
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'teste',
+      });
+    const vencedora = {
+      id: 'adaptacao-vencedora',
+      versaoOrigem: 1,
+      resumoIa: 'Sal removido.',
+      receitaAdaptadaId: 'adaptada-vencedora',
+      receitaAdaptada: {
+        id: 'adaptada-vencedora',
+        status: 'pendente',
+        deletedAt: null,
+      },
+    };
+
+    it('quem perde a corrida recebe a adaptação que venceu, sem erro', async () => {
+      mocked.restricoesDoUsuario.mockResolvedValue([
+        { ...hipertensao, estrita: false },
+      ]);
+      // 1ª busca: ainda não existe; depois do P2002, a que o outro gravou.
+      prisma.receitaAdaptacao.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(vencedora);
+      tx.receitaAdaptacao.create.mockRejectedValue(p2002());
+
+      const resultado = await service.adaptar(
+        'arroz-feijao',
+        'hipertensao',
+        usuario,
+      );
+
+      expect(resultado).toMatchObject({
+        reaproveitada: true,
+        adaptacao: { id: 'adaptacao-vencedora' },
+        receita: { id: 'adaptada-vencedora' },
+      });
+    });
+
+    it('a adaptação antiga já trocada por outro pedido (P2025) também reaproveita', async () => {
+      prisma.receitaAdaptacao.findUnique
+        .mockResolvedValueOnce({ ...vencedora, id: 'antiga', versaoOrigem: 0 })
+        .mockResolvedValueOnce(vencedora);
+      tx.receitaAdaptacao.delete.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'teste',
+        }),
+      );
+
+      await expect(
+        service.adaptar('arroz-feijao', 'hipertensao', usuario),
+      ).resolves.toMatchObject({
+        reaproveitada: true,
+        adaptacao: { id: 'adaptacao-vencedora' },
+      });
+    });
+
+    it('P2002 sem adaptação vigente para devolver: o erro sobe', async () => {
+      prisma.receitaAdaptacao.findUnique.mockResolvedValue(null);
+      tx.receitaAdaptacao.create.mockRejectedValue(p2002());
+
+      await expect(
+        service.adaptar('arroz-feijao', 'hipertensao', usuario),
+      ).rejects.toMatchObject({ code: 'P2002' });
+    });
+
+    it('outro erro na gravação não é tratado como corrida', async () => {
+      tx.receitaAdaptacao.create.mockRejectedValue(new Error('banco fora'));
+
+      await expect(
+        service.adaptar('arroz-feijao', 'hipertensao', usuario),
+      ).rejects.toThrow('banco fora');
+      expect(prisma.receitaAdaptacao.findUnique).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('adaptação de versão antiga da origem é refeita e a antiga sai', async () => {
     prisma.receitaAdaptacao.findUnique.mockResolvedValue({
       id: 'adaptacao-antiga',
@@ -266,6 +346,17 @@ describe('AdaptacaoPacienteService.adaptar', () => {
     await expect(
       service.adaptar('arroz-feijao', 'hipertensao', usuario),
     ).rejects.toThrow('fora da lista: sal');
+    expect(tx.receita.create).not.toHaveBeenCalled();
+  });
+
+  it('conferência do modo de preparo fora do ar: 503 e nada gravado', async () => {
+    verificarIngredientesOcultos.mockRejectedValue(
+      new ServiceUnavailableException('fora do ar'),
+    );
+
+    await expect(
+      service.adaptar('arroz-feijao', 'hipertensao', usuario),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(tx.receita.create).not.toHaveBeenCalled();
   });
 
