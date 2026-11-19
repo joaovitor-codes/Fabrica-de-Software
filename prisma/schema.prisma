@@ -915,6 +915,10 @@ model Receita {
   profissionalAprovadorId  String?          @map("profissional_aprovador_id") @db.Uuid
   dataAprovacao            DateTime?        @map("data_aprovacao") @db.Timestamptz(6)
   versaoAtual              Int              @default(1) @map("versao_atual")
+  // Sobe a cada mudança de conteúdo (edição ou mídia), aprovada ou não. A
+  // curadoria aprova e rejeita informando a revisão que viu: se o autor
+  // mudou a receita depois disso, a avaliação é recusada (409).
+  revisao                  Int              @default(1)
   createdAt                DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt                DateTime?        @map("deleted_at") @db.Timestamptz(6)

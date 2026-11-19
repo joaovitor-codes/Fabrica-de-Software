@@ -213,32 +213,47 @@ export class ProdutoService {
     }
   }
 
-  async desativarProduto(produtoId: string, usuarioId: string) {
-    const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
-    this.garantirNaoRemovido(produto);
-
-    return this.prismaService.produto.update({
-      where: {
-        id: produtoId,
-      },
-      data: {
-        status: StatusProduto.pausado,
-      },
-    });
+  desativarProduto(produtoId: string, usuarioId: string) {
+    return this.mudarStatusDoVendedor(
+      produtoId,
+      usuarioId,
+      StatusProduto.pausado,
+    );
   }
 
-  async ativarProduto(produtoId: string, usuarioId: string) {
-    const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
-    this.garantirNaoRemovido(produto);
+  ativarProduto(produtoId: string, usuarioId: string) {
+    return this.mudarStatusDoVendedor(
+      produtoId,
+      usuarioId,
+      StatusProduto.ativo,
+    );
+  }
 
-    return this.prismaService.produto.update({
+  /**
+   * Ativar e pausar não passam por cima da moderação: a condição vai na
+   * própria gravação. Conferir antes e gravar depois deixava o vendedor,
+   * clicando junto com a remoção, devolver o produto removido à vitrine.
+   */
+  private async mudarStatusDoVendedor(
+    produtoId: string,
+    usuarioId: string,
+    status: StatusProduto,
+  ) {
+    const { count } = await this.prismaService.produto.updateMany({
       where: {
         id: produtoId,
+        vendedorId: usuarioId,
+        deletedAt: null,
+        status: { not: StatusProduto.removido },
       },
-      data: {
-        status: StatusProduto.ativo,
-      },
+      data: { status },
     });
+    // Sem gravação: diz o porquê (não existe, não é dele ou foi removido).
+    const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
+    if (count === 0) {
+      this.garantirNaoRemovido(produto);
+    }
+    return produto;
   }
 
   async apagarProduto(produtoId: string, usuarioId: string) {
@@ -274,18 +289,18 @@ export class ProdutoService {
   // Usado pela remoção direta e pela denúncia procedente. Se o produto já
   // estava removido, não notifica o vendedor de novo.
   async marcarRemovido(produto: Produto, tx: Prisma.TransactionClient) {
-    if (produto.status === StatusProduto.removido) {
-      return produto;
-    }
-
-    const removido = await tx.produto.update({
-      where: {
-        id: produto.id,
-      },
-      data: {
-        status: StatusProduto.removido,
-      },
+    // Duas remoções juntas (direta e denúncia, ou dois admins): só a que
+    // gravou notifica o vendedor.
+    const { count } = await tx.produto.updateMany({
+      where: { id: produto.id, status: { not: StatusProduto.removido } },
+      data: { status: StatusProduto.removido },
     });
+    const removido = await tx.produto.findUniqueOrThrow({
+      where: { id: produto.id },
+    });
+    if (count === 0) {
+      return removido;
+    }
 
     await this.notificacaoService.criar(
       {

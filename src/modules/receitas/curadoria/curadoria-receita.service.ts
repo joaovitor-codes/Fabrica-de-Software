@@ -45,7 +45,7 @@ export class CuradoriaReceitaService {
     });
   }
 
-  async aprovarReceita(id: string, usuarioId: string) {
+  async aprovarReceita(id: string, usuarioId: string, revisao: number) {
     const profissional = await this.exigirProfissionalAprovado(usuarioId);
 
     const resultado = await this.prismaService.$transaction(async (tx) => {
@@ -61,7 +61,7 @@ export class CuradoriaReceitaService {
         );
       }
 
-      const receitaAprovada = await this.sairDaFila(tx, id, {
+      const receitaAprovada = await this.sairDaFila(tx, id, revisao, {
         status: StatusReceita.aprovada,
         profissionalAprovadorId: profissional.id,
         dataAprovacao: new Date(),
@@ -113,7 +113,7 @@ export class CuradoriaReceitaService {
     return resultado;
   }
 
-  async rejeitarReceita(id: string, usuarioId: string) {
+  async rejeitarReceita(id: string, usuarioId: string, revisao: number) {
     const profissional = await this.exigirProfissionalAprovado(usuarioId);
 
     const resultado = await this.prismaService.$transaction(async (tx) => {
@@ -129,7 +129,7 @@ export class CuradoriaReceitaService {
         );
       }
 
-      const receitaRejeitada = await this.sairDaFila(tx, id, {
+      const receitaRejeitada = await this.sairDaFila(tx, id, revisao, {
         status: StatusReceita.rejeitada,
       });
 
@@ -173,21 +173,33 @@ export class CuradoriaReceitaService {
   }
 
   /**
-   * Só uma decisão vale por revisão: a mudança parte de `pendente` no próprio
-   * UPDATE, então dois curadores juntos não ganham os dois pontos e aprovada
-   * ou rejeitada não troca de lado. Para voltar à fila, a receita é editada.
+   * Só uma decisão vale por revisão: a mudança parte de `pendente` e da
+   * revisão que o curador viu, no próprio UPDATE. Dois curadores juntos não
+   * ganham os dois pontos, aprovada ou rejeitada não troca de lado, e o
+   * conteúdo que o autor mudou depois de o curador abrir não é avaliado às
+   * cegas. Para voltar à fila, a receita é editada.
    */
   private async sairDaFila(
     tx: Prisma.TransactionClient,
     id: string,
+    revisao: number,
     data: Prisma.ReceitaUncheckedUpdateManyInput,
   ) {
     const { count } = await tx.receita.updateMany({
-      where: { id, status: StatusReceita.pendente, deletedAt: null },
+      where: { id, status: StatusReceita.pendente, deletedAt: null, revisao },
       data,
     });
 
     if (count === 0) {
+      const atual = await tx.receita.findUniqueOrThrow({ where: { id } });
+      if (
+        atual.status === StatusReceita.pendente &&
+        atual.revisao !== revisao
+      ) {
+        throw new ConflictException(
+          `A receita mudou desde que você abriu (revisão ${atual.revisao}, você viu a ${revisao}). Revise o conteúdo novo antes de avaliar.`,
+        );
+      }
       throw new ConflictException('A receita não está pendente de curadoria');
     }
 

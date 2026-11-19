@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,6 +10,7 @@ import { unlink } from 'fs/promises';
 import {
   Prisma,
   Receita,
+  ReceitaMidia,
   StatusRecebedor,
   StatusReceita,
   TipoMidia,
@@ -416,14 +418,69 @@ export class ReceitaService {
     }
 
     try {
-      const midia = await this.prismaService.receitaMidia.create({
-        data: {
-          receitaId: id,
-          url: `/uploads/receitas/${folder}/${file.filename}`,
-          tipo,
-          ordem,
-        },
-      });
+      // Mídia nova é conteúdo novo, com a mesma regra da edição: a revisão
+      // sobe (a curadoria não aprova sem ter visto) e a receita aprovada
+      // volta para a curadoria, guardando a versão anterior no histórico.
+      // A gravação confere o status e a versão lidos, como na edição.
+      // Adicionar mídia não depende do que o autor viu: se a receita mudou
+      // no meio (outra mídia mandou a aprovada para a curadoria, por
+      // exemplo), tenta de novo com o estado novo, em vez de 409.
+      let midia: ReceitaMidia | undefined;
+      for (let tentativa = 1; !midia; tentativa++) {
+        midia = await this.prismaService.$transaction(async (tx) => {
+          const atual = await tx.receita.findUniqueOrThrow({ where: { id } });
+          const aprovada = atual.status === StatusReceita.aprovada;
+
+          const { count } = await tx.receita.updateMany({
+            where: {
+              id,
+              deletedAt: null,
+              status: atual.status,
+              versaoAtual: atual.versaoAtual,
+            },
+            data: {
+              revisao: { increment: 1 },
+              ...(aprovada
+                ? {
+                    versaoAtual: { increment: 1 },
+                    status: StatusReceita.pendente,
+                    profissionalAprovadorId: null,
+                    dataAprovacao: null,
+                  }
+                : {}),
+            },
+          });
+          if (count === 0) {
+            if (tentativa < 3) return undefined;
+            throw new ConflictException(
+              'A receita mudou enquanto a mídia era enviada (foi avaliada ou editada). Envie de novo.',
+            );
+          }
+          if (aprovada) {
+            await tx.receitaVersao.create({
+              data: {
+                receitaId: atual.id,
+                versao: atual.versaoAtual,
+                nome: atual.nome,
+                descricao: atual.descricao,
+                modoPreparo: atual.modoPreparo,
+                alteradoPor: usuario.id,
+              },
+            });
+          }
+
+          return tx.receitaMidia.create({
+            data: {
+              receitaId: id,
+              url: `/uploads/receitas/${folder}/${file.filename}`,
+              tipo,
+              ordem,
+            },
+          });
+        });
+      }
+      // O status pode ter mudado: a lista pública em cache ficou velha.
+      await this.cacheService.del('receitas:all');
 
       return {
         success: 'Mídia enviada com sucesso.',
@@ -947,35 +1004,18 @@ export class ReceitaService {
 
       await this.cacheService.del(cacheKey);
 
-      if (receitaAtual.status === 'aprovada') {
-        await tx.receitaVersao.create({
-          data: {
-            receitaId: receitaAtual.id,
-            versao: receitaAtual.versaoAtual,
-            nome: receitaAtual.nome,
-            descricao: receitaAtual.descricao,
-            modoPreparo: receitaAtual.modoPreparo,
-            alteradoPor: usuario.id,
-          },
-        });
-      }
-
-      // A lista nova substitui a antiga. Como muda o que a receita contém,
-      // a receita aprovada volta para curadoria (abaixo), como qualquer edição.
-      if (novosIngredientes) {
-        await tx.receitaIngrediente.deleteMany({ where: { receitaId: id } });
-        await tx.receitaIngrediente.createMany({
-          data: novosIngredientes.map((i) => ({
-            receitaId: id,
-            ingredienteId: i.ingredienteId,
-            quantidade: i.quantidade,
-            unidadeMedidaId: i.unidadeMedidaId,
-          })),
-        });
-      }
-
-      const receita = await tx.receita.update({
-        where: { id },
+      // A gravação confere o status e a versão lidos acima e trava a linha
+      // até o fim da transação. Sem isso, uma aprovação entre a leitura e a
+      // gravação deixava a receita aprovada com o conteúdo novo, que ninguém
+      // revisou; e duas edições juntas de uma aprovada davam 500 ao gravar a
+      // mesma versão no histórico.
+      const { count } = await tx.receita.updateMany({
+        where: {
+          id,
+          deletedAt: null,
+          status: receitaAtual.status,
+          versaoAtual: receitaAtual.versaoAtual,
+        },
         data: {
           nome: updateReceita.nome,
           descricao: updateReceita.descricao,
@@ -985,6 +1025,8 @@ export class ReceitaService {
           porcoes: updateReceita.porcoes,
           nivelDificuldade: updateReceita.nivelDificuldade,
           avisoContaminacaoCruzada: updateReceita.avisoContaminacaoCruzada,
+          // A curadoria que abriu a revisão anterior não avalia esta às cegas.
+          revisao: { increment: 1 },
           // Conteúdo aprovado que muda precisa de nova curadoria.
           ...(receitaAtual.status === 'aprovada'
             ? {
@@ -1000,6 +1042,40 @@ export class ReceitaService {
             : {}),
         },
       });
+      if (count === 0) {
+        throw new ConflictException(
+          'A receita mudou enquanto você editava (foi avaliada ou editada de novo). Abra a receita e repita a edição.',
+        );
+      }
+
+      if (receitaAtual.status === 'aprovada') {
+        await tx.receitaVersao.create({
+          data: {
+            receitaId: receitaAtual.id,
+            versao: receitaAtual.versaoAtual,
+            nome: receitaAtual.nome,
+            descricao: receitaAtual.descricao,
+            modoPreparo: receitaAtual.modoPreparo,
+            alteradoPor: usuario.id,
+          },
+        });
+      }
+
+      // A lista nova substitui a antiga. Como muda o que a receita contém,
+      // a receita aprovada volta para curadoria (acima), como qualquer edição.
+      if (novosIngredientes) {
+        await tx.receitaIngrediente.deleteMany({ where: { receitaId: id } });
+        await tx.receitaIngrediente.createMany({
+          data: novosIngredientes.map((i) => ({
+            receitaId: id,
+            ingredienteId: i.ingredienteId,
+            quantidade: i.quantidade,
+            unidadeMedidaId: i.unidadeMedidaId,
+          })),
+        });
+      }
+
+      const receita = await tx.receita.findUniqueOrThrow({ where: { id } });
 
       return {
         success: 'Receita atualizada com sucesso.',

@@ -71,6 +71,8 @@ describe('ReceitaService - lista de ingredientes', () => {
           deletedAt: null,
         })),
         update: jest.fn(async ({ data }: any) => ({ id: receitaId, ...data })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        findUniqueOrThrow: jest.fn(async () => ({ id: receitaId })),
         create: jest.fn(async ({ data }: any) => ({ id: receitaId, ...data })),
       },
       receitaVersao: { create: jest.fn(async () => ({})) },
@@ -109,7 +111,7 @@ describe('ReceitaService - lista de ingredientes', () => {
       expect.objectContaining({ receitaId, ingredienteId: 'arroz' }),
       expect.objectContaining({ receitaId, ingredienteId: 'queijo' }),
     ]);
-    expect(prisma.receita.update.mock.calls[0][0].data).toMatchObject({
+    expect(prisma.receita.updateMany.mock.calls[0][0].data).toMatchObject({
       status: 'pendente',
       versaoAtual: { increment: 1 },
     });
@@ -126,7 +128,7 @@ describe('ReceitaService - lista de ingredientes', () => {
       'Cozinhe o arroz e cubra com queijo.',
       ['Arroz, tipo 1, cozido', 'Queijo, minas, frescal'],
     );
-    expect(prisma.receita.update.mock.calls[0][0].data).toMatchObject({
+    expect(prisma.receita.updateMany.mock.calls[0][0].data).toMatchObject({
       ingredientesNaoListados: [],
     });
   });
