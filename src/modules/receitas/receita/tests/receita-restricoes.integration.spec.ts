@@ -101,6 +101,8 @@ class FakePrismaService {
       this.receitas.filter((r) => atende(r, where)),
     findFirst: async ({ where }: any) =>
       this.receitas.find((r) => atende(r, where)) ?? null,
+    findUnique: async ({ where }: any) =>
+      this.receitas.find((r) => r.id === where.id) ?? null,
   };
 
   restricoesAlimentares: any[] = [];

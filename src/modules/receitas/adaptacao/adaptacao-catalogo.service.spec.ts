@@ -7,6 +7,7 @@ import { AdaptacaoPacienteService } from './adaptacao-paciente.service';
 import * as restricoesReceita from '../visibilidade/restricoes-receita';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 
 jest.mock('../visibilidade/restricoes-receita');
@@ -46,6 +47,7 @@ describe('AdaptacaoCatalogoService.abrirAdaptada', () => {
   const origem = { id: 'bolo', nome: 'Bolo' };
 
   let prisma: any;
+  let cache: Map<string, unknown>;
   let adaptar: jest.Mock;
   let service: AdaptacaoCatalogoService;
 
@@ -54,19 +56,27 @@ describe('AdaptacaoCatalogoService.abrirAdaptada', () => {
     prisma = {
       receita: {
         findMany: jest.fn(async () => []),
-        findUnique: jest.fn(async ({ where }: any) => ({ id: where.id })),
+        findUnique: jest.fn(async ({ where }: any) => ({
+          id: where.id,
+          versaoAtual: 1,
+        })),
       },
     };
     mocked.restricoesVioladas.mockImplementation(
       async (_p, ids) => new Map(ids.map((id) => [id, []])),
     );
     adaptar = jest.fn();
+    cache = new Map();
     service = new AdaptacaoCatalogoService(
       prisma as PrismaService,
       {
         filtroVisibilidade: () => ({}),
       } as unknown as VisibilidadeReceitaService,
       { adaptar } as unknown as AdaptacaoPacienteService,
+      {
+        get: async (k: string) => cache.get(k),
+        set: async (k: string, v: unknown) => void cache.set(k, v),
+      } as unknown as CacheService,
     );
   });
 
@@ -93,7 +103,7 @@ describe('AdaptacaoCatalogoService.abrirAdaptada', () => {
       ['bolo', 'ovo', usuario, [restricoes[0]]],
       ['bolo-sem-ovo', 'lactose', usuario, [restricoes[1]]],
     ]);
-    expect(r?.receita).toEqual({ id: 'bolo-sem-ovo-sem-leite' });
+    expect(r?.receita).toMatchObject({ id: 'bolo-sem-ovo-sem-leite' });
   });
 
   it('a receita final é conferida contra todas as restrições', async () => {
@@ -141,7 +151,7 @@ describe('AdaptacaoCatalogoService.abrirAdaptada', () => {
       restricoes,
     );
 
-    expect(r?.receita).toEqual({ id: 'sem-leite' });
+    expect(r?.receita).toMatchObject({ id: 'sem-leite' });
   });
 
   it('adaptação pendente para restrição estrita: 403 explicando', async () => {
@@ -161,5 +171,25 @@ describe('AdaptacaoCatalogoService.abrirAdaptada', () => {
     await expect(
       service.abrirAdaptada(origem, [ovo], usuario, restricoes),
     ).resolves.toBeNull();
+  });
+
+  it('depois de uma falha, abrir de novo não chama a IA até o cache vencer', async () => {
+    adaptar.mockRejectedValue(new Error('IA fora do ar'));
+
+    await service.abrirAdaptada(origem, [ovo], usuario, restricoes);
+    await service.abrirAdaptada(origem, [ovo], usuario, restricoes);
+
+    expect(adaptar).toHaveBeenCalledTimes(1);
+    expect([...cache.keys()]).toEqual(['adaptacao:falha:bolo:1:ovo']);
+  });
+
+  it('a falha guardada é da versão: a receita editada tenta de novo', async () => {
+    adaptar.mockRejectedValue(new Error('IA fora do ar'));
+    await service.abrirAdaptada(origem, [ovo], usuario, restricoes);
+
+    prisma.receita.findUnique.mockResolvedValue({ id: 'bolo', versaoAtual: 2 });
+    await service.abrirAdaptada(origem, [ovo], usuario, restricoes);
+
+    expect(adaptar).toHaveBeenCalledTimes(2);
   });
 });

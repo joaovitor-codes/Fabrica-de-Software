@@ -181,7 +181,10 @@ describe('Catálogo que se adapta ao paciente (integration)', () => {
         { provide: AdaptacaoPacienteService, useValue: { adaptar } },
         { provide: IngredientesReceitaService, useValue: {} },
         { provide: PrismaService, useClass: FakePrismaService },
-        { provide: CacheService, useValue: { get: async () => null } },
+        {
+          provide: CacheService,
+          useValue: { get: async () => null, set: async () => {} },
+        },
         { provide: UsuarioService, useValue: {} },
         { provide: IaService, useValue: {} },
       ],

@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Receita, StatusReceita } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import {
@@ -25,6 +26,12 @@ export const peso = (violadas: RestricaoViolada[]) =>
  * restrição dele, a versão adaptada. Nas listagens só usa adaptações que já
  * existem; ao abrir uma receita, cria a adaptação se ela ainda não existir.
  */
+/**
+ * Por quanto tempo uma adaptação que falhou não é tentada de novo ao abrir a
+ * receita: sem isso, cada abertura chamaria a IA de novo.
+ */
+export const FALHA_ADAPTACAO_TTL_MS = 10 * 60 * 1000;
+
 @Injectable()
 export class AdaptacaoCatalogoService {
   private readonly logger = new Logger(AdaptacaoCatalogoService.name);
@@ -33,6 +40,7 @@ export class AdaptacaoCatalogoService {
     private readonly prismaService: PrismaService,
     private readonly visibilidade: VisibilidadeReceitaService,
     private readonly adaptacaoPaciente: AdaptacaoPacienteService,
+    private readonly cacheService: CacheService,
   ) {}
 
   /**
@@ -107,6 +115,10 @@ export class AdaptacaoCatalogoService {
     );
     let atualId = origem.id;
     for (const restricao of aAdaptar) {
+      const chaveFalha = await this.chaveFalha(atualId, restricao.id);
+      if (chaveFalha && (await this.cacheService.get(chaveFalha))) {
+        return null;
+      }
       let resultado: Awaited<ReturnType<AdaptacaoPacienteService['adaptar']>>;
       try {
         resultado = await this.adaptacaoPaciente.adaptar(
@@ -119,6 +131,9 @@ export class AdaptacaoCatalogoService {
         this.logger.warn(
           `Não foi possível adaptar a receita ${atualId} para ${restricao.nome}: ${erro}`,
         );
+        if (chaveFalha) {
+          await this.cacheService.set(chaveFalha, true, FALHA_ADAPTACAO_TTL_MS);
+        }
         return null;
       }
       if ('jaSegura' in resultado) {
@@ -153,6 +168,20 @@ export class AdaptacaoCatalogoService {
       return null;
     }
     return { receita: final, restricoesVioladas: violadasNoFinal };
+  }
+
+  /**
+   * Chave do cache de falha: receita, versão e restrição. Editar a receita
+   * muda a versão, e a próxima abertura tenta de novo sem esperar o cache.
+   */
+  private async chaveFalha(receitaId: string, restricaoId: string) {
+    const receita = await this.prismaService.receita.findUnique({
+      where: { id: receitaId },
+      select: { versaoAtual: true },
+    });
+    return receita
+      ? `adaptacao:falha:${receitaId}:${receita.versaoAtual}:${restricaoId}`
+      : null;
   }
 
   private melhor(a: Adaptada, b: Adaptada) {

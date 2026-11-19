@@ -12,6 +12,7 @@ import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOperation,
+  ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../../auth/auth.guard';
@@ -49,6 +50,10 @@ export class AdaptacaoController {
       'alergia ou grave, ela só fica disponível depois da verificação.',
   })
   @ApiCreatedResponse({ description: 'Adaptação criada ou reaproveitada.' })
+  @ApiServiceUnavailableResponse({
+    description:
+      'A IA está fora do ar ou não conferiu o modo de preparo adaptado. Nada é gravado.',
+  })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Post(':id/adaptar')
