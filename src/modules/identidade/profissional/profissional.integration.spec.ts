@@ -184,6 +184,15 @@ class FakePrismaService {
       this.profissionais.set(where.id, profissional);
       return include ? this.comRelacoes(profissional) : profissional;
     },
+    // Só o filtro usado na avaliação: id + statusAprovacao.
+    updateMany: async ({ where, data }: any) => {
+      const atual = this.profissionais.get(where.id);
+      if (!atual || atual.statusAprovacao !== where.statusAprovacao) {
+        return { count: 0 };
+      }
+      this.profissionais.set(where.id, { ...atual, ...data });
+      return { count: 1 };
+    },
     findMany: async ({ where, skip = 0, take, orderBy, include }: any) => {
       const direcao = orderBy?.createdAt === 'desc' ? -1 : 1;
       return [...this.profissionais.values()]
@@ -212,6 +221,16 @@ class FakePrismaService {
       const paciente = { ...this.pacientes.get(where.id), ...data };
       this.pacientes.set(where.id, paciente);
       return paciente;
+    },
+    // Só o filtro usado na associação: id + (sem profissional ou o mesmo).
+    updateMany: async ({ where, data }: any) => {
+      const atual = this.pacientes.get(where.id);
+      const livre = where.OR.some(
+        (c: any) => (atual?.profissionalId ?? null) === c.profissionalId,
+      );
+      if (!atual || !livre) return { count: 0 };
+      this.pacientes.set(where.id, { ...atual, ...data });
+      return { count: 1 };
     },
     create: async ({ data }: any) => {
       const paciente = { id: randomUUID(), ...data };

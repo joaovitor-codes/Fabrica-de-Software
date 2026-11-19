@@ -39,6 +39,27 @@ class FakePrismaService {
       this.receitas.set(where.id, receita);
       return receita;
     },
+    // A edição grava com condição (status e versão lidos): só o que ela usa.
+    updateMany: async ({ where, data }: any) => {
+      const atual = this.receitas.get(where.id);
+      if (
+        !atual ||
+        atual.status !== where.status ||
+        atual.versaoAtual !== where.versaoAtual
+      ) {
+        return { count: 0 };
+      }
+      const { versaoAtual, ...resto } = data;
+      this.receitas.set(where.id, {
+        ...atual,
+        ...resto,
+        versaoAtual: versaoAtual?.increment
+          ? atual.versaoAtual + versaoAtual.increment
+          : atual.versaoAtual,
+      });
+      return { count: 1 };
+    },
+    findUniqueOrThrow: async ({ where }: any) => this.receitas.get(where.id),
     delete: async ({ where }: any) => this.receitas.delete(where.id),
   };
 
@@ -258,10 +279,10 @@ describe('ReceitaService - autor ou admin e alertas', () => {
       });
 
       await expect(
-        curadoria.aprovarReceita(receitaId, autorProfissional.id),
+        curadoria.aprovarReceita(receitaId, autorProfissional.id, 1),
       ).rejects.toBeInstanceOf(ForbiddenException);
       await expect(
-        curadoria.rejeitarReceita(receitaId, autorProfissional.id),
+        curadoria.rejeitarReceita(receitaId, autorProfissional.id, 1),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.receitas.get(receitaId).status).toBe('pendente');
     });

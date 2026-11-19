@@ -86,6 +86,14 @@ export class AuthService {
   }
 
   async signIn(data: SignInDto, metadata: SessionMetadata = {}) {
+    // Bloqueio por e-mail, e não só por IP: quem troca de IP continua
+    // limitado. Vale também para e-mail sem conta, para a resposta não
+    // revelar quais contas existem.
+    const tentativa = await this.reservarTentativaLogin(
+      data.email,
+      metadata.ipAddress,
+    );
+
     const conta = await this.prismaService.conta.findUnique({
       where: {
         email: data.email,
@@ -106,10 +114,89 @@ export class AuthService {
     const passwordMatch = await bcrypt.compare(data.password, conta.senhaHash);
 
     if (!passwordMatch) {
+      await this.prismaService.tentativaLogin.update({
+        where: { id: tentativa.id },
+        data: { contaId: conta.id },
+      });
       throw new UnauthorizedException('credentials are not valid');
     }
 
+    await this.prismaService.tentativaLogin.update({
+      where: { id: tentativa.id },
+      data: { sucesso: true, contaId: conta.id },
+    });
     return this.gerarTokens(conta.usuario, conta, metadata);
+  }
+
+  /**
+   * Registra a tentativa como falha ANTES de conferir a senha e só então
+   * conta as falhas recentes. A k-ésima tentativa sempre vê ao menos k
+   * registros, então tentativas simultâneas não passam do limite. Acima do
+   * limite, a tentativa é apagada (não estende o bloqueio) e responde 429.
+   * Zera a contagem: um login certo ou uma troca de senha pelo e-mail.
+   */
+  private async reservarTentativaLogin(email: string, ipAddress?: string) {
+    const tentativa = await this.prismaService.tentativaLogin.create({
+      data: { emailTentado: email, sucesso: false, ipAddress },
+    });
+
+    const janelaMs = this.loginLockoutMinutes() * 60 * 1000;
+    const [ultimoSucesso, ultimaTrocaDeSenha] = await Promise.all([
+      this.prismaService.tentativaLogin.findFirst({
+        where: { emailTentado: email, sucesso: true },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      this.prismaService.tokenResetSenha.findFirst({
+        where: { conta: { email }, usadoEm: { not: null } },
+        orderBy: { usadoEm: 'desc' },
+        select: { usadoEm: true },
+      }),
+    ]);
+    const desde = new Date(
+      Math.max(
+        Date.now() - janelaMs,
+        ultimoSucesso?.createdAt.getTime() ?? 0,
+        ultimaTrocaDeSenha?.usadoEm?.getTime() ?? 0,
+      ),
+    );
+
+    const falhas = await this.prismaService.tentativaLogin.count({
+      where: { emailTentado: email, sucesso: false, createdAt: { gt: desde } },
+    });
+    if (falhas > this.loginMaxFailedAttempts()) {
+      await this.prismaService.tentativaLogin
+        .delete({ where: { id: tentativa.id } })
+        .catch(() => undefined);
+      throw new HttpException(
+        `Muitas tentativas de login. Tente novamente em até ${this.loginLockoutMinutes()} minutos.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    return tentativa;
+  }
+
+  /**
+   * SHA-256, e não bcrypt: o bcrypt só lê os primeiros 72 bytes, e num JWT
+   * eles são o cabeçalho e o começo do payload (o `sub`), iguais em todos os
+   * refresh tokens do usuário. Com bcrypt, qualquer refresh token antigo
+   * dele passava na conferência. O token é longo e aleatório, então SHA-256
+   * basta, e por ser determinístico a troca confere o hash exato.
+   */
+  private hashRefresh(refreshToken: string) {
+    return createHash('sha256').update(refreshToken).digest('hex');
+  }
+
+  private loginMaxFailedAttempts() {
+    return Number(
+      this.configService.get<number>('LOGIN_MAX_FAILED_ATTEMPTS') ?? 5,
+    );
+  }
+
+  private loginLockoutMinutes() {
+    return Number(
+      this.configService.get<number>('LOGIN_LOCKOUT_MINUTES') ?? 15,
+    );
   }
 
   async requestPasswordReset(data: RequestPasswordResetDto) {
@@ -277,6 +364,9 @@ export class AuthService {
       return { message: 'E-mail já verificado' };
     }
 
+    // O código novo é gravado antes da contagem: pedidos simultâneos se
+    // enxergam e não passam do limite. Acima dele, o código é apagado.
+    const codigo = await this.criarCodigoVerificacao(conta);
     const windowStartedAt = new Date(
       Date.now() - this.emailVerificationResendWindowMinutes() * 60 * 1000,
     );
@@ -284,14 +374,17 @@ export class AuthService {
       where: { contaId: conta.id, createdAt: { gte: windowStartedAt } },
     });
 
-    if (recentCodes >= this.emailVerificationMaxResendAttempts()) {
+    if (recentCodes > this.emailVerificationMaxResendAttempts()) {
+      await this.prismaService.tokenVerificacaoEmail.deleteMany({
+        where: { id: codigo.id },
+      });
       throw new HttpException(
         'Muitas tentativas de reenvio. Tente novamente mais tarde.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    await this.sendVerificationCode(conta);
+    await this.enviarCodigoVerificacao(conta, codigo);
 
     return { message: 'Código de verificação reenviado com sucesso' };
   }
@@ -301,20 +394,34 @@ export class AuthService {
   }
 
   private async sendVerificationCode(conta: { id: string; email: string }) {
+    await this.enviarCodigoVerificacao(
+      conta,
+      await this.criarCodigoVerificacao(conta),
+    );
+  }
+
+  private async criarCodigoVerificacao(conta: { id: string }) {
     const code = this.generateVerificationCode();
     const codeHash = createHash('sha256').update(code).digest('hex');
     const expiraEm = new Date(
       Date.now() + this.emailVerificationCodeExpiresMinutes() * 60 * 1000,
     );
 
-    await this.prismaService.tokenVerificacaoEmail.create({
+    const token = await this.prismaService.tokenVerificacaoEmail.create({
       data: {
         contaId: conta.id,
         token: codeHash,
         expiraEm,
       },
     });
+    return { id: token.id, code };
+  }
 
+  private async enviarCodigoVerificacao(
+    conta: { email: string },
+    codigo: { id: string; code: string },
+  ) {
+    const { code } = codigo;
     try {
       await this.mailerService.sendMail({
         to: conta.email,
@@ -324,7 +431,7 @@ export class AuthService {
       });
     } catch {
       await this.prismaService.tokenVerificacaoEmail.deleteMany({
-        where: { token: codeHash, usadoEm: null },
+        where: { id: codigo.id, usadoEm: null },
       });
       throw new ServiceUnavailableException(
         'Não foi possível enviar o e-mail de verificação',
@@ -396,6 +503,7 @@ export class AuthService {
     conta: { id: string },
     metadata: SessionMetadata = {},
     sessionId?: string,
+    hashAnterior?: string,
   ) {
     const currentSessionId = sessionId || randomUUID();
     const payload = {
@@ -412,6 +520,9 @@ export class AuthService {
         sub: usuario.id,
         tokenType: 'refresh',
         sid: currentSessionId,
+        // Sem um id próprio, dois refresh no mesmo segundo geravam o mesmo
+        // token (mesmo sub, sid e exp), e o antigo continuava valendo.
+        jti: randomUUID(),
       },
       {
         expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ||
@@ -422,17 +533,27 @@ export class AuthService {
       refreshToken,
     );
     const sessionData = {
-      refreshTokenHash: await bcrypt.hash(refreshToken, 10),
+      refreshTokenHash: this.hashRefresh(refreshToken),
       expiraEm: new Date(decodedRefresh.exp * 1000),
       userAgent: metadata.userAgent,
       ipAddress: metadata.ipAddress,
     };
 
     if (sessionId) {
-      await this.prismaService.sessao.update({
-        where: { id: sessionId },
+      // Troca só o refresh token que foi apresentado. Dois refresh juntos
+      // com o mesmo token: um troca, o outro recebe 401 (e não grava
+      // cookies), em vez de os dois receberem tokens e só um valer.
+      const { count } = await this.prismaService.sessao.updateMany({
+        where: {
+          id: sessionId,
+          revogadoEm: null,
+          ...(hashAnterior ? { refreshTokenHash: hashAnterior } : {}),
+        },
         data: sessionData,
       });
+      if (count === 0) {
+        throw new UnauthorizedException('Refresh token já utilizado');
+      }
     } else {
       await this.prismaService.sessao.create({
         data: { ...sessionData, id: currentSessionId, contaId: conta.id },
@@ -466,7 +587,7 @@ export class AuthService {
       session.expiraEm <= new Date() ||
       !session.conta.ativo ||
       !session.conta.usuario ||
-      !(await bcrypt.compare(refreshToken, session.refreshTokenHash))
+      session.refreshTokenHash !== this.hashRefresh(refreshToken)
     ) {
       throw new UnauthorizedException('Refresh token inválido');
     }
@@ -476,6 +597,7 @@ export class AuthService {
       session.conta,
       metadata,
       session.id,
+      session.refreshTokenHash,
     );
   }
 
@@ -499,7 +621,7 @@ export class AuthService {
 
     if (
       !session ||
-      !(await bcrypt.compare(refreshToken, session.refreshTokenHash))
+      session.refreshTokenHash !== this.hashRefresh(refreshToken)
     ) {
       throw new UnauthorizedException('Refresh token inválido');
     }

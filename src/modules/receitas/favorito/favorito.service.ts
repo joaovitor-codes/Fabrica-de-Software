@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Favorito, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { VisibilidadeReceitaService } from '../visibilidade/visibilidade-receita.service';
 import { restricoesDoPaciente } from '../visibilidade/restricoes-receita';
@@ -90,9 +91,21 @@ export class FavoritoService {
       throw new ConflictException('A receita já foi favoritada');
     }
 
-    const favorito = await this.prismaService.favorito.create({
-      data: { usuarioId, receitaId },
-    });
+    let favorito: Favorito;
+    try {
+      favorito = await this.prismaService.favorito.create({
+        data: { usuarioId, receitaId },
+      });
+    } catch (error) {
+      // Duplo clique: o outro pedido favoritou primeiro.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('A receita já foi favoritada');
+      }
+      throw error;
+    }
 
     return { success: 'Receita favoritada com sucesso.', data: favorito };
   }

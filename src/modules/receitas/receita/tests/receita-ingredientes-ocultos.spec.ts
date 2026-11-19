@@ -152,6 +152,8 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
           deletedAt: null,
         })),
         update: jest.fn(async ({ data }: any) => ({ id: receitaId, ...data })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        findUniqueOrThrow: jest.fn(async () => ({ id: receitaId })),
       },
       $transaction: (fn: any) => fn(prisma),
     };
@@ -232,7 +234,7 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
         autor as UsuarioAutenticado,
       ),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
-    expect(prisma.receita.update).not.toHaveBeenCalled();
+    expect(prisma.receita.updateMany).not.toHaveBeenCalled();
   });
 
   it('sem modo de preparo, nem chama a IA', async () => {
@@ -250,7 +252,7 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
       autor as UsuarioAutenticado,
     );
 
-    expect(prisma.receita.update.mock.calls[0][0].data).toMatchObject({
+    expect(prisma.receita.updateMany.mock.calls[0][0].data).toMatchObject({
       ingredientesNaoListados: [],
     });
   });
@@ -276,7 +278,7 @@ describe('ReceitaService - ingredientes citados fora da lista', () => {
 
     expect(ia.ingredientesNaoListados).not.toHaveBeenCalled();
     expect(
-      prisma.receita.update.mock.calls[0][0].data.ingredientesNaoListados,
+      prisma.receita.updateMany.mock.calls[0][0].data.ingredientesNaoListados,
     ).toBeUndefined();
   });
 });

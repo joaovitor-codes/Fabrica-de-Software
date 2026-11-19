@@ -26,6 +26,10 @@ class FakePrismaService {
       return registro;
     },
   };
+
+  // A trava por usuário (pg_advisory_xact_lock) só existe no Postgres.
+  $queryRaw = async () => [];
+  $transaction = async (fn: (tx: this) => Promise<unknown>) => fn(this);
 }
 
 const USUARIO_ID = 'usuario-1';

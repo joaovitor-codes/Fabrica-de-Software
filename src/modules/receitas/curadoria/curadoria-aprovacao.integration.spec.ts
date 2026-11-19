@@ -202,8 +202,8 @@ describe('Aprovação do profissional e curadoria (integração com Postgres)', 
     });
 
     const resultados = await Promise.allSettled([
-      curadoria.aprovarReceita(id, primeiro.usuarioId),
-      curadoria.rejeitarReceita(id, segundo.usuarioId),
+      curadoria.aprovarReceita(id, primeiro.usuarioId, 1),
+      curadoria.rejeitarReceita(id, segundo.usuarioId, 1),
     ]);
 
     expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);

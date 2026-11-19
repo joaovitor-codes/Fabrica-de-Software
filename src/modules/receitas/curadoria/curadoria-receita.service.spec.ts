@@ -54,7 +54,11 @@ class FakePrismaService {
     findUniqueOrThrow: async ({ where }: any) => this.receitas.get(where.id),
     updateMany: async ({ where, data }: any) => {
       const receita = this.receitas.get(where.id);
-      if (receita?.status !== where.status) return { count: 0 };
+      if (
+        receita?.status !== where.status ||
+        (receita?.revisao ?? 1) !== where.revisao
+      )
+        return { count: 0 };
       this.receitas.set(where.id, { ...receita, ...data });
       return { count: 1 };
     },
@@ -125,7 +129,7 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
   });
 
   it('aprova a receita e credita 10 pontos na mesma transação', async () => {
-    await service.aprovarReceita(receitaId, profissional.usuarioId);
+    await service.aprovarReceita(receitaId, profissional.usuarioId, 1);
 
     expect(prisma.receitas.get(receitaId).status).toBe('aprovada');
     expect(prisma.profissionais.get(profissional.id).pontosIncentivo).toBe(10);
@@ -152,7 +156,7 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
       ],
     });
 
-    await service.aprovarReceita(receitaId, profissional.usuarioId);
+    await service.aprovarReceita(receitaId, profissional.usuarioId, 1);
 
     expect(prisma.substitutos).toEqual([
       expect.objectContaining({
@@ -164,7 +168,7 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
   });
 
   it('rejeita a receita e credita 5 pontos na mesma transação', async () => {
-    await service.rejeitarReceita(receitaId, profissional.usuarioId);
+    await service.rejeitarReceita(receitaId, profissional.usuarioId, 1);
 
     expect(prisma.receitas.get(receitaId).status).toBe('rejeitada');
     expect(prisma.profissionais.get(profissional.id).pontosIncentivo).toBe(5);
@@ -189,7 +193,7 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
           statusAprovacao;
 
         await expect(
-          service[metodo](receitaId, profissional.usuarioId),
+          service[metodo](receitaId, profissional.usuarioId, 1),
         ).rejects.toBeInstanceOf(ForbiddenException);
 
         expect(prisma.receitas.get(receitaId).status).toBe('pendente');
@@ -203,7 +207,7 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
         prisma.receitas.get(receitaId).status = status;
 
         await expect(
-          service[metodo](receitaId, profissional.usuarioId),
+          service[metodo](receitaId, profissional.usuarioId, 1),
         ).rejects.toBeInstanceOf(ConflictException);
 
         expect(prisma.receitas.get(receitaId).status).toBe(status);
@@ -221,7 +225,7 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
       .mockRejectedValueOnce(new Error('falha nos pontos'));
 
     await expect(
-      service.aprovarReceita(receitaId, profissional.usuarioId),
+      service.aprovarReceita(receitaId, profissional.usuarioId, 1),
     ).rejects.toThrow('falha nos pontos');
 
     expect(prisma.receitas.get(receitaId).status).toBe('pendente');
@@ -238,7 +242,7 @@ describe('CuradoriaReceitaService - pontos na aprovação/rejeição', () => {
       });
 
     await expect(
-      service.aprovarReceita(receitaId, profissional.usuarioId),
+      service.aprovarReceita(receitaId, profissional.usuarioId, 1),
     ).rejects.toThrow('falha depois dos pontos');
 
     expect(prisma.transacoes.size).toBe(0);

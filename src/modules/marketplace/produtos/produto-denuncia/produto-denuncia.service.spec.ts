@@ -32,9 +32,12 @@ type Denuncia = {
 };
 
 function casa(registro: Record<string, any>, where: Record<string, any> = {}) {
-  return Object.entries(where).every(([campo, valor]) =>
-    valor === null ? registro[campo] === null : registro[campo] === valor,
-  );
+  return Object.entries(where).every(([campo, valor]) => {
+    if (valor === null) return registro[campo] === null;
+    if (typeof valor === 'object' && 'not' in valor)
+      return registro[campo] !== valor.not;
+    return registro[campo] === valor;
+  });
 }
 
 /** Fake em memória de produtos e denúncias, com a unique (produto, denunciante). */
@@ -52,6 +55,13 @@ class FakePrismaService {
       Object.assign(registro, data);
       return registro;
     },
+    updateMany: async ({ where, data }: any) => {
+      const alvos = this.produtos.filter((p) => casa(p, where));
+      alvos.forEach((p) => Object.assign(p, data));
+      return { count: alvos.length };
+    },
+    findUniqueOrThrow: async ({ where }: any) =>
+      this.produtos.find((p) => p.id === where.id)!,
   };
 
   produtoDenuncia = {

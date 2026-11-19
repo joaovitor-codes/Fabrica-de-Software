@@ -172,6 +172,13 @@ class FakePrismaService {
     },
     count: async ({ where }: any) =>
       this.produtos.filter((p) => casa(p, where)).length,
+    updateMany: async ({ where, data }: any) => {
+      const alvos = this.produtos.filter((p) => casa(p, where));
+      alvos.forEach((p) => Object.assign(p, data));
+      return { count: alvos.length };
+    },
+    findUniqueOrThrow: async ({ where }: any) =>
+      this.produtos.find((p) => p.id === where.id)!,
     update: async ({ where, data }: any) => {
       const registro = this.produtos.find((p) => p.id === where.id)!;
       const { publicoAlvo, ...campos } = data;

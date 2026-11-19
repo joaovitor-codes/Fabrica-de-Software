@@ -1,6 +1,6 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { TipoConsentimento } from '@prisma/client';
+import { Prisma, TipoConsentimento } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 
 @Injectable()
@@ -35,17 +35,23 @@ export class TermosService {
       throw new UnprocessableEntityException('A versão enviada não é a atual.');
     }
 
-    const existente = await this.buscarAceiteAtual(usuarioId);
-    if (existente) return existente;
+    // Dois aceites juntos passavam pela busca e gravavam os dois. Uma trava
+    // por usuário, só durante buscar e gravar, deixa um de cada vez. O
+    // consentimento é histórico, então não há índice único para isso.
+    return this.prismaService.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`termos:${usuarioId}`}))::text`;
+      const existente = await this.buscarAceiteAtual(usuarioId, tx);
+      if (existente) return existente;
 
-    return this.prismaService.consentimentoLgpd.create({
-      data: {
-        usuarioId,
-        tipoConsentimento: TipoConsentimento.termos_marketplace,
-        aceito: true,
-        versaoDocumento: this.versaoAtual,
-        ipAddress,
-      },
+      return tx.consentimentoLgpd.create({
+        data: {
+          usuarioId,
+          tipoConsentimento: TipoConsentimento.termos_marketplace,
+          aceito: true,
+          versaoDocumento: this.versaoAtual,
+          ipAddress,
+        },
+      });
     });
   }
 
@@ -57,8 +63,11 @@ export class TermosService {
     }
   }
 
-  private buscarAceiteAtual(usuarioId: string) {
-    return this.prismaService.consentimentoLgpd.findFirst({
+  private buscarAceiteAtual(
+    usuarioId: string,
+    db: Prisma.TransactionClient = this.prismaService,
+  ) {
+    return db.consentimentoLgpd.findFirst({
       where: {
         usuarioId,
         tipoConsentimento: TipoConsentimento.termos_marketplace,
