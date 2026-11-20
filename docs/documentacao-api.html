@@ -1383,7 +1383,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <p class="resumo">Gera (via IA) e cadastra substitutos para um ingrediente e restrição</p>
 <div class="selos"><span class="selo login">Login</span><span class="selo papel">admin</span><span class="selo papel">profissional</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>ingredienteId</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr><tr><td><code>restricaoId</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">201</span>Substitutos gerados e cadastrados com sucesso.</li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">201</span>Substitutos gerados e cadastrados com sucesso. Sugestão com o nome de um ingrediente do catálogo reaproveita o existente; os novos ficam marcados como estimativa da IA.</li><li><span class="status s4">409</span>Já existem substitutos para esse ingrediente e restrição.</li><li><span class="status s5">502</span>A IA respondeu fora do formato ou sem nenhum substituto válido. Nada é gravado.</li></ul>
 </article>
 </section>
 <section id="restricoes-paciente" class="dominio"><h2><span class="grupo">Nutrição</span>Restrições do paciente</h2>
