@@ -5,7 +5,10 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, TipoUsuario } from '@prisma/client';
-import { AdaptacaoProfissionalService } from './adaptacao-profissional.service';
+import {
+  AdaptacaoProfissionalService,
+  SUGESTAO_ADAPTACAO_TTL_MS,
+} from './adaptacao-profissional.service';
 import { AdaptacaoBaseService } from './adaptacao-base.service';
 import { interpretarOpcoes } from './adaptacao';
 import * as restricoesReceita from '../visibilidade/restricoes-receita';
@@ -13,6 +16,7 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
 import { IaService } from '../../ia/ia.service';
 import { IngredientesReceitaService } from '../receita/ingredientes-receita.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
+import { CacheService } from '../../../common/cache/cache.service';
 
 jest.mock('../visibilidade/restricoes-receita');
 const mocked = jest.mocked(restricoesReceita);
@@ -66,6 +70,7 @@ describe('AdaptacaoProfissionalService', () => {
     nivelDificuldade: 'facil',
     avisoContaminacaoCruzada: false,
     versaoAtual: 2,
+    revisao: 1,
     ingredientesNaoListados: [],
     ingredientes: [
       {
@@ -105,6 +110,8 @@ describe('AdaptacaoProfissionalService', () => {
     validarIngredientes: jest.Mock;
   };
   let service: AdaptacaoProfissionalService;
+  let guardado: Map<string, unknown>;
+  let cache: { get: jest.Mock; set: jest.Mock };
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -161,6 +168,18 @@ describe('AdaptacaoProfissionalService', () => {
     };
     const ingredientesReceita =
       receitaService as unknown as IngredientesReceitaService;
+    // Cache em memória, que devolve uma cópia como o Redis devolveria.
+    guardado = new Map();
+    cache = {
+      get: jest.fn(async (chave: string) =>
+        guardado.has(chave)
+          ? JSON.parse(JSON.stringify(guardado.get(chave)))
+          : undefined,
+      ),
+      set: jest.fn(async (chave: string, valor: unknown) => {
+        guardado.set(chave, valor);
+      }),
+    };
     service = new AdaptacaoProfissionalService(
       prisma as PrismaService,
       new AdaptacaoBaseService(
@@ -169,6 +188,7 @@ describe('AdaptacaoProfissionalService', () => {
         ingredientesReceita,
       ),
       ingredientesReceita,
+      cache as unknown as CacheService,
     );
   });
 
@@ -231,6 +251,106 @@ describe('AdaptacaoProfissionalService', () => {
 
       expect(r.segura).toBe(true);
       expect(ia.adaptarReceita).not.toHaveBeenCalled();
+    });
+
+    describe('cache da proposta da IA', () => {
+      it('reabrir a mesma prévia não chama a IA de novo e devolve o mesmo', async () => {
+        const primeira = await service.sugerir('vitamina', 'ana', nutri);
+        const segunda = await service.sugerir('vitamina', 'ana', nutri);
+
+        expect(ia.adaptarReceita).toHaveBeenCalledTimes(1);
+        expect(segunda).toEqual(primeira);
+        expect(cache.set).toHaveBeenCalledWith(
+          expect.stringMatching(/^adaptacao:sugestao:vitamina:2:1:/),
+          expect.anything(),
+          SUGESTAO_ADAPTACAO_TTL_MS,
+        );
+      });
+
+      it.each([
+        [
+          'a receita foi editada (revisão)',
+          () => {
+            prisma.receita.findFirst.mockResolvedValue({
+              ...origem,
+              revisao: 2,
+            });
+          },
+        ],
+        [
+          'a receita ganhou versão nova',
+          () => {
+            prisma.receita.findFirst.mockResolvedValue({
+              ...origem,
+              versaoAtual: 3,
+            });
+          },
+        ],
+        [
+          'as restrições do paciente mudaram',
+          () => {
+            mocked.restricoesDoPaciente.mockResolvedValue([lactose]);
+          },
+        ],
+        [
+          'a curadoria mudou o que a receita fere',
+          () => {
+            mocked.violacoesDosIngredientes.mockResolvedValue([
+              {
+                ...violacaoLeite,
+                contem: [
+                  { id: 'leite', nome: 'Leite' },
+                  { id: 'banana', nome: 'Banana' },
+                ],
+              },
+            ]);
+          },
+        ],
+      ])('chama a IA de novo quando %s', async (_, mudar) => {
+        await service.sugerir('vitamina', 'ana', nutri);
+        mudar();
+        await service.sugerir('vitamina', 'ana', nutri);
+
+        expect(ia.adaptarReceita).toHaveBeenCalledTimes(2);
+      });
+
+      it('candidato que deixou de ser seguro sai da prévia guardada', async () => {
+        await service.sugerir('vitamina', 'ana', nutri);
+        // A bebida de aveia ganhou vínculo com uma restrição do paciente.
+        mocked.ingredientesSegurosPara.mockResolvedValue([candidatos[1]]);
+        mocked.violacoesDosIngredientes.mockImplementation(async (_p, ids) => [
+          ...(ids.includes('leite') ? [violacaoLeite] : []),
+          ...(ids.includes('aveia')
+            ? [
+                {
+                  ...violacaoLeite,
+                  contem: [{ id: 'aveia', nome: 'Bebida de aveia' }],
+                },
+              ]
+            : []),
+        ]);
+
+        const r: any = await service.sugerir('vitamina', 'ana', nutri);
+
+        expect(ia.adaptarReceita).toHaveBeenCalledTimes(1);
+        expect(r.ingredientes[1].sugestoes).toEqual([
+          { id: 'coco', nome: 'Leite de coco', fonte: 'curado' },
+        ]);
+        // A receita inteira da IA usava a aveia: a checagem barra.
+        expect(r.receitaInteira).toHaveProperty('erro');
+      });
+
+      it('falha da IA não fica guardada', async () => {
+        ia.adaptarReceita.mockRejectedValueOnce(new Error('timeout'));
+
+        await expect(
+          service.sugerir('vitamina', 'ana', nutri),
+        ).rejects.toThrow();
+        await service.sugerir('vitamina', 'ana', nutri);
+
+        expect(ia.adaptarReceita).toHaveBeenCalledTimes(2);
+        expect(cache.set).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('profissional que não é o do paciente: 403', async () => {

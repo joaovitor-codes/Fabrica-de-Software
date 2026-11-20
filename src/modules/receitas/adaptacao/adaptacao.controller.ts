@@ -70,7 +70,7 @@ export class AdaptacaoController {
       'Sugestões de adaptação da receita para um paciente (profissional)',
     description:
       'O que a receita fere para o paciente, opções de substituto por ingrediente ' +
-      '(curadas e da IA) e a receita inteira adaptada pela IA, como prévia. Nada é gravado.',
+      '(curadas e da IA) e a receita inteira adaptada pela IA, como prévia. Nada é gravado na receita; a resposta da IA fica guardada por 10 minutos, e reabrir a mesma prévia não chama a IA de novo.',
   })
   @ApiCreatedResponse({
     description: 'Sugestões para o profissional escolher.',
