@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma, TipoUsuario } from '@prisma/client';
+import { Prisma, StatusCompraReceita, TipoUsuario } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   clausulaSegura,
@@ -22,6 +22,38 @@ import {
 
 const ITEM_REPETIDO =
   'Já existe um item cadastrado para esse dia e refeição neste plano alimentar';
+
+const COPIA_REEMBOLSADA: Prisma.ReceitaWhereInput = {
+  copiaDeCompra: { is: { status: StatusCompraReceita.reembolsada } },
+};
+
+/**
+ * Item que saiu do ar com um reembolso (P13): usa a cópia reembolsada ou
+ * uma adaptação dela. Some das leituras do plano, mas fica no banco com o
+ * checklist e os comentários do paciente; um item novo no mesmo dia e
+ * refeição toma o lugar dele. Receita excluída pelo autor não entra aqui:
+ * essa continua nos planos antigos.
+ */
+export const ITEM_FORA_DO_AR: Prisma.PlanoAlimentarItemWhereInput = {
+  receita: {
+    OR: [
+      COPIA_REEMBOLSADA,
+      { adaptacaoDe: { is: { receitaOrigem: COPIA_REEMBOLSADA } } },
+    ],
+  },
+};
+
+const ITEM_VISIVEL: Prisma.PlanoAlimentarItemWhereInput = {
+  NOT: ITEM_FORA_DO_AR,
+};
+
+/** O item saiu do ar com um reembolso (ver ITEM_FORA_DO_AR). */
+export async function itemForaDoAr(prisma: PrismaService, itemId: string) {
+  const total = await prisma.planoAlimentarItem.count({
+    where: { id: itemId, ...ITEM_FORA_DO_AR },
+  });
+  return total > 0;
+}
 
 @Injectable()
 export class PlanoAlimentarService {
@@ -107,11 +139,25 @@ export class PlanoAlimentarService {
           diaSemana: item.diaSemana,
           tipoRefeicao: item.tipoRefeicao,
         },
+        select: { id: true },
       },
     );
 
     if (itemDuplicado) {
-      throw new ConflictException(ITEM_REPETIDO);
+      if (!(await itemForaDoAr(this.prismaService, itemDuplicado.id))) {
+        throw new ConflictException(ITEM_REPETIDO);
+      }
+      // O horário era de uma receita reembolsada: o item novo toma o lugar,
+      // e o histórico do paciente fica com ele.
+      return this.semHorarioRepetido(() =>
+        this.prismaService.planoAlimentarItem.update({
+          where: { id: itemDuplicado.id },
+          data: {
+            receitaId: item.receitaId,
+            horarioSugerido: this.horarioSugeridoParaDate(item.horarioSugerido),
+          },
+        }),
+      );
     }
 
     return this.semHorarioRepetido(() =>
@@ -171,6 +217,7 @@ export class PlanoAlimentarService {
       where: { id: planoAlimentarId },
       include: {
         itens: {
+          where: ITEM_VISIVEL,
           include: { receita: { select: { id: true, nome: true } } },
           orderBy: [{ diaSemana: 'asc' }, { tipoRefeicao: 'asc' }],
         },
@@ -228,7 +275,7 @@ export class PlanoAlimentarService {
 
     return this.prismaService.planoAlimentar.findMany({
       where: { pacienteId },
-      include: { _count: { select: { itens: true } } },
+      include: { _count: { select: { itens: { where: ITEM_VISIVEL } } } },
       orderBy: { dataInicio: 'desc' },
     });
   }

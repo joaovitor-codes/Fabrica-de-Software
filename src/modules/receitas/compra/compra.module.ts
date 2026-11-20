@@ -7,6 +7,7 @@ import { VisibilidadeModule } from '../visibilidade/visibilidade.module';
 import { CompraVencimentoJob } from './compra-vencimento.job';
 import { CompraController } from './compra.controller';
 import { CompraService } from './compra.service';
+import { ReembolsoService } from './reembolso.service';
 import { WebhookCompraService } from './webhook-compra.service';
 import { WebhookController } from './webhook.controller';
 
@@ -19,6 +20,11 @@ import { WebhookController } from './webhook.controller';
     NotificacaoModule,
   ],
   controllers: [CompraController, WebhookController],
-  providers: [CompraService, WebhookCompraService, CompraVencimentoJob],
+  providers: [
+    CompraService,
+    ReembolsoService,
+    WebhookCompraService,
+    CompraVencimentoJob,
+  ],
 })
 export class CompraModule {}

@@ -186,6 +186,9 @@ class FakePrismaService {
       this.planoAlimentarItens.delete(where.id);
       return item;
     },
+    // Só para itemForaDoAr: sem compras aqui, nenhum item saiu do ar por
+    // reembolso (coberto em reembolso.integration.spec.ts, com Postgres).
+    count: async () => 0,
   };
 
   checklistRefeicao = {

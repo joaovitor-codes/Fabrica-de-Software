@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { itemForaDoAr } from './plano-alimentar.service';
 import { CreateComentarioRefeicaoDto } from './dtos/comentario-refeicao';
 import { TipoUsuario } from '@prisma/client';
 
@@ -17,7 +18,8 @@ export class ComentarioRefeicaoService {
       include: { planoAlimentar: true },
     });
 
-    if (!item) {
+    // Item que saiu do ar com um reembolso não recebe nem mostra registro.
+    if (!item || (await itemForaDoAr(this.prismaService, itemId))) {
       throw new NotFoundException(`Item do plano alimentar não encontrado`);
     }
 
@@ -53,7 +55,8 @@ export class ComentarioRefeicaoService {
       include: { planoAlimentar: true },
     });
 
-    if (!item) {
+    // Item que saiu do ar com um reembolso não recebe nem mostra registro.
+    if (!item || (await itemForaDoAr(this.prismaService, itemId))) {
       throw new NotFoundException(`Item do plano alimentar não encontrado`);
     }
 

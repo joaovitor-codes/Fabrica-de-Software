@@ -7,7 +7,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   DadosPreferencia,
+  EstornoMercadoPago,
   PagamentoMercadoPago,
+  StatusEstornoMercadoPago,
   StatusPagamentoMercadoPago,
 } from './mercado-pago.types';
 
@@ -85,6 +87,37 @@ export class MercadoPagoService {
     };
   }
 
+  /**
+   * Estorno total de um pagamento, com o token do vendedor. No split, o
+   * Mercado Pago tira o valor do vendedor e da plataforma na proporção de
+   * cada um; sem saldo do vendedor, o estorno não sai (recusa ou status
+   * diferente de aprovado). A chave de idempotência evita dois estornos
+   * num retry da mesma tentativa.
+   */
+  async estornar(
+    token: string,
+    pagamentoId: string,
+    chaveIdempotencia: string,
+  ): Promise<EstornoMercadoPago> {
+    const e = await this.requisitar<{
+      id: number | string;
+      amount: number;
+      status: string;
+    }>(
+      token,
+      'POST',
+      `/v1/payments/${encodeURIComponent(pagamentoId)}/refunds`,
+      {},
+      chaveIdempotencia,
+    );
+
+    return {
+      id: String(e.id),
+      valor: e.amount,
+      status: this.traduzirStatusEstorno(e.status),
+    };
+  }
+
   private async requisitar<T>(
     token: string,
     metodo: 'GET' | 'POST',
@@ -140,6 +173,18 @@ export class MercadoPagoService {
         return 'estornado';
       default:
         return 'pendente';
+    }
+  }
+
+  private traduzirStatusEstorno(status: string): StatusEstornoMercadoPago {
+    switch (status) {
+      case 'approved':
+        return 'aprovado';
+      case 'in_process':
+      case 'authorized':
+        return 'pendente';
+      default:
+        return 'recusado';
     }
   }
 

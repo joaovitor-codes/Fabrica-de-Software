@@ -19,6 +19,7 @@ import { RecebedorService } from '../../../marketplace/recebedor/recebedor.servi
 import { NotificacaoService } from '../../../notificacao/notificacao.service';
 import { ConteudoComprado } from '../compra.types';
 import { WebhookCompraService } from '../webhook-compra.service';
+import { ReembolsoService } from '../reembolso.service';
 
 const COMPRA = '22222222-2222-4222-8222-222222222222';
 const OUTRA_COMPRA = '33333333-3333-4333-8333-333333333333';
@@ -145,8 +146,12 @@ class FakePrismaService {
           clientVersion: 'teste',
         });
       }
-      this.pagamentos.push(data);
-      return data;
+      const registro = {
+        id: `pagamento-${this.pagamentos.length + 1}`,
+        ...data,
+      };
+      this.pagamentos.push(registro);
+      return registro;
     }),
   };
 
@@ -164,6 +169,10 @@ describe('WebhookCompraService', () => {
   let recebedor: { tokenPorContaMercadoPago: jest.Mock };
   let mercadoPago: { buscarPagamento: jest.Mock };
   let notificacao: { criar: jest.Mock };
+  let reembolso: {
+    estornarCobrancaDuplicada: jest.Mock;
+    sincronizarEstorno: jest.Mock;
+  };
   let service: WebhookCompraService;
 
   beforeEach(async () => {
@@ -178,6 +187,10 @@ describe('WebhookCompraService', () => {
       buscarPagamento: jest.fn().mockResolvedValue(pagamentoMp()),
     };
     notificacao = { criar: jest.fn().mockResolvedValue(null) };
+    reembolso = {
+      estornarCobrancaDuplicada: jest.fn().mockResolvedValue(undefined),
+      sincronizarEstorno: jest.fn().mockResolvedValue(undefined),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -186,6 +199,7 @@ describe('WebhookCompraService', () => {
         { provide: RecebedorService, useValue: recebedor },
         { provide: MercadoPagoService, useValue: mercadoPago },
         { provide: NotificacaoService, useValue: notificacao },
+        { provide: ReembolsoService, useValue: reembolso },
       ],
     }).compile();
 
@@ -211,7 +225,7 @@ describe('WebhookCompraService', () => {
     it('registra o pagamento e marca a compra como paga, com a cópia', async () => {
       await processar();
 
-      expect(prisma.pagamentos).toEqual([
+      expect(prisma.pagamentos).toMatchObject([
         {
           receitaCompraId: COMPRA,
           valor: new Prisma.Decimal('29.90'),
@@ -354,9 +368,54 @@ describe('WebhookCompraService', () => {
       expect(minhaCompra().status).toBe(StatusCompraReceita.cancelada);
       expect(notificacao.criar).not.toHaveBeenCalled();
     });
+
+    it('cobrança em dobro: pede o estorno do pagamento registrado', async () => {
+      prisma.compras.push(
+        compra({ id: OUTRA_COMPRA, status: StatusCompraReceita.paga }),
+      );
+
+      await processar();
+
+      expect(reembolso.estornarCobrancaDuplicada).toHaveBeenCalledWith(
+        prisma.pagamentos[0].id,
+      );
+    });
+
+    it('estorno da cobrança em dobro que falha não faz o aviso falhar', async () => {
+      prisma.compras.push(
+        compra({ id: OUTRA_COMPRA, status: StatusCompraReceita.paga }),
+      );
+      reembolso.estornarCobrancaDuplicada.mockRejectedValue(
+        new Error('vendedor sem saldo'),
+      );
+
+      await expect(processar()).resolves.toBeUndefined();
+      expect(prisma.pagamentos).toHaveLength(1);
+    });
+
+    it('compra liberada normalmente não pede estorno', async () => {
+      await processar();
+
+      expect(reembolso.estornarCobrancaDuplicada).not.toHaveBeenCalled();
+    });
   });
 
   describe('não libera a cópia', () => {
+    it('pagamento estornado (fora da API): sincroniza pelo reembolso, sem mexer na compra aqui', async () => {
+      mercadoPago.buscarPagamento.mockResolvedValue(
+        pagamentoMp({ status: 'estornado' }),
+      );
+
+      await processar();
+
+      expect(reembolso.estornarCobrancaDuplicada).not.toHaveBeenCalled();
+      expect(reembolso.sincronizarEstorno).toHaveBeenCalledWith(
+        'pag-1',
+        expect.any(Date),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
     it.each(['recusado', 'pendente', 'estornado'] as const)(
       'pagamento %s não muda a compra',
       async (status) => {
@@ -392,6 +451,7 @@ describe('WebhookCompraService', () => {
       expect(prisma.pagamentos).toHaveLength(1);
       expect(prisma.receitas).toHaveLength(0);
       expect(minhaCompra().receitaCopiaId).toBe('copia-antiga');
+      expect(reembolso.estornarCobrancaDuplicada).toHaveBeenCalledTimes(1);
     });
 
     it.each([
