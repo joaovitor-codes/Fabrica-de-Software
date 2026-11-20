@@ -202,6 +202,10 @@ describe('Adaptação e plano da receita comprada (integração com Postgres)', 
       prisma,
       base,
       ingredientesReceita,
+      {
+        get: async () => undefined,
+        set: async () => undefined,
+      } as unknown as CacheService,
     );
     planos = new PlanoAlimentarService(prisma);
     receitas = new ReceitaService(

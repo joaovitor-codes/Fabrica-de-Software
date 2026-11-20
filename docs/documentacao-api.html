@@ -472,7 +472,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 }</code></pre></figure>
 <h3>Profissional: sugerir e decidir</h3>
 <ol>
-<li><code>POST /api/receita/:id/sugestoes-adaptacao</code> com o <code>pacienteId</code>: devolve o que a receita fere para o paciente, até 3 substitutos por ingrediente (os já curados primeiro) e a receita inteira adaptada pela IA, como prévia. Nada é gravado.</li>
+<li><code>POST /api/receita/:id/sugestoes-adaptacao</code> com o <code>pacienteId</code>: devolve o que a receita fere para o paciente, até 3 substitutos por ingrediente (os já curados primeiro) e a receita inteira adaptada pela IA, como prévia. Nada é gravado na receita. A resposta da IA fica guardada por 10 minutos: reabrir a mesma prévia não chama a IA de novo (editar a receita ou mudar as restrições do paciente gera outra).</li>
 <li>O profissional monta a versão final como quiser.</li>
 <li><code>POST /api/receita/:id/adaptacao-profissional</code> grava. A lista precisa ser segura para <strong>todas</strong> as restrições do paciente; a adaptação nasce aprovada e entra no plano pela rota de item.</li>
 </ol>
@@ -1580,7 +1580,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <header><span class="metodo m-post">POST</span><code class="rota">/api/receita/<span class="param">:id</span>/sugestoes-adaptacao</code><a class="link" href="#op-post-api-receita-id-sugestoes-adaptacao" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Sugestões de adaptação da receita para um paciente (profissional)</p>
 <div class="selos"><span class="selo login">Login</span><span class="selo papel">profissional</span><span class="selo papel">admin</span></div>
-<p class="descricao">O que a receita fere para o paciente, opções de substituto por ingrediente (curadas e da IA) e a receita inteira adaptada pela IA, como prévia. Nada é gravado.</p>
+<p class="descricao">O que a receita fere para o paciente, opções de substituto por ingrediente (curadas e da IA) e a receita inteira adaptada pela IA, como prévia. Nada é gravado na receita. A resposta da IA fica guardada por 10 minutos: reabrir a mesma prévia não chama a IA de novo.</p>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
 <h5>Corpo <span class="mime">application/json</span></h5>
 <p class="dto">DTO: <a class="ref" href="#dto-SugestoesAdaptacaoDto">SugestoesAdaptacaoDto</a></p>

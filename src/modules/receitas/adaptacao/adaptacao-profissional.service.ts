@@ -5,13 +5,34 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusReceita, TipoUsuario } from '@prisma/client';
+import { createHash } from 'crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { CacheService } from '../../../common/cache/cache.service';
 import { UsuarioAutenticado } from '../../../auth/auth.types';
 import { IngredientesReceitaService } from '../receita/ingredientes-receita.service';
-import { restricoesDoPaciente } from '../visibilidade/restricoes-receita';
-import { AdaptacaoBaseService, Origem } from './adaptacao-base.service';
+import {
+  RestricaoDoPaciente,
+  ingredientesSegurosPara,
+  restricoesDoPaciente,
+} from '../visibilidade/restricoes-receita';
+import {
+  AdaptacaoBaseService,
+  Analise,
+  Origem,
+} from './adaptacao-base.service';
 import { Troca, interpretarAdaptacao, interpretarOpcoes } from './adaptacao';
 import { AdaptacaoProfissionalDto } from './dtos/adaptar-receita';
+
+/**
+ * Quanto tempo a resposta da IA para a sugestão fica guardada: o
+ * profissional que reabre a mesma prévia não paga outra chamada.
+ */
+export const SUGESTAO_ADAPTACAO_TTL_MS = 10 * 60 * 1000;
+
+interface PropostaGuardada {
+  resposta: unknown;
+  candidatos: { id: string; nome: string }[];
+}
 
 /**
  * O profissional do paciente recebe sugestões de adaptação e decide
@@ -25,6 +46,7 @@ export class AdaptacaoProfissionalService {
     private readonly prismaService: PrismaService,
     private readonly base: AdaptacaoBaseService,
     private readonly ingredientesReceita: IngredientesReceitaService,
+    private readonly cacheService: CacheService,
   ) {}
 
   /**
@@ -61,7 +83,7 @@ export class AdaptacaoProfissionalService {
       };
     }
 
-    const { resposta, candidatos } = await this.base.pedirProposta(
+    const { resposta, candidatos, seguros } = await this.propostaDaIa(
       origem,
       analise,
       restricoes,
@@ -71,7 +93,6 @@ export class AdaptacaoProfissionalService {
       analise.problematicos,
       candidatos.length,
     );
-    const seguros = new Set(candidatos.map((c) => c.id));
     const curados = await this.base.substitutosCurados(analise, restricoes);
     const nomePorId = new Map(candidatos.map((c) => [c.id, c.nome]));
 
@@ -86,10 +107,9 @@ export class AdaptacaoProfissionalService {
                   seguros.has(s.ingredienteDestino.id),
               )
               .map((s) => ({ ...s.ingredienteDestino, fonte: 'curado' })),
-            ...(opcoesIa.get(i) ?? []).map((c) => ({
-              ...candidatos[c],
-              fonte: 'ia',
-            })),
+            ...(opcoesIa.get(i) ?? [])
+              .filter((c) => seguros.has(candidatos[c].id))
+              .map((c) => ({ ...candidatos[c], fonte: 'ia' })),
           ].filter(
             (s, idx, todas) => todas.findIndex((x) => x.id === s.id) === idx,
           )
@@ -262,6 +282,63 @@ export class AdaptacaoProfissionalService {
   }
 
   /** Só o profissional do paciente (ou admin) mexe na adaptação dele. */
+  /**
+   * A proposta da IA para a prévia, guardada por receita (versão e
+   * revisão), restrições do paciente e ingredientes a trocar: reabrir a
+   * mesma prévia não chama a IA de novo. Editar a receita, mudar as
+   * restrições do paciente ou a curadoria mudar o que a receita fere troca
+   * a chave. Do cache, os candidatos que deixaram de ser seguros saem de
+   * `seguros`; a receita inteira passa de novo pela checagem determinística.
+   */
+  private async propostaDaIa(
+    origem: Origem,
+    analise: Analise,
+    restricoes: RestricaoDoPaciente[],
+  ) {
+    const chave = this.chaveSugestao(origem, analise, restricoes);
+    const guardada = await this.cacheService.get<PropostaGuardada>(chave);
+    if (guardada) {
+      const atuais = await ingredientesSegurosPara(
+        this.prismaService,
+        restricoes,
+      );
+      const idsAtuais = new Set(atuais.map((c) => c.id));
+      return {
+        ...guardada,
+        seguros: new Set(
+          guardada.candidatos
+            .filter((c) => idsAtuais.has(c.id))
+            .map((c) => c.id),
+        ),
+      };
+    }
+
+    const { resposta, candidatos } = await this.base.pedirProposta(
+      origem,
+      analise,
+      restricoes,
+    );
+    const nova: PropostaGuardada = {
+      resposta,
+      candidatos: candidatos.map(({ id, nome }) => ({ id, nome })),
+    };
+    await this.cacheService.set(chave, nova, SUGESTAO_ADAPTACAO_TTL_MS);
+    return { ...nova, seguros: new Set(candidatos.map((c) => c.id)) };
+  }
+
+  private chaveSugestao(
+    origem: Origem,
+    analise: Analise,
+    restricoes: RestricaoDoPaciente[],
+  ) {
+    const conteudo = JSON.stringify([
+      restricoes.map((r) => r.restricaoId).sort(),
+      [...analise.problematicos].sort((a, b) => a - b),
+    ]);
+    const hash = createHash('sha256').update(conteudo).digest('hex');
+    return `adaptacao:sugestao:${origem.id}:${origem.versaoAtual}:${origem.revisao}:${hash.slice(0, 16)}`;
+  }
+
   private async garantirPacienteDoProfissional(
     pacienteId: string,
     usuario: UsuarioAutenticado,
