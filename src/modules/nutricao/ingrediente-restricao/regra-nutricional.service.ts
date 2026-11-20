@@ -29,7 +29,7 @@ export const CAMPO_INGREDIENTE: Record<
   [CampoNutricionalRegra.sodio_mg]: 'sodioMg',
 };
 
-const COMPARADORES: Record<
+export const COMPARADORES: Record<
   OperadorRegraNutricional,
   (valor: number, limite: number) => boolean
 > = {

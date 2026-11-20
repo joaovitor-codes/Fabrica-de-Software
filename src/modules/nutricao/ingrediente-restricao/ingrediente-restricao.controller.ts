@@ -11,6 +11,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadGatewayResponse,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -123,7 +125,15 @@ export class IngredienteRestricaoController {
       'Gera (via IA) e cadastra substitutos para um ingrediente e restrição',
   })
   @ApiCreatedResponse({
-    description: 'Substitutos gerados e cadastrados com sucesso.',
+    description:
+      'Substitutos gerados e cadastrados com sucesso. Sugestão com o nome de um ingrediente do catálogo reaproveita o existente; os novos ficam marcados como estimativa da IA.',
+  })
+  @ApiConflictResponse({
+    description: 'Já existem substitutos para esse ingrediente e restrição.',
+  })
+  @ApiBadGatewayResponse({
+    description:
+      'A IA respondeu fora do formato ou sem nenhum substituto válido. Nada é gravado.',
   })
   @ApiBearerAuth()
   @UseGuards(AuthGuard, RolesGuard)
