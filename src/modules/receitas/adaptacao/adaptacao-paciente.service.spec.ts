@@ -227,6 +227,111 @@ describe('AdaptacaoPacienteService.adaptar', () => {
       },
     };
 
+    describe('no mesmo processo, uma chamada à IA só', () => {
+      let gravada: unknown = null;
+      let liberarIa: () => void;
+
+      beforeEach(() => {
+        gravada = null;
+        mocked.violacoesDosIngredientes.mockReset();
+        mocked.violacoesDosIngredientes.mockImplementation(async (_p, ids) =>
+          ids.includes('sal') ? [violacaoSal] : [],
+        );
+        prisma.receitaAdaptacao.findUnique.mockImplementation(
+          async () => gravada,
+        );
+        tx.receitaAdaptacao.create.mockImplementation(async () => {
+          gravada = { ...vencedora, id: 'adaptacao' };
+          return { id: 'adaptacao' };
+        });
+        // A IA só responde quando o teste mandar: os dois pedidos chegam
+        // enquanto ela pensa.
+        const resposta = ia.adaptarReceita.getMockImplementation()!;
+        ia.adaptarReceita.mockImplementation(
+          (...args: unknown[]) =>
+            new Promise((ok) => {
+              liberarIa = () => ok(resposta(...args));
+            }),
+        );
+      });
+
+      const esperarIa = async () => {
+        while (ia.adaptarReceita.mock.calls.length === 0) {
+          await new Promise((ok) => setImmediate(ok));
+        }
+        // Dá tempo ao segundo pedido de chegar até a espera.
+        for (let i = 0; i < 20; i++) {
+          await new Promise((ok) => setImmediate(ok));
+        }
+      };
+
+      it('o segundo pedido espera o primeiro e recebe a adaptação dele', async () => {
+        const primeiro = service.adaptar(
+          'arroz-feijao',
+          'hipertensao',
+          usuario,
+        );
+        const segundo = service.adaptar('arroz-feijao', 'hipertensao', usuario);
+        await esperarIa();
+        liberarIa();
+
+        const [a, b] = await Promise.all([primeiro, segundo]);
+
+        expect(ia.adaptarReceita).toHaveBeenCalledTimes(1);
+        expect(tx.receitaAdaptacao.create).toHaveBeenCalledTimes(1);
+        expect(a).toMatchObject({
+          adaptacao: { id: 'adaptacao' },
+          reaproveitada: false,
+        });
+        expect(b).toMatchObject({
+          adaptacao: { id: 'adaptacao' },
+          reaproveitada: true,
+        });
+      });
+
+      it('se o primeiro falha, o segundo recebe o mesmo erro sem chamar a IA', async () => {
+        ia.adaptarReceita.mockImplementation(
+          () =>
+            new Promise((_, falha) => {
+              liberarIa = () => falha(new Error('IA fora do ar'));
+            }),
+        );
+        const primeiro = service.adaptar(
+          'arroz-feijao',
+          'hipertensao',
+          usuario,
+        );
+        const segundo = service.adaptar('arroz-feijao', 'hipertensao', usuario);
+        await esperarIa();
+        liberarIa();
+
+        const resultados = await Promise.allSettled([primeiro, segundo]);
+
+        expect(resultados.map((r) => r.status)).toEqual([
+          'rejected',
+          'rejected',
+        ]);
+        expect(ia.adaptarReceita).toHaveBeenCalledTimes(1);
+      });
+
+      it('depois que termina, a próxima falha não fica presa no anterior', async () => {
+        ia.adaptarReceita.mockRejectedValueOnce(new Error('IA fora do ar'));
+        await expect(
+          service.adaptar('arroz-feijao', 'hipertensao', usuario),
+        ).rejects.toThrow();
+
+        ia.adaptarReceita.mockResolvedValueOnce({
+          trocas: [{ i: 1, acao: 'remover' }],
+          modoPreparo: 'Cozinhe o arroz e o feijão com ervas.',
+          resumo: 'Sal removido.',
+        });
+        await expect(
+          service.adaptar('arroz-feijao', 'hipertensao', usuario),
+        ).resolves.toMatchObject({ reaproveitada: false });
+        expect(ia.adaptarReceita).toHaveBeenCalledTimes(2);
+      });
+    });
+
     it('quem perde a corrida recebe a adaptação que venceu, sem erro', async () => {
       mocked.restricoesDoUsuario.mockResolvedValue([
         { ...hipertensao, estrita: false },
