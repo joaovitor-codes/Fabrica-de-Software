@@ -17,3 +17,12 @@ export interface PagamentoMercadoPago {
   metodo: string;
   pagoEm: Date | null;
 }
+
+/** Situação de um estorno: só `aprovado` quer dizer dinheiro devolvido. */
+export type StatusEstornoMercadoPago = 'aprovado' | 'pendente' | 'recusado';
+
+export interface EstornoMercadoPago {
+  id: string;
+  valor: number;
+  status: StatusEstornoMercadoPago;
+}

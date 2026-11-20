@@ -3,7 +3,7 @@
 Ordem de implementação das duas features do schema v5: **vitrine de produtos** e **venda de receitas**. As regras de negócio estão em [`decisoes_marketplace.md`](decisoes_marketplace.md), e os contratos das rotas e dos DTOs no `documentacao-api.html` (seção "Marketplace"). Este documento não repete as regras: diz em que ordem construir, onde fica cada coisa e quando cada etapa está pronta.
 
 - **Data:** 11/10/2026
-- **Andamento (18/11/2026):** M1, M2 e M3 prontas. Da M4 estão prontos 6.1, 6.2 e 6.3: a compra é paga, a cópia é criada e o comprador a abre (`compradaDe`, `primeiroAcessoEm`, `/compradas` e `/minhas-vendas`). Faltam 6.4 (adaptação e plano alimentar sobre a cópia; hoje a adaptação recusa a cópia) e 6.5 (reembolso).
+- **Andamento (20/11/2026):** M1 a M4 prontas. A 6.4 entrou no PR #156 e a 6.5 (reembolso, com o estorno da cobrança em dobro) na #128.
 - **Base já pronta:** schema v5, migrations `20261011151855_novo_escopo` e `20261011160000_restricoes_marketplace` (CHECKs e índice parcial) e limite de requisições por tipo de rota (D9).
 
 ## 1. Visão geral
@@ -15,7 +15,7 @@ São quatro milestones. Cada uma só depende das anteriores.
 | M1 | Marketplace: Fundação | Variáveis de ambiente, termos do marketplace, serviço de notificação | Base | ✅ |
 | M2 | Vitrine de Produtos | Categorias, produtos, fotos, listagem e moderação | M1 | ✅ |
 | M3 | Venda de Receitas: Vendedor | Conexão com o Mercado Pago, ofertas, prévia e conteúdo fechado | M1 | ✅ |
-| M4 | Venda de Receitas: Compra | Checkout, webhook, cópia, uso da cópia e reembolso | M3 | Parcial: faltam 6.4 e 6.5 |
+| M4 | Venda de Receitas: Compra | Checkout, webhook, cópia, uso da cópia e reembolso | M3 | Pronta |
 
 M2 e M3 não dependem uma da outra e podem andar em paralelo. A vitrine não usa o Mercado Pago, então é o melhor ponto de partida.
 
@@ -177,9 +177,10 @@ Esta etapa entra junto com 5.3. Sem ela, criar uma oferta não fecha nada e o co
 ### 6.5 Reembolso
 
 - `POST /api/receita/compra/:compraId/reembolso`, uma vez por compra, dentro de `MARKETPLACE_REEMBOLSO_DIAS` contados de `pagaEm`.
-- Cópia nunca aberta e fora de plano alimentar: estorno pela API do Mercado Pago; se o estorno não sair inteiro, cai na análise.
+- Cópia nunca aberta, nunca adaptada e fora de plano alimentar: estorno pela API do Mercado Pago; se o estorno não sair inteiro, cai na análise.
 - Caso contrário: `reembolso_em_analise`. `GET /api/receita/reembolsos` e `PATCH /api/receita/compra/:compraId/reembolso` (admin).
-- `reembolsada` tira do ar a cópia, as adaptações dela e os itens de plano que a usam (P13). Notifica `reembolso_resolvido`.
+- `reembolsada` tira do ar a cópia, as adaptações dela e os itens de plano que a usam (P13). Notifica `reembolso_resolvido` ao comprador e ao vendedor.
+- Cobrança em dobro (pagamento aprovado de quem já tem a receita): o webhook estorna na hora; se não sair, vai para a fila (`cobrancasDuplicadas`) e o admin tenta de novo por `POST /api/receita/pagamento/:pagamentoId/estorno`.
 
 **M4 pronta quando:** com as contas de teste, um comprador paga uma receita, o webhook libera a cópia, ele a adapta, e um pedido de reembolso sem abertura é estornado automaticamente.
 

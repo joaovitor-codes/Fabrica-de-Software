@@ -226,6 +226,20 @@ A preferência manda o próprio `notification_url` (`API_URL_PUBLICA/api/mercado
 3. O aviso chega em segundos: a compra fica `paga`, com `receitaCopiaId`, e vendedor e comprador recebem a notificação.
 4. Com titular `OTHE` o pagamento é recusado e a compra continua `pendente`; dá para pagar de novo no mesmo link. O cartão novo fica salvo com o titular digitado, então use outro cartão ou o saldo para a nova tentativa.
 
+### Testar o reembolso
+
+| Rota | Acesso | O que faz |
+|---|---|---|
+| `POST /api/receita/compra/:compraId/reembolso` | Login (comprador) | Pede o reembolso; cópia nunca usada é estornada na hora, o resto vai para análise |
+| `GET /api/receita/reembolsos` | Admin | Fila: `pedidos` em análise e `cobrancasDuplicadas` |
+| `PATCH /api/receita/compra/:compraId/reembolso` | Admin | `{ "aprovado": true }` estorna; `false` devolve a compra para `paga` |
+| `POST /api/receita/pagamento/:pagamentoId/estorno` | Admin | Estorna uma cobrança em dobro da fila |
+
+1. Compre e pague uma receita como em "Testar uma compra de ponta a ponta", **sem abrir a cópia** depois.
+2. Peça o reembolso com o comprador. Sem abrir, adaptar ou pôr em plano, a API tenta o estorno automático.
+3. **No sandbox, o estorno pela API não sai:** o Mercado Pago responde `401 Unauthorized use of live credentials` para as contas de teste, tanto com o token do vendedor quanto com o da aplicação (testado em 20/11/2026). A API trata isso como estorno que não saiu: o pedido automático cai na análise e a aprovação do admin responde `422`, sem mudar nada. O caminho de sucesso é coberto pelos testes com o Mercado Pago dublado (`reembolso.integration.spec.ts`).
+4. **Pelo painel o estorno funciona:** logado como vendedor de teste, Atividade → o pagamento → Devolver. O aviso `estornado` chega pelo webhook e a API acompanha: o pagamento que liberou a cópia deixa a compra `reembolsada` e tira a cópia do ar. Numa cobrança em dobro, a rota do admin também reconcilia: o estorno é recusado, mas a consulta mostra `estornado` e o pagamento é marcado.
+
 ### Testar um pagamento no sandbox (sem a API)
 
 Com um vendedor conectado, `scripts/sandbox-mercado-pago.ts` chama o cliente do Mercado Pago direto, sem a API rodando nem o túnel ligado. Precisa do banco, de `RECEBEDOR_TOKEN_KEY`, `API_URL_PUBLICA` e `FRONT_URL` no `.env`. Nenhum modo imprime tokens.
@@ -252,6 +266,7 @@ npx ts-node scripts/sandbox-mercado-pago.ts recentes <user_id>                # 
 | Aviso chega no ngrok com `401` | `MP_WEBHOOK_SECRET` diferente da assinatura secreta do painel de Webhooks, ou API não reiniciada depois de trocar. |
 | Aviso com `200`, mas a compra não muda | Veja o log da API: conta do vendedor desconectada, valor diferente do preço ou pagamento ainda não aprovado. |
 | `404` em `pagamento` | ID errado (atenção a pontuação copiada junto). |
+| Estorno com `401 Unauthorized use of live credentials` no log | Limitação do sandbox com contas de teste (ver "Testar o reembolso"). O pedido fica em análise; nada muda no banco. |
 
 ## Estrutura do projeto
 

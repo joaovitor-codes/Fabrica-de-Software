@@ -17,6 +17,7 @@ import { RecebedorService } from '../../marketplace/recebedor/recebedor.service'
 import { NotificacaoService } from '../../notificacao/notificacao.service';
 import { STATUS_VIVOS } from './compra.service';
 import { ConteudoComprado } from './compra.types';
+import { ReembolsoService } from './reembolso.service';
 
 const COMPRA_DO_AVISO = {
   id: true,
@@ -63,6 +64,7 @@ export class WebhookCompraService {
     private readonly recebedor: RecebedorService,
     private readonly mercadoPago: MercadoPagoService,
     private readonly notificacao: NotificacaoService,
+    private readonly reembolso: ReembolsoService,
   ) {}
 
   async processar(
@@ -87,7 +89,12 @@ export class WebhookCompraService {
       token,
       pagamentoId,
     );
-    // Estorno é da issue de reembolso; pendente e recusado não mudam nada.
+    // Estorno feito fora da API (painel, contestação): a compra acompanha.
+    if (pagamento.status === 'estornado') {
+      await this.reembolso.sincronizarEstorno(pagamento.id, agora);
+      return;
+    }
+    // Pendente e recusado não mudam nada.
     if (pagamento.status !== 'aprovado') return;
 
     const compra = isUUID(pagamento.referencia)
@@ -119,7 +126,33 @@ export class WebhookCompraService {
       return;
     }
 
-    await this.liberar(compra, pagamento, agora);
+    const duplicado = await this.liberar(compra, pagamento, agora);
+    if (duplicado) {
+      await this.estornarDuplicado(duplicado, pagamento.id, compra.id);
+    }
+  }
+
+  /**
+   * Cobrança em dobro: o comprador já tinha a receita. O estorno sai na
+   * hora; se não sair, o pagamento fica na fila de reembolsos do admin. Não
+   * relança: o pagamento já está registrado, e um reenvio do aviso não
+   * tentaria de novo.
+   */
+  private async estornarDuplicado(
+    pagamentoId: string,
+    gatewayId: string,
+    compraId: string,
+  ) {
+    try {
+      await this.reembolso.estornarCobrancaDuplicada(pagamentoId);
+      this.logger.log(
+        `Pagamento ${gatewayId} em dobro na compra ${compraId} estornado.`,
+      );
+    } catch (erro) {
+      this.logger.warn(
+        `Pagamento ${gatewayId} em dobro na compra ${compraId} não foi estornado (${(erro as Error).message}); está na fila de reembolsos do admin.`,
+      );
+    }
   }
 
   /**
@@ -127,14 +160,17 @@ export class WebhookCompraService {
    * como paga e notifica. A linha da compra fica travada (FOR UPDATE), então
    * dois avisos ao mesmo tempo são processados um depois do outro, e o
    * segundo encontra o pagamento já registrado.
+   *
+   * Devolve o ID do pagamento registrado sem cópia (cobrança em dobro), para
+   * estornar fora da transação; senão, null.
    */
   private async liberar(
     compra: CompraDoAviso,
     pagamento: PagamentoMercadoPago,
     agora: Date,
-  ) {
+  ): Promise<string | null> {
     try {
-      await this.prismaService.$transaction(async (tx) => {
+      return await this.prismaService.$transaction(async (tx) => {
         const [linha] = await tx.$queryRaw<{ status: StatusCompraReceita }[]>`
           SELECT status FROM receita_compras WHERE id = ${compra.id}::uuid FOR UPDATE`;
 
@@ -142,12 +178,12 @@ export class WebhookCompraService {
           where: { gatewayCobrancaId: pagamento.id },
           select: { id: true },
         });
-        if (registrado) return;
+        if (registrado) return null;
 
         const liberavel = await this.liberavel(tx, compra, linha.status);
         const pagaEm = pagamento.pagoEm ?? agora;
 
-        await tx.pagamento.create({
+        const registro = await tx.pagamento.create({
           data: {
             receitaCompraId: compra.id,
             valor: compra.precoPago,
@@ -156,12 +192,13 @@ export class WebhookCompraService {
             gatewayCobrancaId: pagamento.id,
             dataPagamento: pagaEm,
           },
+          select: { id: true },
         });
         if (!liberavel) {
           this.logger.warn(
-            `Pagamento ${pagamento.id} aprovado para a compra ${compra.id} (${linha.status}), mas o comprador já tem esta receita; precisa de estorno.`,
+            `Pagamento ${pagamento.id} aprovado para a compra ${compra.id} (${linha.status}), mas o comprador já tem esta receita; vai ser estornado.`,
           );
-          return;
+          return registro.id;
         }
 
         const copia = await this.criarCopia(tx, compra);
@@ -195,6 +232,7 @@ export class WebhookCompraService {
           },
           tx,
         );
+        return null;
       });
     } catch (erro) {
       // Só é "já processado" se o pagamento está mesmo registrado; outra
@@ -207,7 +245,7 @@ export class WebhookCompraService {
           select: { id: true },
         }))
       ) {
-        return;
+        return null;
       }
       throw erro;
     }

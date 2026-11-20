@@ -393,18 +393,19 @@ describe('ProdutoService', () => {
 
     it('só inclui o telefone no detalhe quando há usuário autenticado', async () => {
       const produto = await criar();
-      produto.telefoneContato = {
+      const telefoneContato = {
         ddi: '+55',
         numero: '62999999999',
         tipo: 'celular',
       };
+      Object.assign(produto, { telefoneContato });
 
       const anonimo = await service.getProdutoById(produto.id);
       expect(anonimo).not.toHaveProperty('contato');
 
       await expect(service.getProdutoById(produto.id, OUTRO)).resolves.toEqual(
         expect.objectContaining({
-          contato: produto.telefoneContato,
+          contato: telefoneContato,
         }),
       );
     });
@@ -468,9 +469,9 @@ describe('ProdutoService', () => {
         estado: 'PE',
         titulo: 'Bolo de aveia',
       });
-      alvo.publicoAlvo = [
-        { restricaoId: 'r1', restricao: prisma.restricoes[0] },
-      ];
+      Object.assign(alvo, {
+        publicoAlvo: [{ restricaoId: 'r1', restricao: prisma.restricoes[0] }],
+      });
 
       const foraDaCategoria = await criar();
       Object.assign(foraDaCategoria, {

@@ -149,11 +149,16 @@ O comprador pede em `POST /api/receita/compra/:compraId/reembolso`, em até 7 di
 
 | Situação da cópia | O que acontece |
 |---|---|
-| Nunca foi aberta e não está em plano alimentar | Estorno automático: a compra fica `reembolsada` e a cópia sai do ar |
-| Já foi aberta, ou está em um plano alimentar | A compra fica `reembolso_em_analise` e entra na fila do admin. Aprovado, vira `reembolsada`; negado, volta para `paga` |
+| Nunca foi aberta nem adaptada, e não está em plano alimentar | Estorno automático: a compra fica `reembolsada` e a cópia sai do ar |
+| Já foi aberta ou adaptada, ou está em um plano alimentar | A compra fica `reembolso_em_analise` e entra na fila do admin. Aprovado, vira `reembolsada`; negado, volta para `paga` |
 | Passaram os 7 dias | `422` |
 
 - **Abrir** é o comprador carregar o conteúdo da cópia: a rota de detalhe ou a de ingredientes. Isso grava `primeiroAcessoEm`. A listagem `/compradas` traz só o resumo e não conta.
+- **Adaptar conta como abrir** (decidido na #128): a adaptada traz o conteúdo inteiro, então pegar o conteúdo pela adaptação e pedir o estorno automático não pode passar.
+- **Em plano alimentar** é qualquer plano, ativo ou não, com a cópia ou com uma adaptação dela (#128).
+- **Saída do ar** (P13): a cópia e as adaptações dela ganham `deletedAt`. Os itens de plano que usam uma ou outra somem das leituras do plano, do checklist e dos comentários, mas ficam no banco com o histórico do paciente; um item novo no mesmo dia e refeição toma o lugar do que saiu. Receita excluída pelo autor continua com o comportamento antigo (fica nos planos).
+- **Notificações:** estorno feito avisa o comprador e o vendedor (`reembolso_resolvido`); pedido negado, só o comprador.
+- **O estorno é a fonte da verdade.** Se o admin negar enquanto o estorno sai, a compra fica `reembolsada`, porque o dinheiro já voltou. Se a resposta do estorno se perder, a consulta do pagamento no Mercado Pago (`estornado`) conta como feito.
 - No split do Mercado Pago, o estorno é descontado do vendedor e da plataforma na proporção de cada um. Se o vendedor não tiver saldo, o Mercado Pago não devolve o valor inteiro; o pedido automático cai então na análise do admin.
 
 ### 4.8 Integração com o Mercado Pago
@@ -168,8 +173,9 @@ O comprador pede em `POST /api/receita/compra/:compraId/reembolso`, em até 7 di
 - **Webhook.** `POST /api/mercado-pago/webhook` confere a assinatura do cabeçalho `x-signature`, busca o pagamento no Mercado Pago e responde `200`. O Mercado Pago espera a resposta por 22 segundos e reenvia a cada 15 minutos se ela não vier. A rota é idempotente por `Pagamento.gatewayCobrancaId`, que é único, e trava a linha da compra durante o processamento, então avisos simultâneos não liberam duas cópias.
   - **Assinatura.** HMAC-SHA256 de `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` com a assinatura secreta do painel de Webhooks (`MP_WEBHOOK_SECRET`). Sem o segredo configurado, todo aviso é recusado (`401`). O `notification_url` leva `?source_news=webhooks` para chegar só o formato assinado, e não o IPN antigo.
   - **Aprovado:** registra o `Pagamento`, cria a cópia, marca a compra como `paga` e notifica `receita_vendida` e `compra_liberada`, tudo numa transação.
-  - **Recusado, pendente ou estornado:** não muda a compra. O estorno é tratado no reembolso.
-  - **Aprovado para compra `cancelada`** (o aviso chegou depois do vencimento): libera a cópia se o comprador não tiver outra compra paga desta receita; uma `pendente` mais nova é cancelada. Se ele já tiver uma paga, o pagamento é registrado sem cópia e vai para o log, para estorno.
+  - **Recusado ou pendente:** não muda a compra.
+  - **Estornado** (estorno feito fora da API: painel do Mercado Pago ou contestação no cartão, #128): o pagamento fica `reembolsado`; se foi o que liberou a cópia, a compra fica `reembolsada`, a cópia e as adaptações saem do ar e os dois lados são avisados, como num reembolso pela API.
+  - **Aprovado para compra `cancelada`** (o aviso chegou depois do vencimento): libera a cópia se o comprador não tiver outra compra paga desta receita; uma `pendente` mais nova é cancelada. Se ele já tiver uma paga, o pagamento é registrado sem cópia e estornado na hora (cobrança em dobro, #128). Se o estorno não sair, o pagamento aparece em `cobrancasDuplicadas` na fila de reembolsos, e o admin tenta de novo por `POST /api/receita/pagamento/:pagamentoId/estorno`.
   - **Ignorados com `200`** (um reenvio não resolveria): aviso que não é de pagamento, conta do Mercado Pago desconectada, compra de outro vendedor e valor pago diferente de `precoPago`. Os três últimos vão para o log.
   - Falha ao consultar o Mercado Pago responde erro, e o aviso é reenviado.
 - **Registro do pagamento.** A linha de `Pagamento` nasce no webhook, e não na criação da compra, porque no Checkout Pro o ID do pagamento só existe depois que o comprador paga.

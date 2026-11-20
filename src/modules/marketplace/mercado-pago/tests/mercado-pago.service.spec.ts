@@ -225,6 +225,63 @@ describe('MercadoPagoService', () => {
     });
   });
 
+  describe('estornar', () => {
+    it('pede o estorno total, com o token do vendedor e a chave de idempotência', async () => {
+      fetchMock.mockResolvedValue(
+        respostaJson(201, { id: 555, amount: 29.9, status: 'approved' }),
+      );
+
+      const estorno = await service.estornar(TOKEN, '123456789', 'chave-1');
+
+      expect(estorno).toEqual({ id: '555', valor: 29.9, status: 'aprovado' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'https://api.mercadopago.com/v1/payments/123456789/refunds',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers.authorization).toBe(`Bearer ${TOKEN}`);
+      expect(init.headers['x-idempotency-key']).toBe('chave-1');
+      // Sem amount: estorno total.
+      expect(JSON.parse(init.body)).toEqual({});
+    });
+
+    it.each([
+      ['in_process', 'pendente'],
+      ['rejected', 'recusado'],
+      ['cancelled', 'recusado'],
+    ])('status %s vira %s', async (statusMp, esperado) => {
+      fetchMock.mockResolvedValue(
+        respostaJson(201, { id: 1, amount: 29.9, status: statusMp }),
+      );
+
+      const estorno = await service.estornar(TOKEN, '123', 'chave');
+
+      expect(estorno.status).toBe(esperado);
+    });
+
+    it('não deixa o ID do pagamento alterar o caminho da URL', async () => {
+      fetchMock.mockResolvedValue(
+        respostaJson(201, { id: 1, amount: 1, status: 'approved' }),
+      );
+
+      await service.estornar(TOKEN, '../users/me', 'chave');
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://api.mercadopago.com/v1/payments/..%2Fusers%2Fme/refunds',
+      );
+    });
+
+    it('vendedor sem saldo (recusa do Mercado Pago): 502', async () => {
+      fetchMock.mockResolvedValue(
+        respostaJson(400, { message: 'insufficient_amount' }),
+      );
+
+      await expect(
+        service.estornar(TOKEN, '123', 'chave'),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+  });
+
   describe('erros', () => {
     it('responde 502 quando o Mercado Pago recusa', async () => {
       fetchMock.mockResolvedValue(

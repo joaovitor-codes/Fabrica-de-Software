@@ -1,10 +1,13 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Request,
   Res,
@@ -12,6 +15,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadGatewayResponse,
+  ApiBody,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -22,9 +26,14 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { TipoUsuario } from '@prisma/client';
 import { AuthGuard } from '../../../auth/auth.guard';
 import type { RequestAutenticado } from '../../../auth/auth.types';
+import { Roles } from '../../../auth/roles.decorator';
+import { RolesGuard } from '../../../auth/roles.guard';
 import { CompraService } from './compra.service';
+import { CreateReembolsoDto, ResolverReembolsoDto } from './dtos/reembolso';
+import { ReembolsoService } from './reembolso.service';
 
 const uuidPipe = (mensagem: string) =>
   new ParseUUIDPipe({
@@ -34,7 +43,10 @@ const uuidPipe = (mensagem: string) =>
 
 @Controller('api/receita')
 export class CompraController {
-  constructor(private readonly compraService: CompraService) {}
+  constructor(
+    private readonly compraService: CompraService,
+    private readonly reembolsoService: ReembolsoService,
+  ) {}
 
   @ApiOperation({
     summary: 'Compra uma receita à venda e devolve o link de pagamento',
@@ -127,5 +139,112 @@ export class CompraController {
     @Request() req: RequestAutenticado,
   ) {
     return await this.compraService.consultar(compraId, req.user);
+  }
+
+  @ApiOperation({
+    summary: 'Pede o reembolso de uma compra (comprador)',
+    description:
+      'Uma vez por compra, em até `MARKETPLACE_REEMBOLSO_DIAS` (7) dias do pagamento. Cópia nunca aberta, ' +
+      'nunca adaptada e fora de plano alimentar é estornada na hora; senão, o pedido vai para a análise do admin. ' +
+      'Estorno automático que o Mercado Pago não faz inteiro também vai para a análise.',
+  })
+  @ApiBody({ type: CreateReembolsoDto })
+  @ApiOkResponse({
+    description:
+      '`{ compraId, status }`: `reembolsada` (estorno automático) ou `reembolso_em_analise`.',
+  })
+  @ApiNotFoundResponse({
+    description: 'A compra não existe ou é de outro usuário.',
+  })
+  @ApiConflictResponse({
+    description: 'A compra não está `paga`, ou já teve um pedido de reembolso.',
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'Passou o prazo do reembolso.',
+  })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('compra/:compraId/reembolso')
+  async solicitarReembolso(
+    @Param('compraId', uuidPipe('ID da compra inválido')) compraId: string,
+    @Body() dto: CreateReembolsoDto,
+    @Request() req: RequestAutenticado,
+  ) {
+    return await this.reembolsoService.solicitar(compraId, req.user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Fila de reembolsos (admin)',
+    description:
+      '`pedidos`: compras em `reembolso_em_analise`, mais antigas primeiro, com o motivo, as datas do pedido, do ' +
+      'pagamento e do primeiro acesso, e se a cópia foi adaptada ou está em plano alimentar. ' +
+      '`cobrancasDuplicadas`: pagamentos aprovados que não liberaram cópia (o comprador já tinha a receita) e cujo ' +
+      'estorno automático não saiu.',
+  })
+  @ApiOkResponse({ description: '`{ pedidos, cobrancasDuplicadas }`.' })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin)
+  // Rota fixa: precisa vir antes de GET :id (ordem em ReceitasModule).
+  @Get('reembolsos')
+  async filaReembolsos() {
+    return await this.reembolsoService.fila();
+  }
+
+  @ApiOperation({
+    summary: 'Aprova ou nega um pedido de reembolso em análise (admin)',
+    description:
+      'Aprovado: estorna no Mercado Pago; a compra fica `reembolsada` e a cópia, as adaptações dela e os itens de ' +
+      'plano que as usam saem do ar. Negado: a compra volta para `paga`. O comprador é notificado; no aprovado, o ' +
+      'vendedor também.',
+  })
+  @ApiBody({ type: ResolverReembolsoDto })
+  @ApiOkResponse({ description: '`{ compraId, status }`.' })
+  @ApiNotFoundResponse({ description: 'A compra não existe.' })
+  @ApiConflictResponse({
+    description: 'A compra não está `reembolso_em_analise`.',
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'O Mercado Pago não estornou o valor inteiro (vendedor sem saldo ou desconectado, por exemplo); o pedido continua em análise.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'Mercado Pago fora do ar; o pedido continua em análise.',
+  })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin)
+  @Patch('compra/:compraId/reembolso')
+  async resolverReembolso(
+    @Param('compraId', uuidPipe('ID da compra inválido')) compraId: string,
+    @Body() dto: ResolverReembolsoDto,
+  ) {
+    return await this.reembolsoService.resolver(compraId, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Estorna uma cobrança em dobro (admin)',
+    description:
+      'Para os pagamentos de `cobrancasDuplicadas` na fila de reembolsos: tenta de novo o estorno que o webhook não conseguiu.',
+  })
+  @ApiOkResponse({ description: '`{ pagamentoId, statusPagamento }`.' })
+  @ApiConflictResponse({
+    description: 'O pagamento não é uma cobrança em dobro pendente de estorno.',
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'O Mercado Pago não estornou o valor inteiro.',
+  })
+  @ApiServiceUnavailableResponse({ description: 'Mercado Pago fora do ar.' })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(TipoUsuario.admin)
+  @HttpCode(HttpStatus.OK)
+  @Post('pagamento/:pagamentoId/estorno')
+  async estornarCobrancaDuplicada(
+    @Param('pagamentoId', uuidPipe('ID do pagamento inválido'))
+    pagamentoId: string,
+  ) {
+    return await this.reembolsoService.estornarCobrancaDuplicada(pagamentoId);
   }
 }

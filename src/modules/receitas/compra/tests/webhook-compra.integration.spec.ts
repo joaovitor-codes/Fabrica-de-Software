@@ -18,6 +18,7 @@ import { UsuarioAutenticado } from '../../../../auth/auth.types';
 import { VisibilidadeReceitaService } from '../../visibilidade/visibilidade-receita.service';
 import { ConteudoComprado } from '../compra.types';
 import { WebhookCompraService } from '../webhook-compra.service';
+import { ReembolsoService } from '../reembolso.service';
 
 /**
  * Roda contra o Postgres de verdade: a trava da compra (FOR UPDATE), a
@@ -132,6 +133,7 @@ describe('Webhook da compra (integração com Postgres)', () => {
     const recebedor = {
       tokenPorContaMercadoPago: jest.fn().mockResolvedValue('token'),
     };
+    const reembolso = { estornarCobrancaDuplicada: jest.fn() };
     const mercadoPago = {
       buscarPagamento: jest.fn(async (_token: string, id: string) => ({
         ...pagamentoMp,
@@ -143,6 +145,7 @@ describe('Webhook da compra (integração com Postgres)', () => {
       recebedor as unknown as RecebedorService,
       mercadoPago as unknown as MercadoPagoService,
       new NotificacaoService(prisma),
+      reembolso as unknown as ReembolsoService,
     );
   });
 
