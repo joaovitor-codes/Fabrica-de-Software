@@ -103,7 +103,7 @@ Onde a IA **não** entra: no filtro de exibição (Fases 1 e 3). Ele roda em tod
 
 **Dados enviados à IA**: só dados de receita e ingrediente, mais o nome da restrição. Nunca dados do paciente (nome, id, gravidade, histórico). Restrição alimentar ligada a uma pessoa é dado de saúde e, portanto, sensível pela LGPD.
 
-**Chave**: continua em `OPENAI_API_KEY` no `.env`. Se o provedor mudar, só o `IaService` precisa ser alterado. Os métodos novos ficam no `IaService`, reaproveitando o `perguntarJson`.
+**Chave e modelo**: `OPENAI_API_KEY` e `OPENAI_MODEL` (padrão `gpt-5.6-luna`) no `.env`. Sem a chave a API sobe e só as chamadas à IA respondem `503`; provedor fora do ar também é `503`, e resposta vazia ou que não é JSON, `502`. Se o provedor mudar, só o `IaService` precisa ser alterado. Os métodos novos ficam no `IaService`, reaproveitando o `perguntarJson`.
 
 ## Fase 0: curadoria dos alérgenos principais
 
@@ -300,4 +300,7 @@ Entrega: para qualquer paciente com restrição, com ou sem profissional, a rece
 - **Adaptação pública que não serve para um paciente.** A adaptação pública é uma por receita e restrição. Se ela foi criada antes e usa um substituto que fere outra restrição deste paciente (ex: soja), o catálogo não cria outra: o paciente recebe a original com aviso (ou 403, se for estrita). Saída possível: uma adaptação privada por paciente, como a do profissional. Decidir se aparecer na prática.
 - **Edição de ingredientes.** Implementada: `ingredientes` no `PATCH` substitui a lista inteira, e a receita aprovada volta para `pendente`, o que também cobre as adaptadas.
 - **Usuário `comum` com restrição.** Hoje só `Paciente` tem restrições. Se o `comum` também precisar do filtro, as restrições teriam que ser ligadas ao `Usuario`, não ao `Paciente`. Fica para depois.
-- **Custo da IA.** Gerar adaptações em segundo plano, logo que uma receita é aprovada, para as restrições mais comuns. Isso deixa a experiência instantânea também na primeira vez. Decidir depois de medir o uso da Fase 2.
+- **Custo da IA.** Decidido em 2026-11-20 (#154), com medição na base local (`gpt-5.6-luna`, US$ 0,20 por milhão de tokens de entrada, US$ 0,02 em cache, US$ 1,20 de saída):
+  - **Cache do provedor em vez de pré-filtro.** A lista de candidatos seguros (~500 nomes, ~8 mil tokens) vai num bloco à parte, antes da receita, marcado como ponto de corte do cache (`prompt_cache_breakpoint`). Com as mesmas restrições, a partir da segunda adaptação ~98% da entrada sai do cache: de ~US$ 0,0021 para ~US$ 0,0007 por chamada, sem mudar o que a IA vê. Pré-filtrar por categoria mudaria a lista a cada receita (perdendo o cache) e arrisca esconder o melhor substituto (a TACO não traz categoria, e substitutos cruzam categorias: leite → extrato de soja). Revisitar se o catálogo crescer a ponto de a lista pesar.
+  - **Uma chamada por adaptação.** Pedidos simultâneos para a mesma receita, versão e restrição esperam o primeiro (single-flight no `AdaptacaoPacienteService`). Vale dentro de um processo; com mais de uma instância, o P2002 da gravação continua resolvendo, mas cada instância paga a sua chamada.
+  - **Sem geração antecipada.** Gerar adaptações quando a receita é aprovada deixaria a primeira abertura instantânea (hoje 3 a 5 s), mas cria adaptações que ninguém pediu: cada uma é uma chamada paga e uma receita `pendente` a mais na fila de verificação dos profissionais. Sob demanda, cada receita × restrição custa uma chamada uma vez só, reaproveitada por todos os pacientes. Revisitar se a espera da primeira abertura virar reclamação.

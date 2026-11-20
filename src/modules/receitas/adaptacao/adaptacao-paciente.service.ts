@@ -13,7 +13,11 @@ import {
   restricaoPorId,
   restricoesDoUsuario,
 } from '../visibilidade/restricoes-receita';
-import { AdaptacaoBaseService } from './adaptacao-base.service';
+import {
+  AdaptacaoBaseService,
+  Analise,
+  Origem,
+} from './adaptacao-base.service';
 import { interpretarAdaptacao } from './adaptacao';
 
 /**
@@ -25,6 +29,9 @@ import { interpretarAdaptacao } from './adaptacao';
  */
 @Injectable()
 export class AdaptacaoPacienteService {
+  /** Adaptações sendo criadas agora, por receita, versão e restrição. */
+  private readonly emAndamento = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly prismaService: PrismaService,
     private readonly cacheService: CacheService,
@@ -84,6 +91,67 @@ export class AdaptacaoPacienteService {
       };
     }
 
+    // 3 e 4. Um pedido por receita, versão e restrição chama a IA; quem
+    // chega enquanto ele roda espera e recebe a adaptação que ele gravou
+    // (ou o mesmo erro). Só neste processo: entre instâncias, o P2002 da
+    // gravação continua resolvendo, mas cada uma paga a sua chamada.
+    const chave = `${receitaId}:${origem.versaoAtual}:${restricaoId}`;
+    const andamento = this.emAndamento.get(chave);
+    if (andamento) {
+      await andamento;
+      const pronta = await this.buscarAdaptacao(receitaId, restricaoId);
+      if (pronta && this.vigente(pronta, origem.versaoAtual)) {
+        return this.resposta(
+          pronta.id,
+          pronta.receitaAdaptada,
+          pronta.resumoIa,
+          restricao.nome,
+          estritaParaQuemPediu,
+          true,
+        );
+      }
+    }
+    const promessa = this.proporEGravar({
+      receitaId,
+      restricaoId,
+      restricao,
+      outrasRestricoes,
+      usuario,
+      origem,
+      analise,
+      existente,
+      estritaParaQuemPediu,
+    });
+    this.emAndamento.set(chave, promessa);
+    try {
+      return await promessa;
+    } finally {
+      this.emAndamento.delete(chave);
+    }
+  }
+
+  /** A IA propõe, a checagem determinística confere e a adaptada é gravada. */
+  private async proporEGravar({
+    receitaId,
+    restricaoId,
+    restricao,
+    outrasRestricoes,
+    usuario,
+    origem,
+    analise,
+    existente,
+    estritaParaQuemPediu,
+  }: {
+    receitaId: string;
+    restricaoId: string;
+    restricao: RestricaoDoPaciente;
+    outrasRestricoes: RestricaoDoPaciente[];
+    usuario: UsuarioAutenticado;
+    origem: Origem;
+    analise: Analise;
+    existente: Awaited<ReturnType<AdaptacaoPacienteService['buscarAdaptacao']>>;
+    estritaParaQuemPediu: boolean;
+  }) {
     // 3. A IA propõe e a checagem determinística confere.
     const { resposta, candidatos } = await this.base.pedirProposta(
       origem,

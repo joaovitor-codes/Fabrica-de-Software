@@ -63,5 +63,7 @@ export const envValidationSchema = Joi.object({
   MARKETPLACE_REEMBOLSO_DIAS: Joi.number().integer().min(0).default(7),
   MARKETPLACE_TERMOS_VERSAO: Joi.string().default('1.0'),
 
-  OPENAI_API_KEY: Joi.string().optional(),
+  // Sem a chave a API sobe; as rotas que usam IA respondem 503.
+  OPENAI_API_KEY: Joi.string().allow('').optional(),
+  OPENAI_MODEL: Joi.string().allow('').optional(),
 });

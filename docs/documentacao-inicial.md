@@ -111,7 +111,8 @@ O `.env` é validado na inicialização (`src/common/config/env.validation.ts`).
 | `DATABASE_URL` | ✅ | Conexão com o PostgreSQL. Com o `docker-compose.yml` padrão: `postgresql://admin:adminpassword@localhost:5454/nutrify_db?schema=public` |
 | `JWT_SECRET` | ✅ | Segredo do JWT, com **no mínimo 32 caracteres**. |
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | ✅ | Envio de e-mails (verificação de conta, recuperação de senha). |
-| `OPENAI_API_KEY` | ✅ | Chave da OpenAI, usada na sugestão de substitutos. |
+| `OPENAI_API_KEY` | | Chave da OpenAI (adaptação de receitas, substitutos e conferência do modo de preparo). Sem ela a API sobe, mas essas rotas respondem `503`. |
+| `OPENAI_MODEL` | | Modelo da OpenAI. Padrão: `gpt-5.6-luna`. |
 | `REDIS_URL` | | Padrão: `redis://localhost:6379`. |
 | `PORT` | | Padrão: `3000`. |
 | `SMTP_PORT` / `SMTP_SECURE` | | Padrão: `587` / `false`. |
