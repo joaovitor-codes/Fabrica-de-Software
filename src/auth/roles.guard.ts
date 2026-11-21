@@ -17,6 +17,9 @@ export class RolesGuard implements CanActivate {
       return true;
     }
     const { user } = context.switchToHttp().getRequest<RequestAutenticado>();
-    return requiredRoles.includes(user.tipoUsuario);
+    // Libera se algum papel da conta está na rota. Sem `papeis` (guards de
+    // teste que só preenchem o tipo), vale o tipo.
+    const papeis = user.papeis ?? [user.tipoUsuario];
+    return requiredRoles.some((papel) => papeis.includes(papel));
   }
 }

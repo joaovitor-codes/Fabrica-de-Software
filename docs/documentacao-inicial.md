@@ -157,6 +157,8 @@ O controle é feito com `AuthGuard` (usuário autenticado) e `RolesGuard` + `@Ro
 | `paciente` | Consulta o próprio plano, marca o checklist, comenta refeições, registra sintomas e cadastra as próprias restrições. Pode vender receitas e anunciar produtos. |
 | `comum` | Usuário sem vínculo clínico: navega, publica e vende receitas e anuncia produtos. Quem pede cadastro de profissional continua `comum` até o admin aprovar. |
 
+Os papéis vêm dos registros: o perfil principal é o `tipoUsuario`, e a conta também é `paciente` se tem o registro de paciente. O `AuthGuard` carrega o registro na mesma consulta do usuário e põe a lista em `request.user.papeis`; o `RolesGuard` libera se algum papel está no `@Roles(...)` da rota. Decida acesso por `papeis` (ou pelos registros), não pelo `tipoUsuario`: o profissional com registro de paciente tem os dois papéis, mas nunca é paciente de si mesmo, e a ética (não vender receita nem anunciar produto) vence o papel de paciente.
+
 ## Fluxo de trabalho do time
 
 - **Branch principal:** `desenvolvimento`. Toda mudança entra por Pull Request.

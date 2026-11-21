@@ -159,6 +159,15 @@ describe('ReceitaService - oferta', () => {
       expect(prisma.receitaOferta.update).not.toHaveBeenCalled();
     });
 
+    it('profissional aprovado recebe o 403 antes do 422 do Mercado Pago', async () => {
+      prisma.profissional.findFirst.mockResolvedValue({ id: 'prof' });
+      prisma.contaRecebedor.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.atualizarOferta(RECEITA, { ativa: true }, autor),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
     it('profissional aprovado ainda pausa e mexe no preço da oferta pausada', async () => {
       prisma.profissional.findFirst.mockResolvedValue({ id: 'prof' });
 

@@ -30,7 +30,9 @@ import { OptionalAuthGuard } from '../../../../auth/optional-auth.guard';
 const usuarioDosHeaders = (req: any) => {
   const id = req.headers['x-user-id'];
   const tipoUsuario = req.headers['x-user-tipo'];
-  return id && tipoUsuario ? { id, sub: id, tipoUsuario } : undefined;
+  return id && tipoUsuario
+    ? { id, sub: id, tipoUsuario, papeis: [tipoUsuario] }
+    : undefined;
 };
 
 /** Substitui o AuthGuard real (JWT + banco) por headers; RolesGuard segue real. */

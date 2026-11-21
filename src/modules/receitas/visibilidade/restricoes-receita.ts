@@ -140,12 +140,17 @@ export function semAdaptacoesDeOutros(
   };
 }
 
-/** Restrições do usuário autenticado; vazio se ele não é paciente. */
+/**
+ * Restrições do usuário autenticado; vazio se ele não tem registro de
+ * paciente. Decide pelo registro, não pelo tipo: o profissional que também
+ * é paciente tem as restrições valendo no filtro e na compra. Com `papeis`
+ * (o usuário do AuthGuard), quem não é paciente nem chega a consultar.
+ */
 export function restricoesDoUsuario(
   prisma: PrismaService,
-  usuario?: { id: string; tipoUsuario: TipoUsuario },
+  usuario?: { id: string; papeis?: TipoUsuario[] },
 ): Promise<RestricaoDoPaciente[]> {
-  if (usuario?.tipoUsuario !== TipoUsuario.paciente) {
+  if (!usuario || usuario.papeis?.includes(TipoUsuario.paciente) === false) {
     return Promise.resolve([]);
   }
   return restricoesDoPaciente(prisma, { usuarioId: usuario.id });

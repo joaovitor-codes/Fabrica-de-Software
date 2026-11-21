@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { CacheService } from '../../../common/cache/cache.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
@@ -21,6 +22,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { CreateUsuarioDto } from '../usuario/dtos/usuario';
 import { ClinicasService } from '../clinicas/clinicas.service';
+import { PACIENTE_DE_SI_MESMO } from '../pacientes/pacientes.service';
 import { NotificacaoService } from '../../notificacao/notificacao.service';
 
 const SOLICITACAO_EXISTENTE =
@@ -373,13 +375,15 @@ export class ProfissionalService {
   }
 
   async associarPaciente(profissionalId: string, pacienteId: string) {
-    await this.exigirProfissionalAprovado(profissionalId);
+    const profissional = await this.exigirProfissionalAprovado(profissionalId);
 
     // A condição vai na própria gravação: dois profissionais associando o
-    // mesmo paciente ao mesmo tempo não recebem os dois 200.
+    // mesmo paciente ao mesmo tempo não recebem os dois 200. Ninguém é
+    // paciente de si mesmo (#168).
     const { count } = await this.prismaService.paciente.updateMany({
       where: {
         id: pacienteId,
+        usuarioId: { not: profissional.usuarioId },
         OR: [{ profissionalId: null }, { profissionalId }],
       },
       data: { profissionalId },
@@ -390,6 +394,9 @@ export class ProfissionalService {
 
     if (!paciente) {
       throw new NotFoundException('Paciente não encontrado');
+    }
+    if (paciente.usuarioId === profissional.usuarioId) {
+      throw new UnprocessableEntityException(PACIENTE_DE_SI_MESMO);
     }
     if (count === 0) {
       throw new ConflictException(

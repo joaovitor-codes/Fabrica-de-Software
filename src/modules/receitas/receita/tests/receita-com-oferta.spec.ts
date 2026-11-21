@@ -41,6 +41,9 @@ class FakePrismaService {
   inseguras = new Set<string>();
   /** O vendedor teve o cadastro profissional aprovado (D4). */
   profissionalAprovado = false;
+  profissional = {
+    findFirst: async () => (this.profissionalAprovado ? { id: 'p' } : null),
+  };
 
   ingrediente = {
     findMany: async () => [{ id: 'farinha', nome: 'Farinha de arroz' }],
@@ -193,6 +196,16 @@ describe('ReceitaService - createComOferta', () => {
       expect(prisma.ofertas).toHaveLength(0);
     });
 
+    it('quando o vendedor tem cadastro profissional aprovado (D4)', async () => {
+      prisma.profissionalAprovado = true;
+
+      await expect(service.createComOferta(dto(), vendedor)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.receitas).toHaveLength(0);
+    });
+
     it('sem o aceite dos termos do marketplace', async () => {
       termos.garantirAceite.mockRejectedValue(semAceite);
 
@@ -250,16 +263,6 @@ describe('ReceitaService - createComOferta', () => {
         restricoesRecusadas: ['Glúten'],
       });
       expect(prisma.$transaction).toHaveBeenCalled();
-      expect(prisma.receitas).toHaveLength(0);
-      expect(prisma.ofertas).toHaveLength(0);
-    });
-
-    it('quando o vendedor teve o cadastro profissional aprovado (D4)', async () => {
-      prisma.profissionalAprovado = true;
-
-      await expect(service.createComOferta(dto(), vendedor)).rejects.toThrow(
-        ForbiddenException,
-      );
       expect(prisma.receitas).toHaveLength(0);
       expect(prisma.ofertas).toHaveLength(0);
     });
