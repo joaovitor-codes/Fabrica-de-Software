@@ -178,7 +178,10 @@ export class AdaptacaoPacienteService {
     }
 
     // 4. Grava a adaptada (pendente = não verificada) e a ligação. Uma
-    // adaptação antiga, de outra versão da origem, sai de circulação.
+    // adaptação antiga, de outra versão da origem, sai de circulação: a
+    // receita dela é marcada como excluída e a ligação fica, só sem a
+    // restrição (libera a vaga da nova). É a ligação que mantém privada a
+    // adaptação de uma cópia comprada; apagá-la a deixaria pública (#172).
     let gravada: {
       adaptacaoId: string;
       adaptada: Awaited<ReturnType<AdaptacaoBaseService['criarAdaptada']>>;
@@ -186,7 +189,10 @@ export class AdaptacaoPacienteService {
     try {
       gravada = await this.prismaService.$transaction(async (tx) => {
         if (existente) {
-          await tx.receitaAdaptacao.delete({ where: { id: existente.id } });
+          await tx.receitaAdaptacao.update({
+            where: { id: existente.id, restricaoId },
+            data: { restricaoId: null },
+          });
           await tx.receita.update({
             where: { id: existente.receitaAdaptadaId },
             data: { deletedAt: new Date() },
