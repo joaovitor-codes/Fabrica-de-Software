@@ -28,6 +28,7 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { TipoUsuario } from '@prisma/client';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { CacheService } from '../common/cache/cache.service';
+import { papeisDaConta } from './papeis';
 
 const AUTH_ME_CACHE_TTL = 60_000;
 
@@ -476,6 +477,7 @@ export class AuthService {
         // null para quem nunca solicitou: é assim que o front distingue a
         // conta comum do cadastro pendente ou rejeitado.
         profissional: { select: { statusAprovacao: true } },
+        paciente: { select: { id: true } },
       },
     });
 
@@ -483,10 +485,14 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    const { paciente, ...usuario } = user;
     const { senhaHash, ...userWithoutPassword } = user.conta;
 
+    // `papeis` diz ao front o que mostrar: o tipo da conta mais `paciente`
+    // se existe o registro (o profissional pode ser paciente também).
     const userWithoutPasswordResult = {
-      ...user,
+      ...usuario,
+      papeis: papeisDaConta(user.tipoUsuario, !!paciente),
       conta: userWithoutPassword,
     };
 

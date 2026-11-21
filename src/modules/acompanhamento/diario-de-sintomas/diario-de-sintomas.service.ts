@@ -119,16 +119,12 @@ export class DiarioDeSintomasService {
       throw new NotFoundException('Paciente não encontrado');
     }
 
-    if (tipoUsuario === TipoUsuario.admin) {
-      return;
-    }
-
-    if (tipoUsuario === TipoUsuario.paciente) {
-      if (pacienteAlvo.usuarioId !== usuarioId) {
-        throw new ForbiddenException(
-          'Você não tem permissão para acessar o diário deste paciente.',
-        );
-      }
+    // O próprio diário vem antes do vínculo: o profissional que também é
+    // paciente usa o dele.
+    if (
+      tipoUsuario === TipoUsuario.admin ||
+      pacienteAlvo.usuarioId === usuarioId
+    ) {
       return;
     }
 

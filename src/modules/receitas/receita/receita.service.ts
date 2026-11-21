@@ -49,6 +49,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   garantirNaoProfissional,
   PROFISSIONAL_NAO_VENDE_RECEITA,
+  recusarProfissional,
 } from '../../marketplace/vendedor-profissional';
 
 /**
@@ -90,6 +91,11 @@ export class ReceitaService {
   async createComOferta(data: ReceitaComOfertaDto, userId: string) {
     const { oferta } = data;
 
+    await recusarProfissional(
+      this.prismaService,
+      userId,
+      PROFISSIONAL_NAO_VENDE_RECEITA,
+    );
     await this.garantirVendedorApto(userId);
     this.garantirPrecoMinimo(oferta.preco);
     const restricaoIds = oferta.restricaoIds ?? [];
@@ -163,6 +169,13 @@ export class ReceitaService {
       data.ativa === false &&
       data.preco === undefined &&
       data.restricaoIds === undefined;
+    if (data.ativa === true) {
+      await recusarProfissional(
+        this.prismaService,
+        usuario.id,
+        PROFISSIONAL_NAO_VENDE_RECEITA,
+      );
+    }
     if (!soPausa) {
       await this.garantirVendedorApto(usuario.id);
     }

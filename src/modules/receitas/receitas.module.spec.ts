@@ -51,7 +51,12 @@ class InfraFalsaModule {}
 class ProfissionalLogado implements CanActivate {
   canActivate(context: ExecutionContext) {
     const req = context.switchToHttp().getRequest();
-    req.user = { id: 'p', sub: 'p', tipoUsuario: TipoUsuario.profissional };
+    req.user = {
+      id: 'p',
+      sub: 'p',
+      tipoUsuario: TipoUsuario.profissional,
+      papeis: [TipoUsuario.profissional],
+    };
     return true;
   }
 }

@@ -570,6 +570,15 @@ describe('ProdutoService', () => {
       expect(prisma.produtos).toHaveLength(0);
     });
 
+    it('recebe o 403 da ética antes do 422 dos termos', async () => {
+      prisma.profissionaisAprovados.add(VENDEDOR);
+      termos.garantirAceite.mockRejectedValue(
+        new UnprocessableEntityException('termos'),
+      );
+
+      await expect(criar()).rejects.toThrow(naoAnuncia);
+    });
+
     it('não reativa o produto pausado, nem pelo ativar nem pelo PATCH', async () => {
       const produto = await produtoDeQuemVirouProfissional();
 

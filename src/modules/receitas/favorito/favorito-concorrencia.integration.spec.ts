@@ -33,7 +33,7 @@ describe('Favorito - concorrência (integração com Postgres)', () => {
     const criado = await prisma.usuario.create({
       data: { contaId, nome: `Fav ${sufixo}`, tipoUsuario: TipoUsuario.comum },
     });
-    usuario = { ...criado, sub: criado.id };
+    usuario = { ...criado, sub: criado.id, papeis: [criado.tipoUsuario] };
     receitaId = (
       await prisma.receita.create({
         data: {

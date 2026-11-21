@@ -14,6 +14,7 @@ import { Prisma, Produto, StatusProduto } from '@prisma/client';
 import {
   garantirNaoProfissional,
   PROFISSIONAL_NAO_ANUNCIA_PRODUTO,
+  recusarProfissional,
 } from '../../vendedor-profissional';
 
 // Fotos expostas na vitrine, na ordem em que o vendedor enviou. O createdAt
@@ -32,6 +33,11 @@ export class ProdutoService {
   ) {}
 
   async createProduto(usuarioid: string, data: CreateProduto) {
+    await recusarProfissional(
+      this.prismaService,
+      usuarioid,
+      PROFISSIONAL_NAO_ANUNCIA_PRODUTO,
+    );
     await this.termosService.garantirAceite(usuarioid);
 
     const usuario = await this.prismaService.usuario.findUnique({

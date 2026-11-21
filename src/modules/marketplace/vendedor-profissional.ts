@@ -22,7 +22,21 @@ export async function garantirNaoProfissional(
   mensagem: string,
 ) {
   await tx.$queryRaw`SELECT 1 FROM usuarios WHERE id = ${usuarioId}::uuid FOR SHARE`;
-  const profissional = await tx.profissional.findFirst({
+  await recusarProfissional(tx, usuarioId, mensagem);
+}
+
+/**
+ * A mesma conferência, sem trava, para rodar antes de tudo: o profissional
+ * (que pode ter também o papel de paciente e passar pelo `@Roles`) recebe o
+ * `403` da ética, e não um `422` pedindo os termos ou o Mercado Pago. Não
+ * substitui a garantirNaoProfissional na transação da gravação.
+ */
+export async function recusarProfissional(
+  db: Prisma.TransactionClient,
+  usuarioId: string,
+  mensagem: string,
+) {
+  const profissional = await db.profissional.findFirst({
     where: { usuarioId, statusAprovacao: StatusAprovacao.aprovado },
     select: { id: true },
   });

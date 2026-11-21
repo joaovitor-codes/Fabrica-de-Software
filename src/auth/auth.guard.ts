@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Request as ExpressRequest } from 'express';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { JwtPayload, RequestAutenticado } from './auth.types';
+import { papeisDaConta } from './papeis';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -35,14 +36,21 @@ export class AuthGuard implements CanActivate {
       if (payload.tokenType !== 'access') {
         throw new UnauthorizedException();
       }
-      const user = await this.prisma.usuario.findUnique({
+      // Uma consulta só: o registro de paciente vem junto, para os papéis.
+      const encontrado = await this.prisma.usuario.findUnique({
         where: { id: payload.sub },
+        include: { paciente: { select: { id: true } } },
       });
-      if (!user) {
+      if (!encontrado) {
         throw new UnauthorizedException();
       }
 
-      request.user = { ...user, sub: user.id };
+      const { paciente, ...user } = encontrado;
+      request.user = {
+        ...user,
+        sub: user.id,
+        papeis: papeisDaConta(user.tipoUsuario, !!paciente),
+      };
     } catch {
       throw new UnauthorizedException();
     }

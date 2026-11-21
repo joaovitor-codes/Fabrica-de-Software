@@ -408,6 +408,8 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <tr><td><code>paciente</code></td><td>Consulta o próprio plano, marca o checklist, comenta refeições, registra sintomas e cadastra as próprias restrições</td></tr>
 <tr><td><code>comum</code></td><td>Usuário sem vínculo clínico: navega e publica receitas</td></tr>
 </tbody></table></div>
+<p>Uma conta pode ter mais de um papel: os papéis vêm dos registros. O papel principal é o <code>tipoUsuario</code> (<code>profissional</code> só vem da aprovação do cadastro), e a conta também é <code>paciente</code> se tem o registro de paciente. Assim o profissional pode ser paciente de outro nutricionista, nunca de si mesmo. A rota libera se algum dos papéis da conta está entre os dela, e o <code>GET /auth/me</code> devolve a lista em <code>papeis</code>.</p>
+<div class="nota aviso"><strong>A ética vence o papel de paciente</strong>Quem tem o cadastro profissional aprovado não vende receita nem anuncia produto, mesmo tendo também o papel de paciente: <code>POST /api/receita/paga</code> e <code>POST /api/produto</code> respondem <code>403</code>.</div>
 <div class="nota dica"><strong>Dono do recurso</strong>Além do papel, muitas rotas conferem a posse: o profissional só mexe nos pacientes dele, o autor só edita a própria receita. Fora disso, a resposta é <code>403</code> ou <code>404</code>.</div>
 </section>
 <section id="restricoes" class="guia"><h2>Restrições alimentares</h2>
@@ -678,7 +680,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <header><span class="metodo m-get">GET</span><code class="rota">/auth/me</code><a class="link" href="#op-get-auth-me" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Endpoint para obter informações do usuário autenticado</p>
 <div class="selos"><span class="selo login">Login</span></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Dados do usuário. <code>profissional.statusAprovacao</code> traz <code>pendente</code>, <code>aprovado</code> ou <code>rejeitado</code>; <code>profissional</code> é <code>null</code> para quem nunca solicitou o cadastro. Enquanto não é aprovada, a conta segue <code>comum</code>.</li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Dados do usuário. <code>profissional.statusAprovacao</code> traz <code>pendente</code>, <code>aprovado</code> ou <code>rejeitado</code>; <code>profissional</code> é <code>null</code> para quem nunca solicitou o cadastro. Enquanto não é aprovada, a conta segue <code>comum</code>. <code>papeis</code> lista os papéis da conta: o <code>tipoUsuario</code> e, se ela tem registro de paciente, <code>paciente</code> (ex.: <code>[&quot;profissional&quot;, &quot;paciente&quot;]</code>).</li></ul>
 </article>
 <article class="endpoint" id="op-post-auth-reenviar-verificacao" data-busca="post /auth/reenviar-verificacao reenvia o código de verificação de e-mail">
 <header><span class="metodo m-post">POST</span><code class="rota">/auth/reenviar-verificacao</code><a class="link" href="#op-post-auth-reenviar-verificacao" aria-label="Link para esta rota">#</a></header>
@@ -871,14 +873,16 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <h5>Corpo <span class="mime">application/json</span></h5>
 <p class="dto">DTO: <a class="ref" href="#dto-CreatePacienteDto">CreatePacienteDto</a></p>
 <div class="tabela"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>userId</code></td><td><span class="tipo">string</span></td><td>ID do usuário associado ao paciente<div class="exemplo">Exemplo: <code>123e4567-e89b-12d3-a456-426614174000</code></div></td></tr><tr><td><code>profissionalId</code></td><td><span class="tipo">string</span></td><td>ID do profissional associado ao paciente<div class="exemplo">Exemplo: <code>123e4567-e89b-12d3-a456-426614174001</code></div></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Paciente criado com sucesso.</li></ul>
+<p>Numa transação: a conta <code>comum</code> vira <code>paciente</code>; a <code>profissional</code> continua profissional e ganha o papel de paciente. O <code>profissionalId</code> não pode ser o do próprio usuário.</p>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Paciente criado com sucesso.</li><li><span class="status s4">404</span>Usuário não encontrado.</li><li><span class="status s4">409</span>O usuário já é paciente.</li><li><span class="status s4">422</span>Conta de admin, ou o profissional responsável é o próprio usuário.</li></ul>
 </article>
 <article class="endpoint" id="op-delete-api-pacientes-delete-id" data-busca="delete /api/pacientes/delete/{id} remove um paciente específico">
 <header><span class="metodo m-delete">DELETE</span><code class="rota">/api/pacientes/delete/<span class="param">:id</span></code><a class="link" href="#op-delete-api-pacientes-delete-id" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Remove um paciente específico</p>
 <div class="selos"><span class="selo login">Login</span><span class="selo papel">admin</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Paciente removido com sucesso.</li></ul>
+<p>A conta <code>paciente</code> volta a <code>comum</code>; a <code>profissional</code> só perde o papel de paciente.</p>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Paciente removido com sucesso.</li><li><span class="status s4">404</span>Paciente não encontrado.</li></ul>
 </article>
 <article class="endpoint" id="op-get-api-pacientes-page-page-limit-limit" data-busca="get /api/pacientes/page/{page}/limit/{limit} obtém uma lista paginada de pacientes">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/pacientes/page/<span class="param">:page</span>/limit/<span class="param">:limit</span></code><a class="link" href="#op-get-api-pacientes-page-page-limit-limit" aria-label="Link para esta rota">#</a></header>
@@ -895,7 +899,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <h5>Corpo <span class="mime">application/json</span></h5>
 <p class="dto">DTO: <a class="ref" href="#dto-UpdatePacienteDto">UpdatePacienteDto</a></p>
 <div class="tabela"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>profissionalId</code></td><td><span class="tipo">string</span></td><td>ID do profissional associado ao paciente<div class="exemplo">Exemplo: <code>123e4567-e89b-12d3-a456-426614174001</code></div></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Paciente atualizado com sucesso.</li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Paciente atualizado com sucesso.</li><li><span class="status s4">422</span>O profissional responsável é o próprio usuário.</li></ul>
 </article>
 <article class="endpoint" id="op-get-api-pacientes-id" data-busca="get /api/pacientes/{id} obtém as informações de um paciente específico">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/pacientes/<span class="param">:id</span></code><a class="link" href="#op-get-api-pacientes-id" aria-label="Link para esta rota">#</a></header>
@@ -952,7 +956,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <p class="resumo">Vincular um paciente já existente ao profissional autenticado</p>
 <div class="selos"><span class="selo login">Login</span><span class="selo papel">profissional</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>pacienteId</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">201</span>Paciente vinculado ao profissional com sucesso.</li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">201</span>Paciente vinculado ao profissional com sucesso.</li><li><span class="status s4">422</span>O paciente é o próprio profissional (ninguém é paciente de si mesmo).</li></ul>
 </article>
 <article class="endpoint" id="op-get-api-profissionais-pendentes" data-busca="get /api/profissionais/pendentes lista solicitações pendentes de profissionais">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/profissionais/pendentes</code><a class="link" href="#op-get-api-profissionais-pendentes" aria-label="Link para esta rota">#</a></header>

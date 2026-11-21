@@ -9,8 +9,15 @@ export interface JwtPayload {
   exp?: number;
 }
 
-/** O que o AuthGuard coloca em `request.user`: o Usuario do banco + `sub` (= id). */
-export type UsuarioAutenticado = Usuario & { sub: string };
+/**
+ * O que o AuthGuard coloca em `request.user`: o Usuario do banco + `sub`
+ * (= id) + `papeis` (ver papeisDaConta). Decida acesso por `papeis`, não
+ * pelo `tipoUsuario`: o profissional com registro de paciente tem os dois.
+ */
+export type UsuarioAutenticado = Usuario & {
+  sub: string;
+  papeis: TipoUsuario[];
+};
 
 /** Request de uma rota protegida pelo AuthGuard. */
 export interface RequestAutenticado extends Request {
