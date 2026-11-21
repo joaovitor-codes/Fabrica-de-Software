@@ -14,6 +14,7 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -82,6 +83,10 @@ export class ProdutoController {
     summary: 'Atualiza um produto do usuário logado ou muda o status dele',
   })
   @ApiOkResponse({ description: 'Produto atualizado com sucesso.' })
+  @ApiForbiddenResponse({
+    description:
+      'Não é o vendedor, produto removido pela moderação, ou vendedor com cadastro profissional aprovado mandando status ativo.',
+  })
   @Patch(':id')
   async update(
     @Request() request: RequestAutenticado,
@@ -107,6 +112,10 @@ export class ProdutoController {
 
   @ApiOperation({ summary: 'Ativa um produto do usuário logado' })
   @ApiOkResponse({ description: 'Produto ativado com sucesso.' })
+  @ApiForbiddenResponse({
+    description:
+      'Não é o vendedor, produto removido pela moderação, ou vendedor com cadastro profissional aprovado.',
+  })
   @Patch(':id/ativar')
   async ativar(
     @Request() request: RequestAutenticado,
@@ -127,6 +136,9 @@ export class ProdutoController {
 
   @ApiOperation({ summary: 'Reativa um produto removido (moderação)' })
   @ApiOkResponse({ description: 'Produto reativado com sucesso.' })
+  @ApiForbiddenResponse({
+    description: 'O vendedor tem o cadastro profissional aprovado.',
+  })
   @Roles(TipoUsuario.admin)
   @Patch(':id/reativar')
   async reativar(@Param('id', idPipe) id: string) {

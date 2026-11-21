@@ -206,7 +206,11 @@ export class ProfissionalController {
     });
   }
 
-  @ApiOperation({ summary: 'Aprovar solicitação de cadastro profissional' })
+  @ApiOperation({
+    summary: 'Aprovar solicitação de cadastro profissional',
+    description:
+      'Na mesma transação, pausa as ofertas de receita e os produtos ativos do usuário (o profissional não vende nem anuncia), com uma notificação por item.',
+  })
   @ApiCreatedResponse({
     description: 'Solicitação de cadastro profissional aprovada com sucesso.',
   })

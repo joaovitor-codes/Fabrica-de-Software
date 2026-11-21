@@ -46,6 +46,10 @@ import {
   peso,
 } from '../adaptacao/adaptacao-catalogo.service';
 import { ConfigService } from '@nestjs/config';
+import {
+  garantirNaoProfissional,
+  PROFISSIONAL_NAO_VENDE_RECEITA,
+} from '../../marketplace/vendedor-profissional';
 
 /**
  * Receita: criar, editar, apagar, listar, abrir e mídia. Quem vê o quê fica
@@ -93,6 +97,13 @@ export class ReceitaService {
 
     const { receita, ingredientesNaoListados } =
       await this.prismaService.$transaction(async (tx) => {
+        // O papel já foi conferido na rota; aqui fecha a corrida com a
+        // aprovação do cadastro profissional (D4).
+        await garantirNaoProfissional(
+          tx,
+          userId,
+          PROFISSIONAL_NAO_VENDE_RECEITA,
+        );
         const gravada = await this.gravarReceita(tx, data, userId);
 
         // Público-alvo conferido contra os ingredientes recém-gravados.
@@ -163,23 +174,35 @@ export class ReceitaService {
       await this.garantirPublicoAlvoSeguro(this.prismaService, id, restricoes);
     }
 
-    const oferta = await this.prismaService.receitaOferta.update({
-      where: { id: receita.oferta.id },
-      data: {
-        preco: data.preco,
-        ativa: data.ativa,
-        ...(data.restricaoIds
-          ? {
-              publicoAlvo: {
-                deleteMany: {},
-                create: data.restricaoIds.map((restricaoId) => ({
-                  restricaoId,
-                })),
-              },
-            }
-          : {}),
-      },
-      select: { ...OFERTA_NA_PREVIA.select, ativa: true },
+    const ofertaId = receita.oferta.id;
+    const oferta = await this.prismaService.$transaction(async (tx) => {
+      // Reativar a venda passa pela D4: a aprovação profissional pausou a
+      // oferta e ela não volta.
+      if (data.ativa === true) {
+        await garantirNaoProfissional(
+          tx,
+          usuario.id,
+          PROFISSIONAL_NAO_VENDE_RECEITA,
+        );
+      }
+      return tx.receitaOferta.update({
+        where: { id: ofertaId },
+        data: {
+          preco: data.preco,
+          ativa: data.ativa,
+          ...(data.restricaoIds
+            ? {
+                publicoAlvo: {
+                  deleteMany: {},
+                  create: data.restricaoIds.map((restricaoId) => ({
+                    restricaoId,
+                  })),
+                },
+              }
+            : {}),
+        },
+        select: { ...OFERTA_NA_PREVIA.select, ativa: true },
+      });
     });
 
     return {

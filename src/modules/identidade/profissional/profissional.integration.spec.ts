@@ -251,6 +251,18 @@ class FakePrismaService {
       where.id ? (this.clinicas.get(where.id) ?? null) : null,
   };
 
+  // A aprovação tira do ar o que o usuário vendia (D4/D5); aqui ninguém
+  // vende nada. O comportamento é coberto contra o Postgres em
+  // profissional-concorrencia.integration.spec.ts.
+  receitaOferta = {
+    findMany: async () => [],
+    updateMany: async () => ({ count: 0 }),
+  };
+  produto = {
+    findMany: async () => [],
+    updateMany: async () => ({ count: 0 }),
+  };
+
   pontosTransacao = {
     aggregate: async ({ where }: any) => {
       const transacoes = [...this.transacoes.values()].filter(

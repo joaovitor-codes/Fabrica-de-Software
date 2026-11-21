@@ -313,7 +313,10 @@ export class ReceitaController {
       'A oferta nunca é removida: pausar (`ativa: false`) tira da vitrine e mantém o conteúdo fechado.',
   })
   @ApiOkResponse({ description: 'Oferta atualizada.' })
-  @ApiForbiddenResponse({ description: 'O usuário não é o autor da receita.' })
+  @ApiForbiddenResponse({
+    description:
+      'O usuário não é o autor da receita, ou tem o cadastro profissional aprovado e tenta reativar a oferta.',
+  })
   @ApiUnprocessableEntityResponse({
     description:
       'Sem termos ou Mercado Pago ativo (exceto para só pausar), preço abaixo do mínimo ou público-alvo inseguro.',

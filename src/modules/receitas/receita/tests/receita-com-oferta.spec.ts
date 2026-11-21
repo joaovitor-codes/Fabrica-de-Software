@@ -2,6 +2,7 @@
 
 import {
   BadRequestException,
+  ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -38,6 +39,8 @@ class FakePrismaService {
   ]);
   /** Restrições para as quais a receita gravada NÃO é segura. */
   inseguras = new Set<string>();
+  /** O vendedor teve o cadastro profissional aprovado (D4). */
+  profissionalAprovado = false;
 
   ingrediente = {
     findMany: async () => [{ id: 'farinha', nome: 'Farinha de arroz' }],
@@ -59,6 +62,10 @@ class FakePrismaService {
     const receitas: any[] = [];
     const ofertas: any[] = [];
     const tx = {
+      $queryRaw: async () => [],
+      profissional: {
+        findFirst: async () => (this.profissionalAprovado ? { id: 'p' } : null),
+      },
       receita: {
         create: async ({ data }: any) => {
           const registro = { id: randomUUID(), status: 'pendente', ...data };
@@ -243,6 +250,16 @@ describe('ReceitaService - createComOferta', () => {
         restricoesRecusadas: ['Glúten'],
       });
       expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.receitas).toHaveLength(0);
+      expect(prisma.ofertas).toHaveLength(0);
+    });
+
+    it('quando o vendedor teve o cadastro profissional aprovado (D4)', async () => {
+      prisma.profissionalAprovado = true;
+
+      await expect(service.createComOferta(dto(), vendedor)).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(prisma.receitas).toHaveLength(0);
       expect(prisma.ofertas).toHaveLength(0);
     });

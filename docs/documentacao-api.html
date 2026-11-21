@@ -497,8 +497,8 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <tr><td>Pagamento da receita</td><td><strong>Mercado Pago</strong>, com split 1:1: o valor cai na conta Mercado Pago do vendedor e a comissão na da plataforma. A plataforma não guarda saldo de terceiros, então não há carteira nem saque</td></tr>
 <tr><td>Comissão e preço mínimo</td><td>Configuráveis por variável de ambiente; os valores são definidos antes do lançamento</td></tr>
 <tr><td>Quem compra receita</td><td>Qualquer usuário logado</td></tr>
-<tr><td>Quem vende receita</td><td><code>comum</code>, <code>paciente</code> e <code>admin</code>, com a conta Mercado Pago conectada. O <code>profissional</code> não vende (código de ética do CRN)</td></tr>
-<tr><td>Quem anuncia produto</td><td><code>comum</code> e <code>paciente</code>. O <code>profissional</code> não anuncia</td></tr>
+<tr><td>Quem vende receita</td><td><code>comum</code>, <code>paciente</code> e <code>admin</code>, com a conta Mercado Pago conectada. O <code>profissional</code> não vende (código de ética do CRN). Na aprovação do cadastro profissional, as ofertas do usuário são pausadas e não voltam</td></tr>
+<tr><td>Quem anuncia produto</td><td><code>comum</code> e <code>paciente</code>. O <code>profissional</code> não anuncia. Na aprovação do cadastro profissional, os produtos ativos do usuário são pausados e não voltam</td></tr>
 <tr><td>Uso da receita comprada</td><td>Leitura, adaptação e plano alimentar</td></tr>
 <tr><td>Reembolso</td><td>Pedido em até 7 dias. Automático se a cópia nunca foi aberta; depois de aberta, análise do admin</td></tr>
 <tr><td>Produto</td><td>Vitrine: sem pagamento, carrinho, estoque nem frete</td></tr>
@@ -607,7 +607,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <h3>Vitrine de produtos</h3>
 <p>Usuários <code>comum</code> e <code>paciente</code> publicam um produto com título, descrição, preço (opcional: sem preço, fica "a combinar"), categoria, fotos, cidade e UF. O interessado entra em contato pelo telefone que o vendedor escolheu entre os dele.</p>
 <ul>
-<li>O <code>profissional</code> não anuncia produto (<code>403</code>). O código de ética do CFN (arts. 60 e 63) veda ao nutricionista divulgar marcas de alimentos, suplementos e utensílios. Ele continua podendo vender receitas.</li>
+<li>O <code>profissional</code> não anuncia produto (<code>403</code>). O código de ética do CFN (arts. 60 e 63) veda ao nutricionista divulgar marcas de alimentos, suplementos e utensílios. Pelo mesmo motivo ele também não vende receitas. Quem tem o cadastro profissional aprovado não reativa um produto pausado (<code>403</code>), nem pelas mãos do admin.</li>
 <li>O contato só aparece para quem está logado, e só na rota de detalhe.</li>
 <li>A vitrine mostra cidade e UF. O endereço completo do vendedor nunca é exposto.</li>
 <li>Produto sem telefone de contato (o vendedor apagou o número) sai da vitrine até outro ser escolhido.</li>
@@ -995,6 +995,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <p class="resumo">Aprovar solicitação de cadastro profissional</p>
 <div class="selos"><span class="selo login">Login</span><span class="selo papel">admin</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
+<p>Na mesma transação, tira do ar o que o usuário vendia (o profissional não vende receita nem anuncia produto): as ofertas ativas ficam pausadas e os produtos <code>ativo</code> passam a <code>pausado</code>. O usuário recebe uma notificação por item (<code>receita_venda_pausada</code> ou <code>produto_pausado</code>). Compras já feitas não mudam.</p>
 <h5>Respostas</h5><ul class="respostas"><li><span class="status s2">201</span>Solicitação de cadastro profissional aprovada com sucesso.</li></ul>
 </article>
 <article class="endpoint" id="op-post-api-profissionais-id-rejeitar" data-busca="post /api/profissionais/{id}/rejeitar rejeitar solicitação de cadastro profissional">
@@ -1720,7 +1721,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <h5>Corpo <span class="mime">application/json</span></h5>
 <p class="dto">DTO: <a class="ref" href="#dto-UpdateReceitaOfertaDto">UpdateReceitaOfertaDto</a></p>
 <div class="tabela"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>preco</code></td><td><span class="tipo">number</span></td><td>Novo preço. Não altera compras já feitas<div class="exemplo">Exemplo: <code>14.90</code></div></td></tr><tr><td><code>restricaoIds</code></td><td><span class="tipo">string[]</span></td><td>Substitui a lista inteira de público-alvo; <code>[]</code> limpa</td></tr><tr><td><code>ativa</code></td><td><span class="tipo">boolean</span></td><td><code>false</code> pausa a venda e o conteúdo continua fechado; <code>true</code> reativa</td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Oferta atualizada: <code>preco</code>, <code>ativa</code> e <code>publicoAlvo</code>.</span></li><li><span class="status s4">403</span><span>O usuário não é o autor da receita.</span></li><li><span class="status s4">404</span><span>Receita inexistente ou excluída, ou sem oferta.</span></li><li><span class="status s4">422</span><span>Sem o aceite dos termos ou sem Mercado Pago ativo (não vale para só pausar), preço abaixo do mínimo, restrição inexistente, ou público-alvo para o qual a receita não é segura (com <code>restricoesRecusadas</code>).</span></li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Oferta atualizada: <code>preco</code>, <code>ativa</code> e <code>publicoAlvo</code>.</span></li><li><span class="status s4">403</span><span>O usuário não é o autor da receita, ou tem o cadastro profissional aprovado e tenta reativar a oferta (<code>ativa: true</code>).</span></li><li><span class="status s4">404</span><span>Receita inexistente ou excluída, ou sem oferta.</span></li><li><span class="status s4">422</span><span>Sem o aceite dos termos ou sem Mercado Pago ativo (não vale para só pausar), preço abaixo do mínimo, restrição inexistente, ou público-alvo para o qual a receita não é segura (com <code>restricoesRecusadas</code>).</span></li></ul>
 </article>
 <article class="endpoint" id="op-get-api-receita-a-venda" data-busca="get /api/receita/a-venda retorna as receitas à venda, como prévia">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/receita/a-venda</code><a class="link" href="#op-get-api-receita-a-venda" aria-label="Link para esta rota">#</a></header>
@@ -1854,7 +1855,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <h5>Corpo <span class="mime">application/json</span></h5>
 <p class="dto">DTO: <a class="ref" href="#dto-UpdateProdutoDto">UpdateProdutoDto</a></p>
 <div class="tabela"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>titulo</code></td><td><span class="tipo">string</span></td><td></td></tr><tr><td><code>descricao</code></td><td><span class="tipo">string</span></td><td><code>null</code> limpa</td></tr><tr><td><code>preco</code></td><td><span class="tipo">number</span></td><td><code>null</code> volta para "a combinar"</td></tr><tr><td><code>categoriaId</code></td><td><span class="tipo">string</span></td><td>ID de uma categoria ativa</td></tr><tr><td><code>cidade</code></td><td><span class="tipo">string</span></td><td><code>null</code> limpa</td></tr><tr><td><code>estado</code></td><td><span class="tipo">string</span></td><td>UF, 2 letras. <code>null</code> limpa</td></tr><tr><td><code>telefoneContatoId</code></td><td><span class="tipo">string</span></td><td>ID de um telefone do próprio vendedor, exibido como contato</td></tr><tr><td><code>restricaoIds</code></td><td><span class="tipo">string[]</span></td><td>Substitui a lista inteira; <code>[]</code> limpa</td></tr><tr><td><code>status</code></td><td><code>ativo</code> | <code>pausado</code> | <code>vendido</code></td><td><code>removido</code> é só da moderação e não pode ser desfeito pelo vendedor</td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Produto atualizado.</span></li><li><span class="status s4">403</span><span>O usuário não é o vendedor, ou o produto foi removido pela moderação.</span></li><li><span class="status s4">404</span><span>Produto não encontrado.</span></li><li><span class="status s4">422</span><span>Categoria inexistente ou inativa, restrição inexistente, ou telefone que não é do vendedor.</span></li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Produto atualizado.</span></li><li><span class="status s4">403</span><span>O usuário não é o vendedor, o produto foi removido pela moderação, ou o vendedor tem o cadastro profissional aprovado e manda <code>status: ativo</code>.</span></li><li><span class="status s4">404</span><span>Produto não encontrado.</span></li><li><span class="status s4">422</span><span>Categoria inexistente ou inativa, restrição inexistente, ou telefone que não é do vendedor.</span></li></ul>
 </article>
 <article class="endpoint" id="op-patch-api-produto-id-desativar" data-busca="patch /api/produto/{id}/desativar pausa um produto (vendedor)">
 <header><span class="metodo m-patch">PATCH</span><code class="rota">/api/produto/<span class="param">:id</span>/desativar</code><a class="link" href="#op-patch-api-produto-id-desativar" aria-label="Link para esta rota">#</a></header>
@@ -1868,7 +1869,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <p class="resumo">Ativa um produto (vendedor)</p>
 <div class="selos"><span class="selo login">Login</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Produto <code>ativo</code>.</span></li><li><span class="status s4">403</span><span>O usuário não é o vendedor, ou o produto foi removido pela moderação.</span></li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Produto <code>ativo</code>.</span></li><li><span class="status s4">403</span><span>O usuário não é o vendedor, o produto foi removido pela moderação, ou o vendedor tem o cadastro profissional aprovado.</span></li></ul>
 </article>
 <article class="endpoint" id="op-delete-api-produto-id" data-busca="delete /api/produto/{id} exclui um produto (vendedor)">
 <header><span class="metodo m-delete">DELETE</span><code class="rota">/api/produto/<span class="param">:id</span></code><a class="link" href="#op-delete-api-produto-id" aria-label="Link para esta rota">#</a></header>
@@ -1930,7 +1931,7 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <p class="resumo">Reativa um produto removido pela moderação</p>
 <div class="selos"><span class="selo login">Login</span><span class="selo papel">admin</span></div>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Produto volta a <code>ativo</code>.</span></li><li><span class="status s4">404</span><span>Produto não encontrado.</span></li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span><span>Produto volta a <code>ativo</code>.</span></li><li><span class="status s4">403</span><span>O vendedor tem o cadastro profissional aprovado.</span></li><li><span class="status s4">404</span><span>Produto não encontrado.</span></li></ul>
 </article>
 <article class="endpoint" id="op-get-api-marketplace-categorias" data-busca="get /api/marketplace/categorias retorna as categorias de produto ativas">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/marketplace/categorias</code><a class="link" href="#op-get-api-marketplace-categorias" aria-label="Link para esta rota">#</a></header>

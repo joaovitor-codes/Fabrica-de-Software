@@ -15,11 +15,13 @@ import {
   Prisma,
   Profissional,
   StatusAprovacao,
+  StatusProduto,
   TipoUsuario,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CreateUsuarioDto } from '../usuario/dtos/usuario';
 import { ClinicasService } from '../clinicas/clinicas.service';
+import { NotificacaoService } from '../../notificacao/notificacao.service';
 
 const SOLICITACAO_EXISTENTE =
   'Já existe uma solicitação profissional pendente ou aprovada para este usuário';
@@ -30,6 +32,7 @@ export class ProfissionalService {
     private readonly prismaService: PrismaService,
     private readonly clinicaService: ClinicasService,
     private readonly cacheService: CacheService,
+    private readonly notificacaoService: NotificacaoService,
   ) {}
 
   async profissionalExists(id: string): Promise<boolean> {
@@ -128,19 +131,89 @@ export class ProfissionalService {
     // A conta vira profissional antes do status: o trigger do banco só
     // aceita cadastro aprovado em conta profissional. Se a solicitação já
     // não estiver pendente, a transação desfaz a mudança da conta.
+    // Gravar a conta primeiro também trava a linha do usuário, que é o que
+    // enfileira esta aprovação com quem reativa uma venda (ver
+    // garantirNaoProfissional).
     const aprovado = await this.prismaService.$transaction(async (tx) => {
       await tx.usuario.update({
         where: { id: solicitacao.usuarioId },
         data: { tipoUsuario: TipoUsuario.profissional },
       });
-      return this.avaliarPendente(tx, profissionalId, {
+      const avaliado = await this.avaliarPendente(tx, profissionalId, {
         statusAprovacao: StatusAprovacao.aprovado,
         aprovadoPor: adminId,
         aprovadoEm: new Date(),
       });
+      await this.tirarVendasDoAr(tx, solicitacao.usuarioId);
+      return avaliado;
     });
     await this.limparCacheDoMe(aprovado.usuarioId);
     return aprovado;
+  }
+
+  /**
+   * D4/D5: o profissional não vende receita nem anuncia produto. O que o
+   * usuário tinha à venda sai do ar na aprovação (oferta pausada, produto
+   * pausado), com um aviso por item. Compras já feitas não mudam.
+   */
+  private async tirarVendasDoAr(
+    tx: Prisma.TransactionClient,
+    usuarioId: string,
+  ) {
+    const ofertas = await tx.receitaOferta.findMany({
+      where: { ativa: true, receita: { criadoPor: usuarioId } },
+      select: {
+        id: true,
+        receita: { select: { id: true, nome: true, deletedAt: true } },
+      },
+    });
+    const produtos = await tx.produto.findMany({
+      where: {
+        vendedorId: usuarioId,
+        status: StatusProduto.ativo,
+        deletedAt: null,
+      },
+      select: { id: true, titulo: true },
+    });
+
+    if (ofertas.length) {
+      await tx.receitaOferta.updateMany({
+        where: { id: { in: ofertas.map((o) => o.id) } },
+        data: { ativa: false },
+      });
+    }
+    if (produtos.length) {
+      await tx.produto.updateMany({
+        where: { id: { in: produtos.map((p) => p.id) } },
+        data: { status: StatusProduto.pausado },
+      });
+    }
+
+    // Receita apagada não aparece para o autor: pausa sem avisar.
+    for (const { receita } of ofertas.filter((o) => !o.receita.deletedAt)) {
+      await this.notificacaoService.criar(
+        {
+          usuarioId,
+          codigo: 'receita_venda_pausada',
+          titulo: 'A venda da sua receita foi pausada',
+          mensagem: `Com o cadastro profissional aprovado, a receita "${receita.nome}" saiu da vitrine: o código de ética do nutricionista não permite vender receitas. Quem já comprou continua com acesso.`,
+          referencia: { receitaId: receita.id },
+        },
+        tx,
+      );
+    }
+    for (const produto of produtos) {
+      await this.notificacaoService.criar(
+        {
+          usuarioId,
+          codigo: 'produto_pausado',
+          titulo: 'Seu produto foi pausado',
+          mensagem: `Com o cadastro profissional aprovado, o produto "${produto.titulo}" saiu da vitrine: o código de ética do nutricionista não permite anunciar produtos.`,
+          referencia: { produtoId: produto.id },
+        },
+        tx,
+      );
+    }
   }
 
   async rejeitarCadastroProfissional(adminId: string, profissionalId: string) {

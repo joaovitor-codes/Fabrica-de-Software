@@ -11,6 +11,10 @@ import { TermosService } from '../../termos/termos.service';
 import { CreateProduto, UpdateProduto } from './dtos/produto';
 import { ListarProdutosQuery } from './dtos/listar-produtos';
 import { Prisma, Produto, StatusProduto } from '@prisma/client';
+import {
+  garantirNaoProfissional,
+  PROFISSIONAL_NAO_ANUNCIA_PRODUTO,
+} from '../../vendedor-profissional';
 
 // Fotos expostas na vitrine, na ordem em que o vendedor enviou. O createdAt
 // desempata, porque remover uma foto pode deixar duas com a mesma ordem.
@@ -48,25 +52,34 @@ export class ProdutoService {
     const restricaoIds = data.restricaoIds ?? [];
     await this.garantirRestricoesExistem(restricaoIds);
 
-    return this.prismaService.produto.create({
-      data: {
-        vendedorId: usuarioid,
-        categoriaId: data.categoriaId,
-        titulo: data.titulo,
-        descricao: data.descricao,
-        preco: data.preco,
-        cidade: data.cidade,
-        estado: data.estado,
-        telefoneContatoId: usuario.telefones[0]?.id,
-        publicoAlvo: {
-          create: restricaoIds.map((restricaoId) => ({ restricaoId })),
+    // O papel já foi conferido na rota; aqui fecha a corrida com a
+    // aprovação do cadastro profissional (D5).
+    return this.prismaService.$transaction(async (tx) => {
+      await garantirNaoProfissional(
+        tx,
+        usuarioid,
+        PROFISSIONAL_NAO_ANUNCIA_PRODUTO,
+      );
+      return tx.produto.create({
+        data: {
+          vendedorId: usuarioid,
+          categoriaId: data.categoriaId,
+          titulo: data.titulo,
+          descricao: data.descricao,
+          preco: data.preco,
+          cidade: data.cidade,
+          estado: data.estado,
+          telefoneContatoId: usuario.telefones[0]?.id,
+          publicoAlvo: {
+            create: restricaoIds.map((restricaoId) => ({ restricaoId })),
+          },
         },
-      },
-      include: {
-        publicoAlvo: {
-          include: { restricao: true },
+        include: {
+          publicoAlvo: {
+            include: { restricao: true },
+          },
         },
-      },
+      });
     });
   }
 
@@ -131,27 +144,37 @@ export class ProdutoService {
       }
     }
 
-    return this.prismaService.produto.update({
-      where: {
-        id: produtoId,
-      },
-      data: {
-        ...campos,
-        // Na mesma escrita: apaga o público-alvo antigo e grava o novo.
-        ...(restricaoIds
-          ? {
-              publicoAlvo: {
-                deleteMany: {},
-                create: restricaoIds.map((restricaoId) => ({ restricaoId })),
-              },
-            }
-          : {}),
-      },
-      include: {
-        publicoAlvo: {
-          include: { restricao: true },
+    return this.prismaService.$transaction(async (tx) => {
+      // Pôr de volta na vitrine pelo PATCH também passa pela D5.
+      if (campos.status === StatusProduto.ativo) {
+        await garantirNaoProfissional(
+          tx,
+          usuarioId,
+          PROFISSIONAL_NAO_ANUNCIA_PRODUTO,
+        );
+      }
+      return tx.produto.update({
+        where: {
+          id: produtoId,
         },
-      },
+        data: {
+          ...campos,
+          // Na mesma escrita: apaga o público-alvo antigo e grava o novo.
+          ...(restricaoIds
+            ? {
+                publicoAlvo: {
+                  deleteMany: {},
+                  create: restricaoIds.map((restricaoId) => ({ restricaoId })),
+                },
+              }
+            : {}),
+        },
+        include: {
+          publicoAlvo: {
+            include: { restricao: true },
+          },
+        },
+      });
     });
   }
 
@@ -239,14 +262,23 @@ export class ProdutoService {
     usuarioId: string,
     status: StatusProduto,
   ) {
-    const { count } = await this.prismaService.produto.updateMany({
-      where: {
-        id: produtoId,
-        vendedorId: usuarioId,
-        deletedAt: null,
-        status: { not: StatusProduto.removido },
-      },
-      data: { status },
+    const { count } = await this.prismaService.$transaction(async (tx) => {
+      if (status === StatusProduto.ativo) {
+        await garantirNaoProfissional(
+          tx,
+          usuarioId,
+          PROFISSIONAL_NAO_ANUNCIA_PRODUTO,
+        );
+      }
+      return tx.produto.updateMany({
+        where: {
+          id: produtoId,
+          vendedorId: usuarioId,
+          deletedAt: null,
+          status: { not: StatusProduto.removido },
+        },
+        data: { status },
+      });
     });
     // Sem gravação: diz o porquê (não existe, não é dele ou foi removido).
     const produto = await this.buscarProdutoDoVendedor(produtoId, usuarioId);
@@ -421,13 +453,21 @@ export class ProdutoService {
       throw new NotFoundException('Produto não encontrado');
     }
 
-    return this.prismaService.produto.update({
-      where: {
-        id: produtoId,
-      },
-      data: {
-        status: StatusProduto.ativo,
-      },
+    // Nem a moderação devolve à vitrine o produto de um profissional (D5).
+    return this.prismaService.$transaction(async (tx) => {
+      await garantirNaoProfissional(
+        tx,
+        produto.vendedorId,
+        PROFISSIONAL_NAO_ANUNCIA_PRODUTO,
+      );
+      return tx.produto.update({
+        where: {
+          id: produtoId,
+        },
+        data: {
+          status: StatusProduto.ativo,
+        },
+      });
     });
   }
 

@@ -10,6 +10,7 @@ import { AuthService } from '../../../auth/auth.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { ClinicasService } from '../../identidade/clinicas/clinicas.service';
+import { NotificacaoService } from '../../notificacao/notificacao.service';
 import { ProfissionalService } from '../../identidade/profissional/profissional.service';
 import { PontosTransacaoService } from '../pontos-transacao/pontos-transacao.service';
 import { CuradoriaReceitaService } from './curadoria-receita.service';
@@ -80,6 +81,7 @@ describe('Aprovação do profissional e curadoria (integração com Postgres)', 
       prisma,
       {} as unknown as ClinicasService,
       cache,
+      new NotificacaoService(prisma),
     );
     curadoria = new CuradoriaReceitaService(
       prisma,

@@ -7,6 +7,7 @@ import { StatusAprovacao, TipoUsuario } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { ClinicasService } from '../clinicas/clinicas.service';
+import { NotificacaoService } from '../../notificacao/notificacao.service';
 import { ProfissionalService } from './profissional.service';
 
 /**
@@ -68,9 +69,12 @@ describe('Profissional - concorrência (integração com Postgres)', () => {
   beforeAll(async () => {
     prisma = new PrismaService();
     await prisma.$connect();
-    service = new ProfissionalService(prisma, new ClinicasService(prisma), {
-      del: async () => undefined,
-    } as unknown as CacheService);
+    service = new ProfissionalService(
+      prisma,
+      new ClinicasService(prisma),
+      { del: async () => undefined } as unknown as CacheService,
+      new NotificacaoService(prisma),
+    );
   });
 
   afterAll(async () => {
