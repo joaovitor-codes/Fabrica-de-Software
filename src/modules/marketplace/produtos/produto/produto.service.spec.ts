@@ -122,6 +122,17 @@ class FakePrismaService {
   /** Sem rollback: basta repassar o próprio fake como cliente da transação. */
   $transaction = async (fn: (tx: this) => Promise<unknown>) => fn(this);
 
+  /** Usuários com cadastro profissional aprovado (D5). */
+  profissionaisAprovados = new Set<string>();
+
+  // A trava da linha do usuário (FOR SHARE) não tem efeito no fake.
+  $queryRaw = async () => [];
+
+  profissional = {
+    findFirst: async ({ where }: any) =>
+      this.profissionaisAprovados.has(where.usuarioId) ? { id: 'prof' } : null,
+  };
+
   produto = {
     create: async ({ data }: any) => {
       const { publicoAlvo, ...campos } = data;
@@ -537,6 +548,64 @@ describe('ProdutoService', () => {
     it('retorna lista vazia quando o usuário não tem produtos', async () => {
       await criar(OUTRO);
       await expect(service.getProdutosMeus(VENDEDOR)).resolves.toEqual([]);
+    });
+  });
+
+  describe('profissional aprovado (D5)', () => {
+    const naoAnuncia = new ForbiddenException(
+      'Profissional não anuncia produtos (código de ética do nutricionista).',
+    );
+
+    async function produtoDeQuemVirouProfissional() {
+      const produto = await criar();
+      await service.desativarProduto(produto.id, VENDEDOR);
+      prisma.profissionaisAprovados.add(VENDEDOR);
+      return produto;
+    }
+
+    it('não cria produto', async () => {
+      prisma.profissionaisAprovados.add(VENDEDOR);
+
+      await expect(criar()).rejects.toThrow(naoAnuncia);
+      expect(prisma.produtos).toHaveLength(0);
+    });
+
+    it('não reativa o produto pausado, nem pelo ativar nem pelo PATCH', async () => {
+      const produto = await produtoDeQuemVirouProfissional();
+
+      await expect(service.ativarProduto(produto.id, VENDEDOR)).rejects.toThrow(
+        naoAnuncia,
+      );
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, {
+          status: StatusProduto.ativo,
+        }),
+      ).rejects.toThrow(naoAnuncia);
+      expect(prisma.produtos[0].status).toBe(StatusProduto.pausado);
+    });
+
+    it('a moderação também não devolve o produto à vitrine', async () => {
+      const produto = await criar();
+      await service.removerProduto(produto.id);
+      prisma.profissionaisAprovados.add(VENDEDOR);
+
+      await expect(service.reativarProduto(produto.id)).rejects.toThrow(
+        naoAnuncia,
+      );
+      expect(prisma.produtos[0].status).toBe(StatusProduto.removido);
+    });
+
+    it('ainda pausa, edita e apaga o que tinha', async () => {
+      const produto = await produtoDeQuemVirouProfissional();
+
+      await expect(
+        service.desativarProduto(produto.id, VENDEDOR),
+      ).resolves.toMatchObject({ status: StatusProduto.pausado });
+      await expect(
+        service.updateProduto(produto.id, VENDEDOR, { titulo: 'Granola' }),
+      ).resolves.toMatchObject({ titulo: 'Granola' });
+      await service.apagarProduto(produto.id, VENDEDOR);
+      expect(prisma.produtos[0].deletedAt).toBeInstanceOf(Date);
     });
   });
 

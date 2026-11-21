@@ -65,6 +65,12 @@ describe('ReceitaService - oferta', () => {
       contaRecebedor: {
         findUnique: jest.fn(async () => ({ status: StatusRecebedor.ativo })),
       },
+      // Sem cadastro profissional aprovado, salvo o que o teste disser (D4).
+      profissional: { findFirst: jest.fn(async () => null) },
+      $queryRaw: jest.fn(async () => []),
+      $transaction: jest.fn(async (fn: (tx: any) => Promise<unknown>) =>
+        fn(prisma),
+      ),
       restricaoAlimentar: {
         findUnique: jest.fn(async ({ where }: any) =>
           where.id === 'nao-existe'
@@ -138,6 +144,27 @@ describe('ReceitaService - oferta', () => {
         deleteMany: {},
         create: [],
       });
+    });
+
+    it('profissional aprovado não reativa a oferta (D4)', async () => {
+      prisma.profissional.findFirst.mockResolvedValue({ id: 'prof' });
+
+      await expect(
+        service.atualizarOferta(RECEITA, { ativa: true }, autor),
+      ).rejects.toThrow(
+        new ForbiddenException(
+          'Profissional não vende receitas (código de ética do nutricionista).',
+        ),
+      );
+      expect(prisma.receitaOferta.update).not.toHaveBeenCalled();
+    });
+
+    it('profissional aprovado ainda pausa e mexe no preço da oferta pausada', async () => {
+      prisma.profissional.findFirst.mockResolvedValue({ id: 'prof' });
+
+      await expect(
+        service.atualizarOferta(RECEITA, { ativa: false, preco: 14.9 }, autor),
+      ).resolves.toMatchObject({ data: { ativa: false } });
     });
 
     it('pausar não exige termos nem Mercado Pago', async () => {

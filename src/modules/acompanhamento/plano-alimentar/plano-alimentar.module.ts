@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ProfissionalService } from '../../identidade/profissional/profissional.service';
+import { NotificacaoModule } from '../../notificacao/notificacao.module';
 import { ClinicasService } from '../../identidade/clinicas/clinicas.service';
 import { PacientesService } from '../../identidade/pacientes/pacientes.service';
 import { PlanoAlimentarController } from './plano-alimentar.controller';
@@ -8,7 +9,8 @@ import { ChecklistRefeicaoService } from './checklist-refeicao.service';
 import { ComentarioRefeicaoService } from './comentario-refeicao.service';
 
 @Module({
-  imports: [],
+  // O ProfissionalService aprova cadastros e avisa o que saiu do ar.
+  imports: [NotificacaoModule],
   providers: [
     PlanoAlimentarService,
     ProfissionalService,

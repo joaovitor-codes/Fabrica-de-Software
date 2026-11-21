@@ -3,6 +3,8 @@ export const CODIGOS_NOTIFICACAO = [
   'compra_liberada',
   'reembolso_resolvido',
   'produto_removido',
+  'receita_venda_pausada',
+  'produto_pausado',
 ] as const;
 
 export type CodigoNotificacao = (typeof CODIGOS_NOTIFICACAO)[number];

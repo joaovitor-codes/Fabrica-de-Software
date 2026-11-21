@@ -38,6 +38,15 @@ Escolhas feitas explicitamente pelo time, com as alternativas que ficaram de for
 
 Motivo da D5: o código de ética do nutricionista (Resolução CFN 599/2018, arts. 60 e 63) veda divulgar marcas de alimentos, suplementos e utensílios. Pelo mesmo motivo de ética profissional (CRN), o profissional também não vende receitas (D4).
 
+**D4 e D5 depois da aprovação profissional** (decidido em 20/11/2026, issue #169). A regra não vale só na criação: quem tinha receita à venda ou produto anunciado e tem o cadastro profissional aprovado sai do ar e não volta.
+
+- Na aprovação (`POST /api/profissionais/:id/aprovar`), na mesma transação, as ofertas ativas do usuário são pausadas (`ativa: false`) e os produtos `ativo` passam a `pausado`. Produtos `vendido` ou `removido` ficam como estão.
+- O profissional recebe uma notificação por item: `receita_venda_pausada` (referência `receitaId`) e `produto_pausado` (referência `produtoId`). Receita apagada é pausada sem aviso.
+- Respondem `403` para quem tem o cadastro profissional aprovado: `PATCH /api/receita/:id/oferta` com `ativa: true`, `PATCH /api/produto/:id/ativar`, `PATCH /api/produto/:id` com `status: ativo` e `PATCH /api/produto/:id/reativar` (nem a moderação devolve o produto de um profissional à vitrine). O cadastro aprovado é o critério, e não o `tipoUsuario`, para a regra continuar valendo quando os papéis vierem dos registros (#168).
+- Pausar, editar e apagar continuam permitidos.
+- Compras já feitas não mudam: as cópias continuam dos compradores, e o reembolso segue as regras normais.
+- Corrida: a conferência roda na mesma transação da gravação e trava a linha do usuário (`FOR SHARE`). A aprovação grava essa linha antes de pausar, então reativar ao mesmo tempo que a aprovação termina com tudo fora do ar. A criação (`POST /api/receita/paga`, `POST /api/produto`) usa a mesma conferência.
+
 ## 3. Definições de projeto adotadas
 
 Não foram votadas uma a uma. São as escolhas que o `schema.prisma` e a documentação já assumem; foram apresentadas ao time e ninguém contestou. Se o time discordar de alguma, é ela que muda, e o schema e a documentação junto.
@@ -270,6 +279,8 @@ Substitui o limite único de 10 requisições por minuto por IP.
 | `compra_liberada` | comprador | `receitaId` (a cópia) |
 | `reembolso_resolvido` | comprador | `receitaId` (a original) |
 | `produto_removido` | vendedor | `produtoId` |
+| `receita_venda_pausada` | vendedor aprovado como profissional | `receitaId` |
+| `produto_pausado` | vendedor aprovado como profissional | `produtoId` |
 
 **Fora do schema, de propósito**
 
