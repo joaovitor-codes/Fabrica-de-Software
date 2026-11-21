@@ -400,6 +400,39 @@ describe('Adaptação e plano da receita comprada (integração com Postgres)', 
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    it('adaptar de novo não torna pública a adaptação antiga (#172)', async () => {
+      // A adaptação verificada entra no plano e o comprador a apaga: como
+      // está em plano, fica só marcada como excluída.
+      const res: any = await adaptacao.adaptar(copiaId, restricaoId, comprador);
+      const antigaId: string = res.receita.id;
+      await prisma.receita.update({
+        where: { id: antigaId },
+        data: { status: StatusReceita.aprovada },
+      });
+      const plano = await criarPlano(pacienteComprador);
+      await planos.adicionarItemAoPlano(
+        plano.id,
+        item(antigaId),
+        profissionalId,
+      );
+      await receitas.remove(antigaId, comprador);
+
+      // Pedir de novo grava uma adaptação nova no lugar da antiga.
+      const nova: any = await adaptacao.adaptar(
+        copiaId,
+        restricaoId,
+        comprador,
+      );
+      expect(nova.receita.id).not.toBe(antigaId);
+
+      // A antiga carrega o conteúdo pago: continua escondida de terceiros.
+      for (const usuario of [outro, vendedor, profissional, undefined]) {
+        await expect(
+          receitas.findOne(antigaId, usuario),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      }
+    });
+
     it('não adapta a adaptação da cópia, que ficaria pública', async () => {
       const res: any = await adaptacao.adaptar(copiaId, restricaoId, comprador);
 

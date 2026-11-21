@@ -98,7 +98,7 @@ describe('AdaptacaoPacienteService.adaptar', () => {
       },
       receitaAdaptacao: {
         create: jest.fn(async () => ({ id: 'adaptacao' })),
-        delete: jest.fn(async () => ({})),
+        update: jest.fn(async () => ({})),
       },
     };
     prisma = {
@@ -359,7 +359,7 @@ describe('AdaptacaoPacienteService.adaptar', () => {
       prisma.receitaAdaptacao.findUnique
         .mockResolvedValueOnce({ ...vencedora, id: 'antiga', versaoOrigem: 0 })
         .mockResolvedValueOnce(vencedora);
-      tx.receitaAdaptacao.delete.mockRejectedValue(
+      tx.receitaAdaptacao.update.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Record not found', {
           code: 'P2025',
           clientVersion: 'teste',
@@ -393,7 +393,7 @@ describe('AdaptacaoPacienteService.adaptar', () => {
     });
   });
 
-  it('adaptação de versão antiga da origem é refeita e a antiga sai', async () => {
+  it('adaptação de versão antiga da origem é refeita e a antiga sai, mantendo a ligação (#172)', async () => {
     prisma.receitaAdaptacao.findUnique.mockResolvedValue({
       id: 'adaptacao-antiga',
       versaoOrigem: 0,
@@ -408,8 +408,11 @@ describe('AdaptacaoPacienteService.adaptar', () => {
     await service.adaptar('arroz-feijao', 'hipertensao', usuario);
 
     expect(ia.adaptarReceita).toHaveBeenCalled();
-    expect(tx.receitaAdaptacao.delete).toHaveBeenCalledWith({
-      where: { id: 'adaptacao-antiga' },
+    // A ligação fica (é ela que esconde a adaptação de uma cópia), só
+    // sem a restrição, para a nova ocupar a vaga.
+    expect(tx.receitaAdaptacao.update).toHaveBeenCalledWith({
+      where: { id: 'adaptacao-antiga', restricaoId: 'hipertensao' },
+      data: { restricaoId: null },
     });
     expect(tx.receita.update).toHaveBeenCalledWith({
       where: { id: 'adaptada-antiga' },

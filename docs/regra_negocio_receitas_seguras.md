@@ -186,7 +186,8 @@ A receita adaptada é uma `Receita` comum, com ingredientes próprios. Por isso 
 **A verificação reaproveita o fluxo de aprovação que já existe**: adaptada `pendente` = não verificada, adaptada `aprovada` = verificada. A fila (`GET /pendentes`), as regras de quem pode aprovar e os pontos do profissional continuam valendo. A tabela `ReceitaAdaptacao` só guarda a ligação:
 
 - `receitaOrigemId`, `receitaAdaptadaId` (único), `restricaoId`, com `@@unique([receitaOrigemId, restricaoId])`: uma adaptação por par, que é o que permite reaproveitá-la.
-- `versaoOrigem`: a `versaoAtual` da origem na hora da adaptação. Origem editada depois deixa a adaptação desatualizada: o próximo pedido gera outra, e a antiga sai de circulação (`deletedAt`, para não sumir de planos que a usam).
+- `versaoOrigem`: a `versaoAtual` da origem na hora da adaptação. Origem editada depois deixa a adaptação desatualizada: o próximo pedido gera outra, e a antiga sai de circulação (`deletedAt`, para não sumir de planos que a usam). A ligação da antiga fica, só sem a `restricaoId` (libera a vaga da nova): é ela que mantém privada a adaptação de uma cópia comprada.
+- A ligação de adaptação nunca é apagada enquanto a adaptada existe. Sem ela, a adaptada viraria uma receita comum e pública. Por isso a receita que é origem de adaptações, ao ser excluída pelo autor, só ganha `deletedAt` (#172).
 - `resumoIa`: o que mudou e o que conferir, para quem verifica.
 - `trocas` (JSON): `[{ ingredienteOrigemId, acao: "substituir" | "remover", ingredienteDestinoId? }]`.
 

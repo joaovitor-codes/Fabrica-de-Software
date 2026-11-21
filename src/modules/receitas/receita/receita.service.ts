@@ -1124,38 +1124,59 @@ export class ReceitaService {
   }
 
   /**
-   * Receita usada em algum plano alimentar é só marcada como excluída
-   * (deletedAt): some das listagens, mas o plano do paciente continua
-   * mostrando. Fora de planos, é apagada de vez. Favoritos saem nos dois casos.
+   * Receita usada em algum plano alimentar, com adaptações ou à venda (com
+   * oferta) é só marcada como excluída (deletedAt): some das listagens e da
+   * vitrine, não pode mais ser comprada, o plano do paciente continua
+   * mostrando, as adaptações seguem ligadas a ela e quem comprou fica com a
+   * cópia (a oferta não é removida, D15). Sem nada disso, é apagada de vez.
+   * Favoritos saem nos dois casos.
+   *
+   * A ligação das adaptações nunca sai: é ela que esconde a adaptação feita
+   * para um paciente ou a partir de uma cópia comprada. Sem ela, a adaptação
+   * viraria uma receita pública (#172).
    */
   async remove(id: string, usuario: UsuarioAutenticado) {
     await this.garantirAutorOuAdmin(id, usuario);
 
-    const usadaEmPlano = await this.prismaService.planoAlimentarItem.count({
-      where: { receitaId: id },
-    });
+    await this.prismaService
+      .$transaction(async (tx) => {
+        await tx.favorito.deleteMany({ where: { receitaId: id } });
 
-    await this.prismaService.$transaction(async (tx) => {
-      await tx.favorito.deleteMany({ where: { receitaId: id } });
+        const [usadaEmPlano, adaptacoes, oferta] = await Promise.all([
+          tx.planoAlimentarItem.count({ where: { receitaId: id } }),
+          tx.receitaAdaptacao.count({ where: { receitaOrigemId: id } }),
+          tx.receitaOferta.count({ where: { receitaId: id } }),
+        ]);
+        if (usadaEmPlano > 0 || adaptacoes > 0 || oferta > 0) {
+          await tx.receita.update({
+            where: { id },
+            data: { deletedAt: new Date() },
+          });
+          return;
+        }
 
-      if (usadaEmPlano > 0) {
-        await tx.receita.update({
-          where: { id },
-          data: { deletedAt: new Date() },
+        // Só sai a ligação desta receita como adaptação de outra. Se uma
+        // adaptação dela ou um item de plano surgir no meio do caminho, o
+        // banco recusa apagar (RESTRICT) e nada é desvinculado.
+        await tx.receitaAdaptacao.deleteMany({
+          where: { receitaAdaptadaId: id },
         });
-        return;
-      }
-
-      // A ligação de adaptação sai; a outra receita (origem ou adaptada)
-      // continua existindo por conta própria.
-      await tx.receitaAdaptacao.deleteMany({
-        where: { OR: [{ receitaOrigemId: id }, { receitaAdaptadaId: id }] },
+        await tx.receitaVersao.deleteMany({ where: { receitaId: id } });
+        await tx.receitaMidia.deleteMany({ where: { receitaId: id } });
+        await tx.receitaIngrediente.deleteMany({ where: { receitaId: id } });
+        await tx.receita.delete({ where: { id } });
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw new ConflictException(
+            'A receita passou a ser usada enquanto era removida. Tente de novo.',
+          );
+        }
+        throw error;
       });
-      await tx.receitaVersao.deleteMany({ where: { receitaId: id } });
-      await tx.receitaMidia.deleteMany({ where: { receitaId: id } });
-      await tx.receitaIngrediente.deleteMany({ where: { receitaId: id } });
-      await tx.receita.delete({ where: { id } });
-    });
 
     await this.cacheService.del('receitas:all');
     return { success: 'Receita removida com sucesso.' };

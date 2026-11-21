@@ -29,6 +29,7 @@ import { Roles } from '../../../auth/roles.decorator';
 import { UpdateReceitaDto } from './dtos/update-receita';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
@@ -352,11 +353,19 @@ export class ReceitaController {
     return await this.receitaService.update(id, receita, request.user);
   }
 
-  @ApiOperation({ summary: 'Remove uma receita pelo ID (autor ou admin)' })
+  @ApiOperation({
+    summary: 'Remove uma receita pelo ID (autor ou admin)',
+    description:
+      'Receita usada em plano, com adaptações ou à venda é só marcada como excluída: sai das listagens e da vitrine, e planos, adaptações e cópias compradas continuam funcionando. Sem nada disso, é apagada de vez.',
+  })
   @ApiOkResponse({ description: 'Receita removida com sucesso.' })
   @ApiForbiddenResponse({
     description:
       'Não é o autor nem admin, ou a receita é a cópia de uma compra, que ninguém exclui.',
+  })
+  @ApiConflictResponse({
+    description:
+      'A receita passou a ser usada (adaptação ou plano) durante a remoção. Tente de novo.',
   })
   @ApiBearerAuth()
   @UseGuards(AuthGuard)

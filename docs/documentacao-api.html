@@ -1528,8 +1528,9 @@ Authorization: Bearer &lt;accessToken&gt;</code></pre></figure>
 <header><span class="metodo m-delete">DELETE</span><code class="rota">/api/receita/<span class="param">:id</span></code><a class="link" href="#op-delete-api-receita-id" aria-label="Link para esta rota">#</a></header>
 <p class="resumo">Remove uma receita pelo ID (autor ou admin)</p>
 <div class="selos"><span class="selo login">Login</span></div>
+<p>Receita usada em plano alimentar, com adaptações ou à venda (com oferta) é só marcada como excluída: sai das listagens e da vitrine e não pode mais ser comprada. O plano do paciente continua mostrando a receita, as adaptações seguem ligadas a ela (a adaptação feita para um paciente ou a partir de uma cópia continua privada) e quem comprou fica com a cópia. Sem nada disso, a receita é apagada de vez. Os favoritos saem nos dois casos.</p>
 <h5>Parâmetros</h5><div class="tabela"><table><thead><tr><th>Nome</th><th>Onde</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody><tr><td><code>id</code> <span class="obrig">obrigatório</span></td><td>rota</td><td><span class="tipo">string</span></td><td></td></tr></tbody></table></div>
-<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Receita removida com sucesso.</li></ul>
+<h5>Respostas</h5><ul class="respostas"><li><span class="status s2">200</span>Receita removida com sucesso.</li><li><span class="status s4">403</span>Não é o autor nem admin, ou a receita é a cópia de uma compra.</li><li><span class="status s4">404</span>Receita inexistente ou já excluída.</li><li><span class="status s4">409</span>A receita passou a ser usada (adaptação ou plano) durante a remoção. Tente de novo.</li></ul>
 </article>
 <article class="endpoint" id="op-get-api-receita-id-alertas" data-busca="get /api/receita/{id}/alertas retorna os alertas de restrição alimentar da receita (restrições ligadas aos ingredientes e aviso de contaminação cruzada)">
 <header><span class="metodo m-get">GET</span><code class="rota">/api/receita/<span class="param">:id</span>/alertas</code><a class="link" href="#op-get-api-receita-id-alertas" aria-label="Link para esta rota">#</a></header>

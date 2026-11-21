@@ -90,7 +90,25 @@ class FakePrismaService {
       this.profissionais.find((p) => p.usuarioId === where.usuarioId) ?? null,
   };
   receitaIngrediente = { deleteMany: async () => ({}) };
-  receitaAdaptacao = { deleteMany: async () => ({}) };
+  /** Receitas com oferta (à venda). */
+  ofertas: string[] = [];
+  receitaOferta = {
+    count: async ({ where }: any) =>
+      this.ofertas.filter((receitaId) => receitaId === where.receitaId).length,
+  };
+  /** Ligações de adaptação: { receitaOrigemId, receitaAdaptadaId }. */
+  adaptacoes: any[] = [];
+  receitaAdaptacao = {
+    count: async ({ where }: any) =>
+      this.adaptacoes.filter((a) => a.receitaOrigemId === where.receitaOrigemId)
+        .length,
+    deleteMany: async ({ where }: any) => {
+      this.adaptacoes = this.adaptacoes.filter(
+        (a) => a.receitaAdaptadaId !== where.receitaAdaptadaId,
+      );
+      return {};
+    },
+  };
   receitaMidia = {
     deleteMany: async () => ({}),
     create: async ({ data }: any) => {
@@ -244,6 +262,26 @@ describe('ReceitaService - autor ou admin e alertas', () => {
 
       expect(prisma.receitas.get(receitaId).deletedAt).toBeInstanceOf(Date);
       expect(prisma.favoritos).toHaveLength(0);
+    });
+
+    it('mantém receita com adaptações (exclusão lógica) e não desvincula nenhuma (#172)', async () => {
+      prisma.adaptacoes.push({
+        receitaOrigemId: receitaId,
+        receitaAdaptadaId: 'adaptada',
+      });
+
+      await service.remove(receitaId, autor);
+
+      expect(prisma.receitas.get(receitaId).deletedAt).toBeInstanceOf(Date);
+      expect(prisma.adaptacoes).toHaveLength(1);
+    });
+
+    it('mantém receita paga (exclusão lógica): a oferta e as cópias ficam', async () => {
+      prisma.ofertas.push(receitaId);
+
+      await service.remove(receitaId, autor);
+
+      expect(prisma.receitas.get(receitaId).deletedAt).toBeInstanceOf(Date);
     });
 
     it('não permite editar nem apagar de novo uma receita já excluída', async () => {
